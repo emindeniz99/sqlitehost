@@ -8,6 +8,7 @@ public record ManifestLibrary(
         String namespace,
         String interfaceName,
         int apiLevel,
+        int minSqliteVersionNumber,
         List<String> features) {
 
     public ManifestLibrary {

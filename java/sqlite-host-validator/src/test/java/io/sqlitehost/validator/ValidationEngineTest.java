@@ -279,6 +279,39 @@ class ValidationEngineTest {
         assertTrue(report.isValid(), report.findings().toString());
     }
 
+    @Test
+    void insertOrReplaceIntoACallTableIsStillACallTableInsert() throws IOException {
+        // The OR REPLACE conflict clause must not hide the call-table
+        // lints: implicit column list and undeclared method use.
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT OR REPLACE INTO call_get_value VALUES (:c, 'k')\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}");
+        List<String> codes = errorCodes(report);
+        assertTrue(codes.contains(ValidationCodes.IMPLICIT_COLUMN_LIST), codes.toString());
+        assertTrue(codes.contains(ValidationCodes.UNDECLARED_METHOD_USE), codes.toString());
+    }
+
+    @Test
+    void scriptVarsInsertsAreNotCallTableInserts() throws IOException {
+        // script_vars is script scratch space (docs/workspace-schema.md):
+        // declare with INSERT, reassign with INSERT OR REPLACE — neither
+        // is a call-table insert, so no column-list/undeclared-method or
+        // usage findings may fire.
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredFeatures\":[\"scriptVars\"],"
+                + "\"steps\":[{\"id\":\"declare\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO script_vars (name, value_type, int_value)"
+                + " VALUES ('aa', 'int64', 55), ('kh', 'int64', 4)\",\"bindings\":{}},"
+                + "{\"sql\":\"INSERT OR REPLACE INTO script_vars (name, value_type, int_value)"
+                + " SELECT 'total', 'int64',"
+                + " (SELECT int_value FROM script_vars WHERE name = 'aa')\","
+                + "\"bindings\":{}}]}]}");
+        assertTrue(report.isValid(), report.findings().toString());
+        assertEquals(List.of(), report.warnings(), report.warnings().toString());
+    }
+
     /** Emits getValue call 'g1' and setValue call 's1' in one step, then joins. */
     private static String joinScript(String joinStepJson) {
         return "{\"engine\":\"sqlite-host-v1\","

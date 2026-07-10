@@ -48,6 +48,7 @@ public final class ManifestJsonReader {
                 requireString(libraryNode, "namespace"),
                 requireString(libraryNode, "interfaceName"),
                 requireInt(libraryNode, "apiLevel"),
+                requireInt(libraryNode, "minSqliteVersionNumber"),
                 requireStringList(libraryNode, "features"));
 
         JsonNode namingNode = requireObject(root, "naming");
@@ -80,6 +81,7 @@ public final class ManifestJsonReader {
                 naming,
                 readTable(requireObject(root, "queueTable")),
                 readTable(requireObject(root, "inputsTable")),
+                readTable(requireObject(root, "varsTable")),
                 scriptEnvelope,
                 methods);
     }

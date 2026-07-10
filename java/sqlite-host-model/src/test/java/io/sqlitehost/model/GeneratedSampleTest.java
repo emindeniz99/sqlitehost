@@ -72,6 +72,8 @@ class GeneratedSampleTest {
         assertEquals(manifest.library().namespace(), MethodDescriptors.NAMESPACE);
         assertEquals(manifest.library().interfaceName(), MethodDescriptors.INTERFACE_NAME);
         assertEquals(manifest.library().apiLevel(), MethodDescriptors.API_LEVEL);
+        assertEquals(manifest.library().minSqliteVersionNumber(),
+                MethodDescriptors.MIN_SQLITE_VERSION_NUMBER);
 
         assertEquals(manifest.methods().size(), MethodDescriptors.ALL.size());
         for (int i = 0; i < manifest.methods().size(); i++) {

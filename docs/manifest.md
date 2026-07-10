@@ -12,10 +12,11 @@ indent, LF, trailing newline. Committed snapshot:
 |---|---|
 | `manifestVersion` | `1` |
 | `engine` | `"sqlite-host-v1"` |
-| `library` | `namespace`, `interfaceName`, `apiLevel`, `features` |
+| `library` | `namespace`, `interfaceName`, `apiLevel`, `minSqliteVersionNumber`, `features` |
 | `naming` | the six host-level naming conventions |
 | `queueTable` | `pending_host_calls` + column list |
 | `inputsTable` | `script_inputs` + column list |
+| `varsTable` | `script_vars` + column list (script-managed variable scratch space) |
 | `scriptEnvelope` | envelope engine + binding type list |
 | `methods` | ordered method descriptors (declaration order) |
 

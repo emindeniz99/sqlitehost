@@ -37,6 +37,33 @@ class SqlAnalyzerTest {
     }
 
     @Test
+    void parsesInsertOrReplaceIntoWithColumnList() {
+        // The OR REPLACE conflict clause sits between INSERT and INTO —
+        // the target table and column list must still be located.
+        InsertStatement parsed = insert(
+                "INSERT OR REPLACE INTO call_get_value (call_id, input_key)"
+                        + " VALUES (:callId, 'k')");
+        assertEquals("call_get_value", parsed.table());
+        assertEquals(List.of("call_id", "input_key"), parsed.columns());
+        assertEquals(new ValueExpr(ValueExpr.Kind.PARAM, "callId"), parsed.rows().get(0).get(0));
+    }
+
+    @Test
+    void parsesInsertOrReplaceIntoScriptVarsSelect() {
+        // script_vars reassignment form (docs/workspace-schema.md):
+        // INSERT OR REPLACE INTO … SELECT with scalar subqueries.
+        InsertStatement parsed = insert(
+                "INSERT OR REPLACE INTO script_vars (name, value_type, int_value)"
+                        + " SELECT 'total', 'int64',"
+                        + " (SELECT int_value FROM script_vars WHERE name = 'aa')");
+        assertEquals("script_vars", parsed.table());
+        assertEquals(List.of("name", "value_type", "int_value"), parsed.columns());
+        assertEquals(3, parsed.selectItems().size());
+        assertEquals(new ValueExpr(ValueExpr.Kind.STRING, "total"), parsed.selectItems().get(0));
+        assertEquals(ValueExpr.Kind.OTHER, parsed.selectItems().get(2).kind());
+    }
+
+    @Test
     void detectsImplicitColumnList() {
         InsertStatement parsed = insert("INSERT INTO call_get_value VALUES (:c, 'k')");
         assertNull(parsed.columns());

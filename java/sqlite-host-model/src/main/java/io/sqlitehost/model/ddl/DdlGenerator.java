@@ -56,9 +56,10 @@ public final class DdlGenerator {
                 ");");
     }
 
-    private static String inputsTableDdl(Manifest manifest) {
+    /** Shared name/value table shape: {@code script_inputs} and {@code script_vars}. */
+    private static String namedValueTableDdl(String tableName) {
         return String.join("\n",
-                "CREATE TABLE " + manifest.inputsTable().name() + " (",
+                "CREATE TABLE " + tableName + " (",
                 "    name TEXT NOT NULL PRIMARY KEY,",
                 "    value_type TEXT NOT NULL,",
                 "    int_value INTEGER,",
@@ -110,7 +111,8 @@ public final class DdlGenerator {
     public static List<String> generateSchemaStatements(Manifest manifest) {
         List<String> statements = new ArrayList<>();
         statements.add(queueTableDdl(manifest));
-        statements.add(inputsTableDdl(manifest));
+        statements.add(namedValueTableDdl(manifest.inputsTable().name()));
+        statements.add(namedValueTableDdl(manifest.varsTable().name()));
         for (MethodDescriptor method : manifest.methods()) {
             statements.add(parentTableDdl(method.callTable(), method.input().fields(), false));
             for (ListField listField : method.input().listFields()) {

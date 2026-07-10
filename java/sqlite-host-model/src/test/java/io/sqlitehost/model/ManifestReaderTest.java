@@ -31,7 +31,9 @@ class ManifestReaderTest {
         assertEquals("Example.Game", manifest.library().namespace());
         assertEquals("GameHostMethods", manifest.library().interfaceName());
         assertEquals(1, manifest.library().apiLevel());
-        assertEquals(List.of("typedNamedBindings", "splitResultTables", "scriptInputs"),
+        assertEquals(3019003, manifest.library().minSqliteVersionNumber());
+        assertEquals(List.of("typedNamedBindings", "splitResultTables", "scriptInputs",
+                        "scriptVars"),
                 manifest.library().features());
         assertEquals("call_", manifest.naming().callTablePrefix());
         assertEquals("__result_", manifest.naming().resultListTableInfix());
@@ -39,6 +41,11 @@ class ManifestReaderTest {
         assertEquals(List.of("queue_id", "call_id", "method", "status"),
                 manifest.queueTable().columns());
         assertEquals("script_inputs", manifest.inputsTable().name());
+        assertEquals("script_vars", manifest.varsTable().name());
+        assertEquals(
+                List.of("name", "value_type", "int_value", "real_value", "text_value",
+                        "blob_value"),
+                manifest.varsTable().columns());
         assertEquals("sqlite-host-v1", manifest.scriptEnvelope().engine());
         assertEquals(
                 List.of("null", "int32", "int64", "bool", "text", "blob", "float32", "float64"),
@@ -86,15 +93,58 @@ class ManifestReaderTest {
         assertEquals(ScalarType.FLOAT64, recordScore.result().fields().get(0).scalarType());
     }
 
-    @Test
-    void unknownScalarTypeIsAReaderError() {
-        String json = "{\"manifestVersion\":1,\"engine\":\"sqlite-host-v1\","
-                + "\"library\":{\"namespace\":\"N\",\"interfaceName\":\"I\",\"apiLevel\":1,\"features\":[]},"
+    /** A minimal manifest carrying every required block (methods empty). */
+    private static String minimalManifestJson() {
+        return "{\"manifestVersion\":1,\"engine\":\"sqlite-host-v1\","
+                + "\"library\":{\"namespace\":\"N\",\"interfaceName\":\"I\",\"apiLevel\":1,"
+                + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
                 + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
                 + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
                 + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\"},"
                 + "\"queueTable\":{\"name\":\"q\",\"columns\":[]},"
                 + "\"inputsTable\":{\"name\":\"i\",\"columns\":[]},"
+                + "\"varsTable\":{\"name\":\"v\",\"columns\":[]},"
+                + "\"scriptEnvelope\":{\"engine\":\"sqlite-host-v1\",\"bindingTypes\":[]},"
+                + "\"methods\":[]}";
+    }
+
+    @Test
+    void minimalManifestParsesAndCarriesTheNewFields() throws IOException {
+        Manifest manifest = ManifestJsonReader.read(minimalManifestJson());
+        assertEquals(3019003, manifest.library().minSqliteVersionNumber());
+        assertEquals("v", manifest.varsTable().name());
+        assertEquals(List.of(), manifest.varsTable().columns());
+    }
+
+    @Test
+    void missingMinSqliteVersionNumberIsAReaderError() {
+        String json = minimalManifestJson()
+                .replace("\"minSqliteVersionNumber\":3019003,", "");
+        JsonReadException e = assertThrows(JsonReadException.class,
+                () -> ManifestJsonReader.read(json));
+        assertTrue(e.getMessage().contains("minSqliteVersionNumber"), e.getMessage());
+    }
+
+    @Test
+    void missingVarsTableIsAReaderError() {
+        String json = minimalManifestJson()
+                .replace("\"varsTable\":{\"name\":\"v\",\"columns\":[]},", "");
+        JsonReadException e = assertThrows(JsonReadException.class,
+                () -> ManifestJsonReader.read(json));
+        assertTrue(e.getMessage().contains("varsTable"), e.getMessage());
+    }
+
+    @Test
+    void unknownScalarTypeIsAReaderError() {
+        String json = "{\"manifestVersion\":1,\"engine\":\"sqlite-host-v1\","
+                + "\"library\":{\"namespace\":\"N\",\"interfaceName\":\"I\",\"apiLevel\":1,"
+                + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
+                + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
+                + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
+                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\"},"
+                + "\"queueTable\":{\"name\":\"q\",\"columns\":[]},"
+                + "\"inputsTable\":{\"name\":\"i\",\"columns\":[]},"
+                + "\"varsTable\":{\"name\":\"v\",\"columns\":[]},"
                 + "\"scriptEnvelope\":{\"engine\":\"sqlite-host-v1\",\"bindingTypes\":[]},"
                 + "\"methods\":[{\"operationName\":\"Op\",\"methodName\":\"op\",\"handlerName\":\"Op\","
                 + "\"apiLevel\":1,\"callTable\":\"call_op\",\"resultTable\":\"result_op\","

@@ -15,6 +15,7 @@ public record Manifest(
         ManifestNaming naming,
         ManifestTable queueTable,
         ManifestTable inputsTable,
+        ManifestTable varsTable,
         ScriptEnvelopeDescriptor scriptEnvelope,
         List<MethodDescriptor> methods) {
 
