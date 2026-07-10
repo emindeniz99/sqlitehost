@@ -107,14 +107,15 @@ class SqlAnalyzerTest {
     @Test
     void extractsCallIdComparisons() {
         List<ValueExpr> comparisons = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
-                "SELECT 1 FROM result_get_value WHERE call_id = 'read-1' AND status = 'done'"));
+                "SELECT 1 FROM result_get_value WHERE call_id = 'read-1' AND status = 'done'"),
+                "call_id");
         assertEquals(List.of(new ValueExpr(ValueExpr.Kind.STRING, "read-1")), comparisons);
     }
 
     @Test
     void extractsParameterComparisonAndReverseForm() {
         List<ValueExpr> comparisons = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
-                "SELECT 1 FROM r WHERE call_id = :x OR 'y-1' = call_id"));
+                "SELECT 1 FROM r WHERE call_id = :x OR 'y-1' = call_id"), "call_id");
         assertTrue(comparisons.contains(new ValueExpr(ValueExpr.Kind.PARAM, "x")));
         assertTrue(comparisons.contains(new ValueExpr(ValueExpr.Kind.STRING, "y-1")));
     }
@@ -122,7 +123,19 @@ class SqlAnalyzerTest {
     @Test
     void concatenatedComparisonIsNotStatic() {
         List<ValueExpr> comparisons = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
-                "SELECT 1 FROM r WHERE call_id = 'w-' || result_key"));
+                "SELECT 1 FROM r WHERE call_id = 'w-' || result_key"), "call_id");
         assertTrue(comparisons.isEmpty());
+    }
+
+    @Test
+    void comparisonExtractionKeysOnTheManifestCallIdColumn() {
+        // Custom call-id column 'cid': cid comparisons are extracted…
+        List<ValueExpr> custom = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
+                "SELECT 1 FROM result_get_value WHERE cid = 'read-1'"), "cid");
+        assertEquals(List.of(new ValueExpr(ValueExpr.Kind.STRING, "read-1")), custom);
+        // …and a literal 'call_id' identifier is no longer special.
+        List<ValueExpr> defaultName = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
+                "SELECT 1 FROM result_get_value WHERE call_id = 'read-1'"), "cid");
+        assertTrue(defaultName.isEmpty());
     }
 }

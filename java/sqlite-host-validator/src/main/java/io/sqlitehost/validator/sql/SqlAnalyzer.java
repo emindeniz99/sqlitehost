@@ -6,8 +6,10 @@ import java.util.Set;
 
 /**
  * Statement-shape analysis over the token stream: INSERT parsing and
- * {@code call_id = <atom>} comparison extraction. Best-effort static
- * analysis for lint purposes (docs/validation.md) — not a SQL parser.
+ * {@code <callIdColumn> = <atom>} comparison extraction (the call-id
+ * column name comes from the manifest columns block). Best-effort
+ * static analysis for lint purposes (docs/validation.md) — not a SQL
+ * parser.
  */
 public final class SqlAnalyzer {
 
@@ -156,25 +158,27 @@ public final class SqlAnalyzer {
     }
 
     /**
-     * Extract {@code call_id = <atom>} (and {@code <atom> = call_id})
-     * comparisons where the atom is a single string literal or named
-     * parameter. Concatenations and other computed expressions are not
-     * atoms — they are skipped by static call_id resolution.
+     * Extract {@code <callIdColumn> = <atom>} (and
+     * {@code <atom> = <callIdColumn>}) comparisons where the atom is a
+     * single string literal or named parameter. {@code callIdColumn} is
+     * the manifest's call-id column name. Concatenations and other
+     * computed expressions are not atoms — they are skipped by static
+     * call-id resolution.
      */
-    public static List<ValueExpr> callIdComparisons(List<SqlToken> tokens) {
+    public static List<ValueExpr> callIdComparisons(List<SqlToken> tokens, String callIdColumn) {
         List<ValueExpr> comparisons = new ArrayList<>();
         for (int i = 0; i < tokens.size(); i++) {
-            if (!tokens.get(i).isIdent("call_id")) {
+            if (!tokens.get(i).isIdent(callIdColumn)) {
                 continue;
             }
-            // forward form: call_id = <atom>
+            // forward form: <callIdColumn> = <atom>
             if (i + 2 < tokens.size() && tokens.get(i + 1).isPunct("=")) {
                 SqlToken value = tokens.get(i + 2);
                 if (isAtom(value) && !continuesExpression(tokens, i + 3)) {
                     comparisons.add(atom(value));
                 }
             }
-            // reverse form: <atom> = call_id
+            // reverse form: <atom> = <callIdColumn>
             if (i >= 2 && tokens.get(i - 1).isPunct("=")) {
                 SqlToken value = tokens.get(i - 2);
                 if (isAtom(value) && (i - 3 < 0 || !tokens.get(i - 3).isPunct("||"))) {

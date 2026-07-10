@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sqlitehost.model.manifest.ListField;
 import io.sqlitehost.model.manifest.Manifest;
+import io.sqlitehost.model.manifest.ManifestColumns;
 import io.sqlitehost.model.manifest.ManifestLibrary;
 import io.sqlitehost.model.manifest.ManifestNaming;
 import io.sqlitehost.model.manifest.ManifestTable;
@@ -60,6 +61,23 @@ public final class ManifestJsonReader {
                 requireString(namingNode, "inputListTableInfix"),
                 requireString(namingNode, "resultListTableInfix"));
 
+        JsonNode columnsNode = requireObject(root, "columns");
+        ManifestColumns columns = new ManifestColumns(
+                requireString(columnsNode, "callId"),
+                requireString(columnsNode, "itemIndex"),
+                requireString(columnsNode, "status"),
+                requireString(columnsNode, "doneValue"),
+                requireString(columnsNode, "queueId"),
+                requireString(columnsNode, "method"),
+                requireString(columnsNode, "name"),
+                requireString(columnsNode, "valueType"),
+                requireString(columnsNode, "intValue"),
+                requireString(columnsNode, "realValue"),
+                requireString(columnsNode, "textValue"),
+                requireString(columnsNode, "blobValue"),
+                requireString(columnsNode, "action"),
+                requireString(columnsNode, "message"));
+
         JsonNode envelopeNode = requireObject(root, "scriptEnvelope");
         ScriptEnvelopeDescriptor scriptEnvelope = new ScriptEnvelopeDescriptor(
                 requireString(envelopeNode, "engine"),
@@ -79,9 +97,11 @@ public final class ManifestJsonReader {
                 requireString(root, "engine"),
                 library,
                 naming,
+                columns,
                 readTable(requireObject(root, "queueTable")),
                 readTable(requireObject(root, "inputsTable")),
                 readTable(requireObject(root, "varsTable")),
+                readTable(requireObject(root, "controlTable")),
                 scriptEnvelope,
                 methods);
     }

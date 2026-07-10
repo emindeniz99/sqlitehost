@@ -29,10 +29,11 @@ import java.util.Set;
 /**
  * Script semantic lint (docs/validation.md layer 4) over a manifest
  * and a parsed script. Implements the pinned Structural, Bindings,
- * Host-call usage, and Result-read lineage codes. Static call_id
- * resolution covers literals and text bindings; computed ids are
- * skipped by lineage/duplicate checks — documented best-effort
- * linting, not proof.
+ * Host-call usage, and Result-read lineage codes. All SQL-visible
+ * column names (call id, item index, …) come from the manifest columns
+ * block. Static call-id resolution covers literals and text bindings;
+ * computed ids are skipped by lineage/duplicate checks — documented
+ * best-effort linting, not proof.
  */
 public final class ValidationEngine {
 
@@ -47,9 +48,9 @@ public final class ValidationEngine {
         Analysis analysis = analyzeStatements(schema, script, findings);
 
         checkUnusedRequiredMethods(manifest, script, analysis, findings);
-        checkDuplicateCallIds(analysis, findings);
-        checkListChildColocation(analysis, findings);
-        checkResultReadLineage(analysis, findings);
+        checkDuplicateCallIds(schema, analysis, findings);
+        checkListChildColocation(schema, analysis, findings);
+        checkResultReadLineage(schema, analysis, findings);
         return new ValidationReport(findings);
     }
 
@@ -226,7 +227,7 @@ public final class ValidationEngine {
         }
 
         // Result-read lineage collection: result tables referenced +
-        // statically resolvable call_id filters.
+        // statically resolvable call-id filters (manifest columns.callId).
         Set<String> readMethods = new LinkedHashSet<>();
         for (SqlToken token : tokens) {
             if (token.kind() != SqlToken.Kind.IDENT) {
@@ -241,7 +242,8 @@ public final class ValidationEngine {
             }
         }
         if (!readMethods.isEmpty()) {
-            for (ValueExpr comparison : SqlAnalyzer.callIdComparisons(tokens)) {
+            for (ValueExpr comparison : SqlAnalyzer.callIdComparisons(
+                    tokens, schema.callIdColumn)) {
                 String callId = resolveStatic(comparison, bindings);
                 if (callId != null) {
                     analysis.resultReads.add(new ResultRead(
@@ -286,7 +288,8 @@ public final class ValidationEngine {
                         null, stepIndex, stepId, statementIndex));
             } else {
                 for (List<ValueExpr> row : rows) {
-                    String callId = resolveStatic(insert.valueFor(row, "call_id"), bindings);
+                    String callId = resolveStatic(
+                            insert.valueFor(row, schema.callIdColumn), bindings);
                     analysis.callEmits.add(new CallEmit(callMethod.methodName(), tableLc,
                             callId, stepIndex, stepId, statementIndex));
                 }
@@ -297,7 +300,7 @@ public final class ValidationEngine {
             List<List<ValueExpr>> rows = insert.valueRows();
             for (List<ValueExpr> row : rows) {
                 String callId = insert.hasExplicitColumns()
-                        ? resolveStatic(insert.valueFor(row, "call_id"), bindings)
+                        ? resolveStatic(insert.valueFor(row, schema.callIdColumn), bindings)
                         : null;
                 analysis.childWrites.add(new ChildWrite(callChild.method.methodName(),
                         callChild.listField.childTable(), callId,
@@ -395,7 +398,7 @@ public final class ValidationEngine {
     }
 
     private static void checkDuplicateCallIds(
-            Analysis analysis, List<ValidationFinding> findings) {
+            SchemaIndex schema, Analysis analysis, List<ValidationFinding> findings) {
         Map<String, CallEmit> firstByTableAndId = new LinkedHashMap<>();
         for (CallEmit emit : analysis.callEmits) {
             if (emit.callId == null) {
@@ -406,7 +409,8 @@ public final class ValidationEngine {
             if (first != null) {
                 findings.add(ValidationFinding.error(ValidationCodes.DUPLICATE_CALL_ID,
                         emit.stepId, emit.statementIndex,
-                        "call_id '" + emit.callId + "' is emitted more than once for call table '"
+                        schema.callIdColumn + " '" + emit.callId
+                                + "' is emitted more than once for call table '"
                                 + emit.callTableLc + "' (first emitted in step '"
                                 + first.stepId + "')"));
             }
@@ -414,7 +418,7 @@ public final class ValidationEngine {
     }
 
     private static void checkListChildColocation(
-            Analysis analysis, List<ValidationFinding> findings) {
+            SchemaIndex schema, Analysis analysis, List<ValidationFinding> findings) {
         for (ChildWrite write : analysis.childWrites) {
             if (write.callId == null) {
                 continue; // computed ids are skipped
@@ -431,7 +435,8 @@ public final class ValidationEngine {
                 if (parent.stepIndex != write.stepIndex) {
                     findings.add(ValidationFinding.error(ValidationCodes.LIST_CHILD_LATER_STEP,
                             write.stepId, write.statementIndex,
-                            "child list rows for call_id '" + write.callId + "' ("
+                            "child list rows for " + schema.callIdColumn + " '"
+                                    + write.callId + "' ("
                                     + write.childTable + ") are emitted in step '" + write.stepId
                                     + "' but their parent call row is in step '" + parent.stepId
                                     + "' — parents and children must be colocated"));
@@ -444,7 +449,8 @@ public final class ValidationEngine {
             if (!methodHasComputedEmit) {
                 findings.add(ValidationFinding.error(ValidationCodes.LIST_CHILD_WITHOUT_PARENT,
                         write.stepId, write.statementIndex,
-                        "child list rows reference call_id '" + write.callId
+                        "child list rows reference " + schema.callIdColumn + " '"
+                                + write.callId
                                 + "' (" + write.childTable + ") but no statement inserts"
                                 + " that parent call row"));
             }
@@ -452,8 +458,8 @@ public final class ValidationEngine {
     }
 
     private static void checkResultReadLineage(
-            Analysis analysis, List<ValidationFinding> findings) {
-        // method -> statically emitted call_id -> earliest emitting step.
+            SchemaIndex schema, Analysis analysis, List<ValidationFinding> findings) {
+        // method -> statically emitted call id -> earliest emitting step.
         Map<String, Map<String, Integer>> staticEmits = new HashMap<>();
         // method -> earliest step with a computed (unresolvable) emit.
         Map<String, Integer> computedEmits = new HashMap<>();
@@ -466,7 +472,7 @@ public final class ValidationEngine {
             }
         }
         // A statement can join result tables of several methods (set M)
-        // while each resolved call_id belongs to only one of them, so a
+        // while each resolved call id belongs to only one of them, so a
         // finding is reported only when NO method in M can satisfy the
         // read: unknown-call when no method emits the id (computed emits
         // count as possible matches — skip), not-after-call when every
@@ -506,7 +512,7 @@ public final class ValidationEngine {
                             ValidationCodes.RESULT_READ_NOT_AFTER_CALL,
                             read.stepId, read.statementIndex,
                             "statement reads results of method '" + method
-                                    + "' for call_id '" + read.callId
+                                    + "' for " + schema.callIdColumn + " '" + read.callId
                                     + "' in the same or an earlier step than the emitting"
                                     + " insert — results only exist after the emitting"
                                     + " step's drain"));
@@ -517,7 +523,7 @@ public final class ValidationEngine {
                             ValidationCodes.RESULT_READ_UNKNOWN_CALL,
                             read.stepId, read.statementIndex,
                             "statement reads results of method '" + method
-                                    + "' for call_id '" + read.callId
+                                    + "' for " + schema.callIdColumn + " '" + read.callId
                                     + "' but no statement emits that call"));
                 }
             }
@@ -552,7 +558,7 @@ public final class ValidationEngine {
         return value.toLowerCase(Locale.ROOT);
     }
 
-    /** Column typing for insert checks; call_id/item_index use pinned types. */
+    /** Column typing for insert checks; the call-id/item-index columns use pinned types. */
     private record ColumnType(ScalarType scalarType, boolean optional, String role) {
         String describe() {
             return role != null ? role : scalarType.jsonName() + (optional ? ", optional" : "");
@@ -625,6 +631,8 @@ public final class ValidationEngine {
 
     /** Physical-name lookups derived from the manifest (names are resolved). */
     private static final class SchemaIndex {
+        final String callIdColumn;
+        final String itemIndexColumn;
         final Map<String, MethodDescriptor> callTables = new HashMap<>();
         final Map<String, ChildTable> callChildTables = new HashMap<>();
         final Map<String, MethodDescriptor> resultTables = new HashMap<>();
@@ -632,12 +640,15 @@ public final class ValidationEngine {
         final Map<String, Map<String, ColumnType>> insertableColumns = new HashMap<>();
 
         SchemaIndex(Manifest manifest) {
+            callIdColumn = manifest.columns().callId();
+            itemIndexColumn = manifest.columns().itemIndex();
             for (MethodDescriptor method : manifest.methods()) {
                 callTables.put(lower(method.callTable()), method);
                 resultTables.put(lower(method.resultTable()), method);
 
                 Map<String, ColumnType> callColumns = new HashMap<>();
-                callColumns.put("call_id", new ColumnType(ScalarType.STRING, false, "call_id"));
+                callColumns.put(lower(callIdColumn),
+                        new ColumnType(ScalarType.STRING, false, callIdColumn));
                 for (ScalarField field : method.input().fields()) {
                     callColumns.put(lower(field.column()),
                             new ColumnType(field.scalarType(), field.optional(), null));
@@ -648,10 +659,10 @@ public final class ValidationEngine {
                     callChildTables.put(lower(listField.childTable()),
                             new ChildTable(method, listField));
                     Map<String, ColumnType> childColumns = new HashMap<>();
-                    childColumns.put("call_id",
-                            new ColumnType(ScalarType.STRING, false, "call_id"));
-                    childColumns.put("item_index",
-                            new ColumnType(ScalarType.INT64, false, "item_index"));
+                    childColumns.put(lower(callIdColumn),
+                            new ColumnType(ScalarType.STRING, false, callIdColumn));
+                    childColumns.put(lower(itemIndexColumn),
+                            new ColumnType(ScalarType.INT64, false, itemIndexColumn));
                     for (ScalarField field : listField.itemFields()) {
                         childColumns.put(lower(field.column()),
                                 new ColumnType(field.scalarType(), field.optional(), null));

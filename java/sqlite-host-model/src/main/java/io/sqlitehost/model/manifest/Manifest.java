@@ -13,9 +13,11 @@ public record Manifest(
         String engine,
         ManifestLibrary library,
         ManifestNaming naming,
+        ManifestColumns columns,
         ManifestTable queueTable,
         ManifestTable inputsTable,
         ManifestTable varsTable,
+        ManifestTable controlTable,
         ScriptEnvelopeDescriptor scriptEnvelope,
         List<MethodDescriptor> methods) {
 

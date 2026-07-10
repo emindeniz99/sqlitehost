@@ -5,8 +5,8 @@ import java.util.List;
 
 /**
  * A shared table descriptor — the manifest {@code queueTable},
- * {@code inputsTable} and {@code varsTable} blocks share this
- * {name, columns} shape.
+ * {@code inputsTable}, {@code varsTable} and {@code controlTable}
+ * blocks share this {name, columns} shape.
  */
 public record ManifestTable(String name, List<String> columns) {
 

@@ -42,18 +42,20 @@ class DdlGeneratorGoldenTest {
                 Files.readString(fixtures.resolve("manifests/sample-host.manifest.json")));
         var statements = DdlGenerator.generateSchemaStatements(manifest);
 
-        // pending_host_calls, script_inputs, script_vars, then per method
-        // (declaration order): call table, input child tables, result
-        // table, result child tables, trigger (docs/workspace-schema.md).
-        assertEquals(20, statements.size());
+        // pending_host_calls, script_inputs, script_vars, script_control,
+        // then per method (declaration order): call table, input child
+        // tables, result table, result child tables, trigger
+        // (docs/workspace-schema.md).
+        assertEquals(21, statements.size());
         assertEquals("CREATE TABLE pending_host_calls", firstLine(statements.get(0)).substring(0, 31));
         assertEquals("CREATE TABLE script_inputs (", firstLine(statements.get(1)));
         assertEquals("CREATE TABLE script_vars (", firstLine(statements.get(2)));
-        assertEquals("CREATE TABLE call_get_values (", firstLine(statements.get(9)));
-        assertEquals("CREATE TABLE call_get_values__input_keys (", firstLine(statements.get(10)));
-        assertEquals("CREATE TABLE result_get_values (", firstLine(statements.get(11)));
-        assertEquals("CREATE TABLE result_get_values__result_entries (", firstLine(statements.get(12)));
-        assertEquals("CREATE TRIGGER trg_call_get_values_queue", firstLine(statements.get(13)));
+        assertEquals("CREATE TABLE script_control (", firstLine(statements.get(3)));
+        assertEquals("CREATE TABLE call_get_values (", firstLine(statements.get(10)));
+        assertEquals("CREATE TABLE call_get_values__input_keys (", firstLine(statements.get(11)));
+        assertEquals("CREATE TABLE result_get_values (", firstLine(statements.get(12)));
+        assertEquals("CREATE TABLE result_get_values__result_entries (", firstLine(statements.get(13)));
+        assertEquals("CREATE TRIGGER trg_call_get_values_queue", firstLine(statements.get(14)));
     }
 
     private static String firstLine(String statement) {
