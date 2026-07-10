@@ -43,7 +43,7 @@ golden tests keep the three projections in sync.
 | `requiredMethods` | no | methods the script uses; missing method → clean skip |
 | `inputs` | no | runtime inputs inserted into `script_inputs` before step 1 |
 | `steps` | yes | ordered; step `id`s must be unique and non-empty |
-| `steps[].statements` | yes | ordered; each has `sql` and optional `bindings` |
+| `steps[].statements` | yes | ordered, non-empty; each has `sql` and optional `bindings` |
 
 ## Binding values
 

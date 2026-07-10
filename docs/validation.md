@@ -36,7 +36,7 @@ code (`java` = full engine, `typescript` = static authoring subset).
 
 | Code | Severity | Rule |
 |---|---|---|
-| `invalid-envelope` | error | missing/empty required envelope fields |
+| `invalid-envelope` | error | missing/empty required envelope fields (including a step whose `statements` list is empty or missing) |
 | `duplicate-step-id` | error | step ids must be unique |
 | `required-api-level-too-high` | error | `requiredApiLevel` > manifest apiLevel |
 | `unknown-required-feature` | error | feature not in manifest `library.features` |

@@ -26,7 +26,7 @@ host application decides logging/telemetry policy.
 | `unsupported-api-level` | SkippedUnsupported | `requiredApiLevel` > host apiLevel |
 | `missing-feature` | SkippedUnsupported | a `requiredFeatures` entry not supported |
 | `missing-method` | SkippedUnsupported | a `requiredMethods` entry not registered |
-| `invalid-script` | FailedValidation | null/empty steps, empty step id, null statement sql |
+| `invalid-script` | FailedValidation | null/empty steps, empty step id, null statement sql, step with an empty/missing statements list |
 | `duplicate-step-id` | FailedValidation | two steps share an id |
 | `max-statements-exceeded` | FailedValidation | total statements > `MaxStatementsPerRun` |
 | `schema-error` | FailedSchema | DDL execution failed |
@@ -54,3 +54,10 @@ identifiers, line comments (`--`) and block comments (`/* */`) — and
 compares the set against the statement's binding names. The same
 scanner algorithm is used by the Java validator and the TypeScript
 authoring lint (see `docs/validation.md`).
+
+One SQLite-lexer subtlety is pinned explicitly: `$` is also an
+identifier character in SQLite, so a `$` immediately preceded by an
+identifier character continues that identifier instead of starting a
+parameter — `a$b` and `foo$bar` contain no parameters, while `$v` at a
+token boundary does. `:` and `@` are not identifier characters and
+always start a parameter outside quoted regions.

@@ -38,6 +38,17 @@
       ]
     },
     {
+      "payload": "invalid/empty-statements.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/list-child-later-step.json",
       "valid": false,
       "errors": [
