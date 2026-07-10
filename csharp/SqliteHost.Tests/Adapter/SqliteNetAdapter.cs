@@ -82,7 +82,7 @@ namespace SqliteHost.Tests.Adapter
 
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
-            return new SqliteNetPreparedStatement(PrepareCore(sql, null));
+            return new SqliteNetPreparedStatement(PrepareOnly(sql));
         }
 
         public void Dispose()
@@ -90,21 +90,73 @@ namespace SqliteHost.Tests.Adapter
             _connection.Dispose();
         }
 
-        private sqlite3_stmt PrepareCore(string sql, IReadOnlyList<SqliteHostBinding> bindings)
+        private sqlite3_stmt PrepareOnly(string sql)
         {
             int rc = raw.sqlite3_prepare_v2(Handle, sql, out sqlite3_stmt statement);
             if (rc != raw.SQLITE_OK)
             {
                 throw Error("sqlite3_prepare_v2", rc);
             }
-            if (bindings != null)
+            return statement;
+        }
+
+        private sqlite3_stmt PrepareCore(string sql, IReadOnlyList<SqliteHostBinding> bindings)
+        {
+            sqlite3_stmt statement = PrepareOnly(sql);
+            try
             {
-                foreach (SqliteHostBinding binding in bindings)
+                if (bindings != null)
                 {
-                    BindUnderAllPrefixes(statement, binding);
+                    foreach (SqliteHostBinding binding in bindings)
+                    {
+                        BindUnderAllPrefixes(statement, binding);
+                    }
                 }
+                RejectUnboundParameters(statement, bindings);
+            }
+            catch
+            {
+                statement.Dispose();
+                throw;
             }
             return statement;
+        }
+
+        /// <summary>
+        /// Adapter contract (docs/adapter-contract.md): a parameter the
+        /// payload did not bind must never execute as a silent NULL. Raw
+        /// sqlite3 leaves unbound parameters NULL, so verify every statement
+        /// parameter received a binding before stepping.
+        /// </summary>
+        private static void RejectUnboundParameters(
+            sqlite3_stmt statement, IReadOnlyList<SqliteHostBinding> bindings)
+        {
+            int count = raw.sqlite3_bind_parameter_count(statement);
+            for (int i = 1; i <= count; i++)
+            {
+                string name = raw.sqlite3_bind_parameter_name(statement, i).utf8_to_string();
+                // Nameless (?NNN) parameters can never be fed by bare-name
+                // bindings; treat them as unbound too.
+                string bareName = string.IsNullOrEmpty(name) ? null : name.Substring(1);
+                bool bound = false;
+                if (bareName != null && bindings != null)
+                {
+                    foreach (SqliteHostBinding binding in bindings)
+                    {
+                        if (binding.Name == bareName)
+                        {
+                            bound = true;
+                            break;
+                        }
+                    }
+                }
+                if (!bound)
+                {
+                    throw new SqliteHostAdapterException(
+                        "Parameter '" + (name ?? "?") + "' has no binding; refusing to execute with an implicit NULL.",
+                        0, null);
+                }
+            }
         }
 
         private void BindUnderAllPrefixes(sqlite3_stmt statement, SqliteHostBinding binding)
@@ -164,10 +216,12 @@ namespace SqliteHost.Tests.Adapter
             }
         }
 
-        private InvalidOperationException Error(string operation, int rc)
+        private SqliteHostAdapterException Error(string operation, int rc)
         {
-            return new InvalidOperationException(
-                operation + " failed (" + rc + "): " + raw.sqlite3_errmsg(Handle).utf8_to_string());
+            // Adapter contract: surface native failures with their SQLite result code.
+            return new SqliteHostAdapterException(
+                operation + " failed (" + rc + "): " + raw.sqlite3_errmsg(Handle).utf8_to_string(),
+                rc, null);
         }
     }
 

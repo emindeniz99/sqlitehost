@@ -23,6 +23,15 @@ namespace SqliteHost
         /// <summary>Set for call-scoped failures.</summary>
         public string Method { get; set; }
 
+        /// <summary>Set for missing-binding/unused-binding failures.</summary>
+        public string BindingName { get; set; }
+
+        /// <summary>
+        /// Native SQLite error code when the adapter surfaced one via
+        /// <see cref="SqliteHostAdapterException"/>; 0 = not available.
+        /// </summary>
+        public int SqliteErrorCode { get; set; }
+
         /// <summary>Successfully completed handler invocations.</summary>
         public int ExecutedCallCount { get; set; }
 

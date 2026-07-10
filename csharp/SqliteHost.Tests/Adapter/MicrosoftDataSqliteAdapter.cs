@@ -24,7 +24,14 @@ namespace SqliteHost.Tests.Adapter
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             using var command = CreateCommand(sql, bindings);
-            command.ExecuteNonQuery();
+            try
+            {
+                command.ExecuteNonQuery();
+            }
+            catch (SqliteException ex)
+            {
+                throw Wrap(ex);
+            }
         }
 
         public IReadOnlyList<T> Query<T>(
@@ -33,14 +40,21 @@ namespace SqliteHost.Tests.Adapter
             Func<ISqliteHostRow, T> mapper)
         {
             using var command = CreateCommand(sql, bindings);
-            using var reader = command.ExecuteReader();
-            var row = new MicrosoftDataSqliteRow(reader);
-            var results = new List<T>();
-            while (reader.Read())
+            try
             {
-                results.Add(mapper(row));
+                using var reader = command.ExecuteReader();
+                var row = new MicrosoftDataSqliteRow(reader);
+                var results = new List<T>();
+                while (reader.Read())
+                {
+                    results.Add(mapper(row));
+                }
+                return results;
             }
-            return results;
+            catch (SqliteException ex)
+            {
+                throw Wrap(ex);
+            }
         }
 
         public ISqliteHostPreparedStatement Prepare(string sql)
@@ -50,11 +64,16 @@ namespace SqliteHost.Tests.Adapter
             int rc = raw.sqlite3_prepare_v2(db, sql, out sqlite3_stmt statement);
             if (rc != raw.SQLITE_OK)
             {
-                throw new InvalidOperationException(
-                    "sqlite3_prepare_v2 failed (" + rc + "): " + raw.sqlite3_errmsg(db).utf8_to_string());
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 failed (" + rc + "): " + raw.sqlite3_errmsg(db).utf8_to_string(),
+                    rc, null);
             }
             return new MicrosoftDataSqlitePreparedStatement(statement);
         }
+
+        /// <summary>Adapter contract: surface native failures with their SQLite result code.</summary>
+        private static SqliteHostAdapterException Wrap(SqliteException ex)
+            => new SqliteHostAdapterException(ex.Message, ex.SqliteErrorCode, ex);
 
         public void Dispose()
         {

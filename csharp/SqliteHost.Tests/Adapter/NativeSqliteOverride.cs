@@ -34,12 +34,17 @@ namespace SqliteHost.Tests.Adapter
     {
         internal const string PathVariable = "SQLITEHOST_NATIVE_SQLITE";
         internal const string ExpectedVersionVariable = "SQLITEHOST_EXPECTED_SQLITE_VERSION";
+        internal const string ExpectedVersionNumberVariable = "SQLITEHOST_EXPECTED_SQLITE_VERSION_NUMBER";
 
         internal static string NativeLibraryPath =>
             Environment.GetEnvironmentVariable(PathVariable);
 
         internal static string ExpectedVersion =>
             Environment.GetEnvironmentVariable(ExpectedVersionVariable);
+
+        /// <summary>sqlite3_libversion_number encoding (major*1000000 + minor*1000 + patch).</summary>
+        internal static string ExpectedVersionNumber =>
+            Environment.GetEnvironmentVariable(ExpectedVersionNumberVariable);
 
         /// <summary>True when the test run targets an explicit native SQLite build.</summary>
         internal static bool IsActive => !string.IsNullOrEmpty(NativeLibraryPath);

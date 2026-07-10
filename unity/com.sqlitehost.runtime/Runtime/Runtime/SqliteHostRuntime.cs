@@ -77,7 +77,8 @@ namespace SqliteHost
             }
             catch (Exception ex)
             {
-                return Failure(state, SqliteHostRunStatus.FailedSchema, "schema-error", ex.Message, null, null);
+                return WithSqliteErrorCode(
+                    Failure(state, SqliteHostRunStatus.FailedSchema, "schema-error", ex.Message, null, null), ex);
             }
 
             if (script.Inputs != null)
@@ -91,7 +92,8 @@ namespace SqliteHost
                 }
                 catch (Exception ex)
                 {
-                    return Failure(state, SqliteHostRunStatus.FailedSchema, "input-insert-error", ex.Message, null, null);
+                    return WithSqliteErrorCode(
+                        Failure(state, SqliteHostRunStatus.FailedSchema, "input-insert-error", ex.Message, null, null), ex);
                 }
             }
 
@@ -117,8 +119,8 @@ namespace SqliteHost
                     }
                     catch (Exception ex)
                     {
-                        return StatementFailure(
-                            state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, step.Id, statementIndex);
+                        return WithSqliteErrorCode(StatementFailure(
+                            state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, step.Id, statementIndex), ex);
                     }
                 }
 
@@ -184,6 +186,19 @@ namespace SqliteHost
                 }
             }
 
+            if (script.Inputs != null)
+            {
+                var inputNames = new HashSet<string>(StringComparer.Ordinal);
+                foreach (SqliteHostRuntimeInput input in script.Inputs)
+                {
+                    if (input != null && input.Name != null && !inputNames.Add(input.Name))
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedValidation, "duplicate-input-name",
+                            "Runtime input name '" + input.Name + "' occurs more than once.", null, null);
+                    }
+                }
+            }
+
             if (script.Steps == null || script.Steps.Count == 0)
             {
                 return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
@@ -239,9 +254,12 @@ namespace SqliteHost
             {
                 if (bindings == null || !bindings.ContainsKey(parameter))
                 {
-                    return StatementFailure(state, SqliteHostRunStatus.FailedBinding, "missing-binding",
+                    SqliteHostRunResult missing = StatementFailure(
+                        state, SqliteHostRunStatus.FailedBinding, "missing-binding",
                         "SQL references parameter '" + parameter + "' but no binding provides it.",
                         stepId, statementIndex);
+                    missing.BindingName = parameter;
+                    return missing;
                 }
             }
             if (bindings != null)
@@ -250,9 +268,12 @@ namespace SqliteHost
                 {
                     if (!parameters.Contains(binding.Key))
                     {
-                        return StatementFailure(state, SqliteHostRunStatus.FailedBinding, "unused-binding",
+                        SqliteHostRunResult unused = StatementFailure(
+                            state, SqliteHostRunStatus.FailedBinding, "unused-binding",
                             "Binding '" + binding.Key + "' is not referenced by the SQL.",
                             stepId, statementIndex);
+                        unused.BindingName = binding.Key;
+                        return unused;
                     }
                 }
             }
@@ -264,6 +285,12 @@ namespace SqliteHost
             string stepId,
             RunState state)
         {
+            SqliteHostRunResult staleListFailure = CheckDrainedListCalls(connection, stepId, state);
+            if (staleListFailure != null)
+            {
+                return staleListFailure;
+            }
+
             IReadOnlyList<PendingCall> pending;
             try
             {
@@ -277,7 +304,8 @@ namespace SqliteHost
             }
             catch (Exception ex)
             {
-                return Failure(state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, stepId, null);
+                return WithSqliteErrorCode(
+                    Failure(state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, stepId, null), ex);
             }
 
             if (pending.Count > _options.MaxPendingCallsPerStep)
@@ -314,13 +342,13 @@ namespace SqliteHost
                 }
                 catch (SqliteHostResultWriteException ex)
                 {
-                    return Failure(state, SqliteHostRunStatus.FailedSql, "result-write-error",
-                        ex.Message, stepId, call.Method);
+                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "result-write-error",
+                        ex.Message, stepId, call.Method), ex);
                 }
                 catch (Exception ex)
                 {
-                    return Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
-                        ex.Message, stepId, call.Method);
+                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                        ex.Message, stepId, call.Method), ex);
                 }
 
                 try
@@ -331,11 +359,12 @@ namespace SqliteHost
                         {
                             new SqliteHostBinding("queueId", SqliteHostBindingValue.Int64(call.QueueId))
                         });
+                    RecordDrainedListCall(connection, spec, call, state);
                 }
                 catch (Exception ex)
                 {
-                    return Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
-                        ex.Message, stepId, call.Method);
+                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                        ex.Message, stepId, call.Method), ex);
                 }
 
                 state.ExecutedCallCount++;
@@ -350,6 +379,82 @@ namespace SqliteHost
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Records the per-child-table row counts of a just-drained call
+        /// that has input list fields, so later steps that append child rows
+        /// for it (list-child-after-drain) are detected defensively.
+        /// </summary>
+        private void RecordDrainedListCall(
+            ISqliteHostConnection connection,
+            IRuntimeHostMethodSpec<THandlers> spec,
+            PendingCall call,
+            RunState state)
+        {
+            IReadOnlyList<SchemaListFieldModel> listFields = spec.SchemaModel.InputListFields;
+            if (listFields.Count == 0)
+            {
+                return;
+            }
+            var childTables = new List<string>(listFields.Count);
+            var rowCounts = new List<long>(listFields.Count);
+            foreach (SchemaListFieldModel listField in listFields)
+            {
+                string childTable = NamingDerivation.InputListTable(
+                    _hostDefinition.Naming, call.Method, listField.SqlName);
+                childTables.Add(childTable);
+                rowCounts.Add(CountChildRows(connection, childTable, call.CallId));
+            }
+            state.DrainedListCalls.Add(new DrainedListCall(call.CallId, call.Method, childTables, rowCounts));
+        }
+
+        /// <summary>
+        /// Re-counts input list child rows of previously drained calls; any
+        /// change means the step that just ran appended rows to a list the
+        /// handler already consumed (error code list-child-after-drain).
+        /// </summary>
+        private SqliteHostRunResult CheckDrainedListCalls(
+            ISqliteHostConnection connection,
+            string stepId,
+            RunState state)
+        {
+            foreach (DrainedListCall drained in state.DrainedListCalls)
+            {
+                for (int i = 0; i < drained.ChildTables.Count; i++)
+                {
+                    long count;
+                    try
+                    {
+                        count = CountChildRows(connection, drained.ChildTables[i], drained.CallId);
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                            ex.Message, stepId, drained.Method), ex);
+                    }
+                    if (count != drained.RowCounts[i])
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "list-child-after-drain",
+                            "Step '" + stepId + "' changed " + drained.ChildTables[i]
+                            + " rows for call '" + drained.CallId + "' after it was drained.",
+                            stepId, drained.Method);
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static long CountChildRows(ISqliteHostConnection connection, string childTable, string callId)
+        {
+            IReadOnlyList<long> counts = connection.Query(
+                "SELECT COUNT(*) FROM " + childTable + " WHERE call_id = :callId",
+                RuntimeSql.CallIdBindings(callId),
+                delegate(ISqliteHostRow row)
+                {
+                    return row.GetInt64(0);
+                });
+            return counts[0];
         }
 
         private static void InsertRuntimeInput(ISqliteHostConnection connection, SqliteHostRuntimeInput input)
@@ -435,6 +540,25 @@ namespace SqliteHost
             return false;
         }
 
+        /// <summary>
+        /// Copies the native SQLite error code onto the result when the
+        /// caught exception (or one of its inner exceptions) is a
+        /// <see cref="SqliteHostAdapterException"/>.
+        /// </summary>
+        private static SqliteHostRunResult WithSqliteErrorCode(SqliteHostRunResult result, Exception exception)
+        {
+            for (Exception current = exception; current != null; current = current.InnerException)
+            {
+                var adapterException = current as SqliteHostAdapterException;
+                if (adapterException != null)
+                {
+                    result.SqliteErrorCode = adapterException.SqliteErrorCode;
+                    break;
+                }
+            }
+            return result;
+        }
+
         private static SqliteHostRunResult StatementFailure(
             RunState state,
             SqliteHostRunStatus status,
@@ -475,10 +599,31 @@ namespace SqliteHost
             {
                 ExecutedCallCount = 0;
                 Calls = enableDiagnostics ? new List<SqliteHostCallDiagnostic>() : null;
+                DrainedListCalls = new List<DrainedListCall>();
             }
 
             public int ExecutedCallCount { get; set; }
             public List<SqliteHostCallDiagnostic> Calls { get; }
+
+            /// <summary>Drained calls with input list fields, for list-child-after-drain detection.</summary>
+            public List<DrainedListCall> DrainedListCalls { get; }
+        }
+
+        /// <summary>Child-table row counts of one drained call, snapshotted at drain time.</summary>
+        private sealed class DrainedListCall
+        {
+            public DrainedListCall(string callId, string method, List<string> childTables, List<long> rowCounts)
+            {
+                CallId = callId;
+                Method = method;
+                ChildTables = childTables;
+                RowCounts = rowCounts;
+            }
+
+            public string CallId { get; }
+            public string Method { get; }
+            public List<string> ChildTables { get; }
+            public List<long> RowCounts { get; }
         }
 
         private sealed class PendingCall

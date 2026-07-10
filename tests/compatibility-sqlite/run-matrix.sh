@@ -8,8 +8,8 @@
 # override (see csharp/SqliteHost.Tests/Adapter/NativeSqliteOverride.cs).
 #
 # Exit status: non-zero if any SUPPORTED-FLOOR version (>= 3.19.3) fails.
-# 3.9.2 is below the documented floor (docs/compatibility.md) and is run
-# for information only.
+# 3.9.0 and 3.9.2 are below the documented floor (docs/compatibility.md)
+# and are run for information only.
 set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +27,7 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 # --- version list: "dotted:year:zipnumber" -------------------------------
 VERSIONS=(
+  "3.9.0:2015:3090000"
   "3.9.2:2015:3090200"
   "3.19.3:2017:3190300"
   "3.28.0:2019:3280000"
@@ -98,9 +99,16 @@ for entry in "${VERSIONS[@]}"; do
     continue
   fi
 
+  # Numeric version identity (sqlite3_libversion_number encoding):
+  # major*1000000 + minor*1000 + patch, derived deterministically from the
+  # dotted version string.
+  IFS=. read -r vmaj vmin vpat <<<"$ver"
+  vernum=$((vmaj * 1000000 + vmin * 1000 + vpat))
+
   log="$CACHE_DIR/test-$ver.log"
   if SQLITEHOST_NATIVE_SQLITE="$so" \
      SQLITEHOST_EXPECTED_SQLITE_VERSION="$ver" \
+     SQLITEHOST_EXPECTED_SQLITE_VERSION_NUMBER="$vernum" \
      dotnet test "$SOLUTION" --nologo -v q >"$log" 2>&1; then
     status="PASS"
   else

@@ -35,7 +35,14 @@ namespace SqliteHost.Tests.Adapter
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             using var command = CreateCommand(sql, bindings);
-            command.ExecuteNonQuery();
+            try
+            {
+                command.ExecuteNonQuery();
+            }
+            catch (SQLiteException ex)
+            {
+                throw Wrap(ex);
+            }
         }
 
         public IReadOnlyList<T> Query<T>(
@@ -44,15 +51,26 @@ namespace SqliteHost.Tests.Adapter
             Func<ISqliteHostRow, T> mapper)
         {
             using var command = CreateCommand(sql, bindings);
-            using var reader = command.ExecuteReader();
-            var row = new SystemDataSqliteRow(reader);
-            var results = new List<T>();
-            while (reader.Read())
+            try
             {
-                results.Add(mapper(row));
+                using var reader = command.ExecuteReader();
+                var row = new SystemDataSqliteRow(reader);
+                var results = new List<T>();
+                while (reader.Read())
+                {
+                    results.Add(mapper(row));
+                }
+                return results;
             }
-            return results;
+            catch (SQLiteException ex)
+            {
+                throw Wrap(ex);
+            }
         }
+
+        /// <summary>Adapter contract: surface native failures with their SQLite result code.</summary>
+        private static SqliteHostAdapterException Wrap(SQLiteException ex)
+            => new SqliteHostAdapterException(ex.Message, (int)ex.ResultCode, ex);
 
         public void Dispose()
         {
