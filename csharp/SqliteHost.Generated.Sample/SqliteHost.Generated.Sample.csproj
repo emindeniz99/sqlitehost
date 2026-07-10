@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>Example.Game.Generated</RootNamespace>
+    <AssemblyName>SqliteHost.Generated.Sample</AssemblyName>
+    <Description>Generated-style sample host for the sample-host manifest (golden target of the C# emitter).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
+    <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

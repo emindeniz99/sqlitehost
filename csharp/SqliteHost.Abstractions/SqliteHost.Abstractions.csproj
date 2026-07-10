@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>SqliteHost</RootNamespace>
+    <AssemblyName>SqliteHost.Abstractions</AssemblyName>
+    <Description>SqliteHost adapter interfaces, script envelope DTOs, and result types (Unity-2021-safe, zero dependencies).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SqliteHost.Runtime" />
+    <InternalsVisibleTo Include="SqliteHost.Tests" />
+  </ItemGroup>
+
+</Project>
