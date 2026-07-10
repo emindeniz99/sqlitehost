@@ -63,6 +63,27 @@ class BindingValueJsonTest {
     }
 
     @Test
+    void decimalStringMustBeStrict() throws IOException {
+        // No whitespace, no '+' — only ^-?[0-9]+$ (docs/script-envelope.md).
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"int64\",\"value\":\" 42 \"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"int64\",\"value\":\"+42\"}"));
+        assertEquals(-42L, onlyBinding(
+                scriptWithBinding("{\"type\":\"int64\",\"value\":\"-42\"}")).asInt64());
+        assertEquals(Long.MAX_VALUE, onlyBinding(
+                scriptWithBinding("{\"type\":\"int64\",\"value\":\"9223372036854775807\"}"))
+                .asInt64());
+    }
+
+    @Test
+    void int64NumberFormBeyondSafeJsonIntegerIsRejected() {
+        // Writers must use the string form when |v| > 2^53−1.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"int64\",\"value\":9223372036854775807}"));
+    }
+
+    @Test
     void blobDecodesStandardBase64() throws IOException {
         BindingValue value = onlyBinding(
                 scriptWithBinding("{\"type\":\"blob\",\"value\":\"3q2+7w==\"}"));
@@ -74,6 +95,21 @@ class BindingValueJsonTest {
     void invalidBase64IsRejected() {
         assertThrows(JsonReadException.class,
                 () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"!!not-base64!!\"}"));
+    }
+
+    @Test
+    void nonCanonicalBase64IsRejected() throws IOException {
+        // Strict per docs/script-envelope.md: standard alphabet, padded,
+        // no whitespace — a lenient decoder must not accept these.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"abc\"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"3q2+7w\"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"3q2\\n+7w==\"}"));
+        assertArrayEquals(new byte[] {(byte) 0xDE, (byte) 0xAD, (byte) 0xBE, (byte) 0xEF},
+                onlyBinding(scriptWithBinding("{\"type\":\"blob\",\"value\":\"3q2+7w==\"}"))
+                        .asBlob());
     }
 
     @Test

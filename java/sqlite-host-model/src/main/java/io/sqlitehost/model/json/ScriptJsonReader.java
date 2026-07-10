@@ -17,6 +17,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Strict JSON reader for the script envelope (docs/script-envelope.md).
@@ -32,8 +33,13 @@ import java.util.Map;
 public final class ScriptJsonReader {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final BigInteger INT64_MIN = BigInteger.valueOf(Long.MIN_VALUE);
-    private static final BigInteger INT64_MAX = BigInteger.valueOf(Long.MAX_VALUE);
+    /** Largest int64 magnitude representable exactly as a JSON number (2^53−1), mirrors ScriptJsonWriter. */
+    private static final BigInteger MAX_SAFE_JSON_INTEGER = BigInteger.valueOf(9007199254740991L);
+    /** Strict base64 (docs/script-envelope.md): standard alphabet, padded, no whitespace. */
+    private static final Pattern BASE64 = Pattern.compile(
+            "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$");
+    /** Strict decimal string: no whitespace, no leading '+'. */
+    private static final Pattern DECIMAL_STRING = Pattern.compile("^-?[0-9]+$");
 
     private ScriptJsonReader() {
     }
@@ -190,18 +196,21 @@ public final class ScriptJsonReader {
                     throw new JsonReadException(
                             context + ": blob value must be a base64 string");
                 }
-                try {
-                    return BindingValue.blob(Base64.getDecoder().decode(value.asText()));
-                } catch (IllegalArgumentException e) {
-                    throw new JsonReadException(
-                            context + ": blob value is not valid base64: " + e.getMessage());
+                if (!BASE64.matcher(value.asText()).matches()) {
+                    throw new JsonReadException(context + ": blob value is not valid base64"
+                            + " (standard alphabet, padded, no whitespace)");
                 }
+                return BindingValue.blob(Base64.getDecoder().decode(value.asText()));
             default:
                 throw new JsonReadException(context + ": unhandled binding type " + type);
         }
     }
 
-    /** int32/int64 wire rule: JSON number, or decimal string. */
+    /**
+     * int32/int64 wire rule: JSON number when |v| &le; 2^53−1 (writers
+     * must use the string form beyond that), or a strict decimal string
+     * (no whitespace, no '+').
+     */
     private static long parseInteger(JsonNode value, String context, String typeName)
             throws JsonReadException {
         if (value == null || value.isNull()) {
@@ -213,18 +222,22 @@ public final class ScriptJsonReader {
                         context + ": " + typeName + " value must be integral: " + value);
             }
             BigInteger big = value.bigIntegerValue();
-            if (big.compareTo(INT64_MIN) < 0 || big.compareTo(INT64_MAX) > 0) {
-                throw new JsonReadException(
-                        context + ": " + typeName + " value out of range: " + value);
+            if (big.abs().compareTo(MAX_SAFE_JSON_INTEGER) > 0) {
+                throw new JsonReadException(context + ": " + typeName
+                        + " number value exceeds 2^53-1, use the decimal string form: " + value);
             }
             return big.longValueExact();
         }
         if (value.isTextual()) {
-            try {
-                return Long.parseLong(value.asText().trim());
-            } catch (NumberFormatException e) {
+            if (!DECIMAL_STRING.matcher(value.asText()).matches()) {
                 throw new JsonReadException(context + ": " + typeName
                         + " value is not a decimal string: '" + value.asText() + "'");
+            }
+            try {
+                return Long.parseLong(value.asText());
+            } catch (NumberFormatException e) {
+                throw new JsonReadException(context + ": " + typeName
+                        + " value out of range: '" + value.asText() + "'");
             }
         }
         throw new JsonReadException(context + ": " + typeName

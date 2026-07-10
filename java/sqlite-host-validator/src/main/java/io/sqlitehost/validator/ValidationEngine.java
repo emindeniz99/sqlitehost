@@ -86,6 +86,10 @@ public final class ValidationEngine {
                 findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
                         "step " + s + " has an empty id"));
             }
+            if (step.statements().isEmpty()) {
+                findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
+                        step.id(), -1, "step " + s + " has an empty statements list"));
+            }
             for (int i = 0; i < step.statements().size(); i++) {
                 if (isBlank(step.statements().get(i).sql())) {
                     findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
@@ -415,37 +419,60 @@ public final class ValidationEngine {
                         .merge(emit.callId, emit.stepIndex, Math::min);
             }
         }
+        // A statement can join result tables of several methods (set M)
+        // while each resolved call_id belongs to only one of them, so a
+        // finding is reported only when NO method in M can satisfy the
+        // read: unknown-call when no method emits the id (computed emits
+        // count as possible matches — skip), not-after-call when every
+        // emitting method violates the ordering.
         for (ResultRead read : analysis.resultReads) {
+            boolean satisfied = false;
+            List<String> unknownMethods = new ArrayList<>();
+            List<String> notAfterMethods = new ArrayList<>();
             for (String method : read.methods) {
                 Integer emitStep = staticEmits
                         .getOrDefault(method, Map.of())
                         .get(read.callId);
+                Integer computedStep = computedEmits.get(method);
                 if (emitStep == null) {
                     // Best-effort: a computed emit for this method could
                     // produce the id — skip rather than false-positive.
-                    if (!computedEmits.containsKey(method)) {
-                        findings.add(ValidationFinding.error(
-                                ValidationCodes.RESULT_READ_UNKNOWN_CALL,
-                                read.stepId, read.statementIndex,
-                                "statement reads results of method '" + method
-                                        + "' for call_id '" + read.callId
-                                        + "' but no statement emits that call"));
+                    if (computedStep != null) {
+                        satisfied = true;
+                    } else {
+                        unknownMethods.add(method);
                     }
                     continue;
                 }
-                if (emitStep >= read.stepIndex) {
-                    Integer computedStep = computedEmits.get(method);
-                    boolean earlierComputed = computedStep != null && computedStep < read.stepIndex;
-                    if (!earlierComputed) {
-                        findings.add(ValidationFinding.error(
-                                ValidationCodes.RESULT_READ_NOT_AFTER_CALL,
-                                read.stepId, read.statementIndex,
-                                "statement reads results of method '" + method
-                                        + "' for call_id '" + read.callId
-                                        + "' in the same or an earlier step than the emitting"
-                                        + " insert — results only exist after the emitting"
-                                        + " step's drain"));
-                    }
+                boolean earlierComputed = computedStep != null && computedStep < read.stepIndex;
+                if (emitStep < read.stepIndex || earlierComputed) {
+                    satisfied = true;
+                } else {
+                    notAfterMethods.add(method);
+                }
+            }
+            if (satisfied) {
+                continue;
+            }
+            if (!notAfterMethods.isEmpty()) {
+                for (String method : notAfterMethods) {
+                    findings.add(ValidationFinding.error(
+                            ValidationCodes.RESULT_READ_NOT_AFTER_CALL,
+                            read.stepId, read.statementIndex,
+                            "statement reads results of method '" + method
+                                    + "' for call_id '" + read.callId
+                                    + "' in the same or an earlier step than the emitting"
+                                    + " insert — results only exist after the emitting"
+                                    + " step's drain"));
+                }
+            } else {
+                for (String method : unknownMethods) {
+                    findings.add(ValidationFinding.error(
+                            ValidationCodes.RESULT_READ_UNKNOWN_CALL,
+                            read.stepId, read.statementIndex,
+                            "statement reads results of method '" + method
+                                    + "' for call_id '" + read.callId
+                                    + "' but no statement emits that call"));
                 }
             }
         }

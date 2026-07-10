@@ -78,6 +78,18 @@ class ValidationEngineTest {
     }
 
     @Test
+    void emptyStatementsListIsInvalidEnvelope() throws IOException {
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"does-nothing\",\"statements\":[]}]}");
+        assertFalse(report.isValid());
+        ValidationFinding finding = report.errors().get(0);
+        assertEquals(ValidationCodes.INVALID_ENVELOPE, finding.code());
+        assertEquals("does-nothing", finding.stepId());
+        assertEquals(-1, finding.statementIndex());
+    }
+
+    @Test
     void childRowsWithoutAnyParentInsertAreAnError() throws IOException {
         // Children for call_id 'orphan-1' but no parent call row anywhere.
         ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
@@ -190,6 +202,56 @@ class ValidationEngineTest {
                 + " FROM result_get_values__result_entries WHERE call_id = :l\","
                 + "\"bindings\":{\"l\":{\"type\":\"text\",\"value\":\"list-1\"}}}]}]}");
         assertTrue(report.isValid(), report.findings().toString());
+    }
+
+    /** Emits getValue call 'g1' and setValue call 's1' in one step, then joins. */
+    private static String joinScript(String joinStepJson) {
+        return "{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\",\"setValue\"],"
+                + "\"steps\":[{\"id\":\"calls\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key)"
+                + " VALUES ('g1', 'k')\",\"bindings\":{}},"
+                + "{\"sql\":\"INSERT INTO call_set_value (call_id, input_key, input_value)"
+                + " VALUES ('s1', 'k', 7)\",\"bindings\":{}}"
+                + joinStepJson + "]}";
+    }
+
+    @Test
+    void joinAcrossResultTablesOfTwoMethodsIsAccepted() throws IOException {
+        // Each resolved call_id belongs to one method of the joined set —
+        // cross-checking g1 against setValue (and s1 against getValue)
+        // must not false-positive result-read-unknown-call.
+        ValidationReport report = validate(joinScript("]},"
+                + "{\"id\":\"join\",\"statements\":["
+                + "{\"sql\":\"SELECT a.result_value, b.result_success"
+                + " FROM result_get_value a, result_set_value b"
+                + " WHERE a.call_id = 'g1' AND b.call_id = 's1'\",\"bindings\":{}}]}"));
+        assertTrue(report.isValid(), report.findings().toString());
+    }
+
+    @Test
+    void joinReadOfUnknownCallIdIsStillFlagged() throws IOException {
+        // 'zz' is emitted by neither joined method — still an error.
+        ValidationReport report = validate(joinScript("]},"
+                + "{\"id\":\"join\",\"statements\":["
+                + "{\"sql\":\"SELECT a.result_value, b.result_success"
+                + " FROM result_get_value a, result_set_value b"
+                + " WHERE a.call_id = 'zz' AND b.call_id = 's1'\",\"bindings\":{}}]}"));
+        assertTrue(errorCodes(report).contains(ValidationCodes.RESULT_READ_UNKNOWN_CALL),
+                errorCodes(report).toString());
+    }
+
+    @Test
+    void joinReadInSameStepAsEmitIsStillFlagged() throws IOException {
+        // Join statement colocated with the emitting inserts — results
+        // only exist after the emitting step's drain.
+        ValidationReport report = validate(joinScript(","
+                + "{\"sql\":\"SELECT a.result_value, b.result_success"
+                + " FROM result_get_value a, result_set_value b"
+                + " WHERE a.call_id = 'g1' AND b.call_id = 's1'\",\"bindings\":{}}]}"));
+        List<String> codes = errorCodes(report);
+        assertTrue(codes.contains(ValidationCodes.RESULT_READ_NOT_AFTER_CALL), codes.toString());
+        assertFalse(codes.contains(ValidationCodes.RESULT_READ_UNKNOWN_CALL), codes.toString());
     }
 
     @Test
