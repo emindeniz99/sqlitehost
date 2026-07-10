@@ -11,7 +11,7 @@ opening the project in Unity Hub and following this checklist.
 |---|---|
 | `unity/com.sqlitehost.runtime/` | UPM package: `package.json`, `Runtime/SqliteHost.asmdef`, synced copies of `csharp/SqliteHost.Abstractions` (→ `Runtime/Abstractions/`) and `csharp/SqliteHost.Runtime` (→ `Runtime/Runtime/`), and a `Samples~/GeneratedSample/` sample (synced `*.g.cs` + handwritten `SmokeBehaviour.cs` + `SqliteHost.Sample.asmdef`) |
 | `unity/sync.mjs` | Sync mechanism. `node unity/sync.mjs` regenerates the copies from `csharp/`; `node unity/sync.mjs --check` exits 1 with a diff listing on drift. `csharp/` is the source of truth — never hand-edit the synced copies. |
-| `unity/SampleProject/` | Minimal Unity 2021 project: `Packages/manifest.json` referencing the package via `file:../../com.sqlitehost.runtime`, `ProjectSettings/ProjectVersion.txt` (2021.3.45f1), and `Assets/Smoke/SmokeRunner.cs` |
+| `unity/SampleProject/` | Minimal Unity 2021 project: `Packages/manifest.json` referencing the package via `file:../../com.sqlitehost.runtime`, `ProjectSettings/ProjectVersion.txt` (2021.3.55f1), and `Assets/Smoke/SmokeRunner.cs` |
 
 Deliberately **not** authored (Unity regenerates them on first open):
 
@@ -34,8 +34,12 @@ Deliberately **not** authored (Unity regenerates them on first open):
 1. **Install Unity Hub + Unity 2021.3 LTS.** Download Unity Hub from
    <https://unity.com/download>, then in Hub: `Installs > Install Editor >
    Archive` and pick a **2021.3.x LTS** release (the project is pinned to
-   `2021.3.45f1`; any 2021.3.x works — Hub will offer to open with your
+   `2021.3.55f1`; any 2021.3.x works — Hub will offer to open with your
    installed version, accept and note the exact version for step 7).
+   Run the spike on **both pinned LTS targets** — `2021.3.55f1` and
+   `2022.3.39f1`: for the 2022.3 pass, duplicate `SampleProject` (or
+   let Hub upgrade a copy) and record both results in
+   docs/compatibility.md.
    No extra modules are needed for the editor gate; add a platform module
    (e.g. Windows/Linux IL2CPP) only for the stretch build in step 8.
 
@@ -85,7 +89,7 @@ Deliberately **not** authored (Unity regenerates them on first open):
    misbehaved under Unity — record the details and stop.
 
 7. **Record the results in `docs/compatibility.md`** (C# / Unity
-   section): exact editor version (e.g. `2021.3.45f1`), the Api
+   section): exact editor version (e.g. `2021.3.55f1`), the Api
    Compatibility Level you set, confirmation of zero compile errors for
    package + sample, the smoke output line, and the effective C# level
    (Unity 2021.3 ships a C# 9 compiler; the sources only need the

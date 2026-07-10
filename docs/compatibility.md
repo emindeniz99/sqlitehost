@@ -1,6 +1,20 @@
 # Compatibility targets
 
-## SQLite — minimum 3.19.3
+## SQLite — required floor 3.19.3, engine-verified to 3.9.0
+
+Two tiers, deliberately distinct:
+
+- **Required floor: 3.19.3.** This is the contract. It bounds the
+  runtime's own generated SQL **and** tells script authors which SQLite
+  feature set they may assume in their payload SQL (e.g. row values,
+  3.15+, are inside the floor; window functions, 3.25+, are not).
+  Lowering the floor would shrink what script authors can rely on, so
+  it stays at 3.19.3 even though the runtime itself needs less.
+- **Engine-verified tier: 3.9.0.** The full C# suite passes on real
+  3.9.0 and 3.9.2 builds and both stay in the CI matrix permanently.
+  This is a measured fact consumers below the floor can use at their
+  own judgment — their own script SQL, not ours, becomes the limiting
+  factor. It is not a contractual promise.
 
 Generated SQL and runtime features must work on SQLite 3.19.3. Do not
 require JSON1, window functions, UPSERT, `RETURNING`, `STRICT` tables,
@@ -35,6 +49,23 @@ SQLite4Unity3d adapter pattern). The Java suite runs on xerial
 sqlite-jdbc (bundled modern SQLite).
 
 ## C# / Unity — Unity 2021 LTS and newer
+
+Pinned verification targets: **Unity 2021.3.55f1 and 2022.3.39f1**
+(the latest LTS patch releases of each line at the time of writing) —
+the in-editor spike (see `docs/guides/unity-2021-spike.md`) should be
+run on both.
+
+### Why netstandard2.0 (2.1 evaluated and declined)
+
+Unity 2021.3/2022.3 support the .NET Standard 2.1 API compatibility
+level, so targeting 2.1 would work — but it buys nothing here: the 2.1
+additions (Span/Memory APIs, default interface members,
+IAsyncEnumerable, Index/Range) are exactly the features the
+Unity-safe subset policy already bans from this codebase, and a
+netstandard2.0 library loads unchanged in a 2.1 profile. Staying on
+2.0 keeps the packages consumable from older Unity (2018.1+) and
+.NET Framework 4.6.2+ at zero cost. Revisit only if a concrete 2.1
+API would simplify real code.
 
 `SqliteHost.Abstractions` and `SqliteHost.Runtime` target
 `netstandard2.0`, C# 8 subset: no records, no `required`, no `init`, no
