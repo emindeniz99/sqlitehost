@@ -25,6 +25,25 @@ CREATE TABLE script_inputs (
 );
 ```
 
+```sql
+CREATE TABLE script_vars (
+    name TEXT NOT NULL PRIMARY KEY,
+    value_type TEXT NOT NULL,
+    int_value INTEGER,
+    real_value REAL,
+    text_value TEXT,
+    blob_value BLOB
+);
+```
+
+`script_vars` is the script's scratch variable space (feature
+`scriptVars`): the runtime creates it empty and never touches it —
+scripts INSERT/UPDATE/DELETE freely to hold named intermediate values
+across steps (declare with `INSERT`, reassign with
+`INSERT OR REPLACE`, read with a scalar subquery). Same column shape
+as `script_inputs`; `value_type` is self-declared by the script for
+its own bookkeeping.
+
 Runtime inputs land in `script_inputs` before the first step:
 `value_type` is the binding type (`null`/`int32`/`int64`/`bool`/`text`/
 `blob`/`float32`/`float64`); `bool`, `int32`, `int64` store into

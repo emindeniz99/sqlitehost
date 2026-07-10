@@ -60,6 +60,19 @@ function inputsTableDdl(ir: HostLibraryIr): string {
   ].join("\n");
 }
 
+function varsTableDdl(ir: HostLibraryIr): string {
+  return [
+    `CREATE TABLE ${ir.varsTable.name} (`,
+    "    name TEXT NOT NULL PRIMARY KEY,",
+    "    value_type TEXT NOT NULL,",
+    "    int_value INTEGER,",
+    "    real_value REAL,",
+    "    text_value TEXT,",
+    "    blob_value BLOB",
+    ");",
+  ].join("\n");
+}
+
 function parentTableDdl(
   tableName: string,
   scalarFields: ScalarFieldIr[],
@@ -108,7 +121,7 @@ function queueTriggerDdl(ir: HostLibraryIr, method: HostMethodIr): string {
 
 /** Generate the ordered list of DDL statements for a host library. */
 export function generateSchemaStatements(ir: HostLibraryIr): string[] {
-  const statements: string[] = [queueTableDdl(ir), inputsTableDdl(ir)];
+  const statements: string[] = [queueTableDdl(ir), inputsTableDdl(ir), varsTableDdl(ir)];
   for (const method of ir.methods) {
     statements.push(parentTableDdl(method.callTable, method.input.fields, false));
     for (const listField of method.input.listFields) {

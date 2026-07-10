@@ -6,6 +6,7 @@ namespace Example.Game;
 
 @hostLibrary({
   apiLevel: 1,
+  minSqliteVersion: "3.19.3",
   callTablePrefix: "call_",
   resultTablePrefix: "result_",
   inputColumnPrefix: "input_",

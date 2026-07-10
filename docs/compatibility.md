@@ -55,6 +55,21 @@ Pinned verification targets: **Unity 2021.3.55f1 and 2022.3.39f1**
 the in-editor spike (see `docs/guides/unity-2021-spike.md`) should be
 run on both.
 
+### C# language level: 8 (9 evaluated and declined)
+
+The runtime packages pin `LangVersion 8`. netstandard2.0 does not
+require any particular C# version (the language level is a compiler
+setting, independent of the target framework), and lower is always
+safe: C# 8 sources compile unchanged under the C# 9 compiler that
+Unity 2021.3/2022.3 ship. Moving to C# 9 would buy nothing here — its
+headline features are exactly what this codebase bans or can't use:
+records and `init` setters (need an `IsExternalInit` shim on
+netstandard2.0; banned by the Unity-safe policy anyway), covariant
+returns (needs a .NET 5+ runtime, unavailable on netstandard2.0/Unity
+Mono), function pointers (unsafe). Pattern-matching sugar alone does
+not justify raising the floor. Revisit only if a concrete C# 9+
+feature would simplify real code without a shim.
+
 ### Why netstandard2.0 (2.1 evaluated and declined)
 
 Unity 2021.3/2022.3 support the .NET Standard 2.1 API compatibility

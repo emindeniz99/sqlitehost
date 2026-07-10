@@ -64,6 +64,7 @@ export function serializeManifest(ir: HostLibraryIr): string {
       namespace: ir.library.namespace,
       interfaceName: ir.library.interfaceName,
       apiLevel: ir.library.apiLevel,
+      minSqliteVersionNumber: ir.library.minSqliteVersionNumber,
       features: ir.library.features,
     },
     naming: {
@@ -81,6 +82,10 @@ export function serializeManifest(ir: HostLibraryIr): string {
     inputsTable: {
       name: ir.inputsTable.name,
       columns: ir.inputsTable.columns,
+    },
+    varsTable: {
+      name: ir.varsTable.name,
+      columns: ir.varsTable.columns,
     },
     scriptEnvelope: {
       engine: ir.scriptEnvelope.engine,

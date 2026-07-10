@@ -33,6 +33,12 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-008-variables.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-007-mixed-prefix.json",
       "valid": true,
       "errors": [],

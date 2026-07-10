@@ -14,6 +14,15 @@ CREATE TABLE script_inputs (
     blob_value BLOB
 );
 
+CREATE TABLE script_vars (
+    name TEXT NOT NULL PRIMARY KEY,
+    value_type TEXT NOT NULL,
+    int_value INTEGER,
+    real_value REAL,
+    text_value TEXT,
+    blob_value BLOB
+);
+
 CREATE TABLE call_get_value (
     call_id TEXT NOT NULL PRIMARY KEY,
     input_key TEXT NOT NULL

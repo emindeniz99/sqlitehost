@@ -19,6 +19,34 @@ entries when shipped.
   SqliteNetAdapter.cs`; packaging it into the UPM package (with a
   native SQLite plugin story per platform) remains.
 
+## Scripting-language proposals (designed, awaiting owner decision)
+
+What a "Lua-length" script needs vs. what SQL-as-the-language covers.
+Have today: variables (`script_vars`), arithmetic/expressions (SQL),
+conditionals (`WHERE`/`CASE`/`EXISTS` gating), functions (host
+methods), bounded iteration (recursive CTEs, in the 3.19.3 floor —
+steps themselves are a static sequence with no jumps, which keeps every
+script terminating by construction). Deliberately absent and proposed:
+
+- **Early halt/abort**: a script cannot say "stop here, success" or
+  "abort with message". Sketch: a reserved `script_control` table the
+  runtime checks after each step's drain (`action` = `halt` /
+  `fail`, optional message) → clean `Completed`/`FailedValidation`
+  outcome with the message in diagnostics. Cheap; needs a contract
+  decision on status semantics.
+- **Consumer-registered SQL functions**: expose custom deterministic
+  scalar functions through the adapter (SQLite `create_function`) so
+  hosts can offer e.g. domain math to scripts. Needs an adapter
+  capability interface + validator awareness (unknown-function
+  whitelist).
+- **Determinism lint**: warn when payload SQL calls nondeterministic
+  builtins (`random()`, `date('now')` etc.) since script replays would
+  diverge.
+- **Imperative loops/goto across steps**: intentionally NOT proposed —
+  unbounded control flow breaks the terminating-by-construction
+  guarantee that makes untrusted-ish scripts tractable; recursive CTEs
+  cover data-driven iteration.
+
 ## Dropped (decided against, not deferred)
 
 - **SqliteHost.Json** — optional C# JSON parse helpers. The core

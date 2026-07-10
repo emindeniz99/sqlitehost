@@ -221,6 +221,7 @@ public static class SqliteHostDefinition
 public interface ISqliteHostDefinitionBuilder<THandlers>
 {
     ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel);
+    ISqliteHostDefinitionBuilder<THandlers> MinSqliteVersion(int versionNumber);  // SQLITE_VERSION_NUMBER form, e.g. 3019003
     ISqliteHostDefinitionBuilder<THandlers> Naming(Action<SqliteHostNamingBuilder> configure);
     SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods);
 }
@@ -228,6 +229,7 @@ public interface ISqliteHostDefinitionBuilder<THandlers>
 public sealed class SqliteHostDefinition<THandlers>
 {
     public int ApiLevel { get; }
+    public int MinSqliteVersionNumber { get; }   // defaults to 3019003 when not set
     public SqliteHostNaming Naming { get; }
     public IReadOnlyList<IHostMethodSpec<THandlers>> Methods { get; }
     public IReadOnlyList<string> SupportedFeatures { get; }
@@ -237,7 +239,7 @@ public sealed class SqliteHostDefinition<THandlers>
 ```
 
 `SupportedFeatures` for protocol v1 is
-`["typedNamedBindings", "splitResultTables", "scriptInputs"]`.
+`["typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars"]`.
 
 ### Fluent method descriptor API
 
@@ -368,6 +370,14 @@ public sealed class SqliteHostRuntime<THandlers>
         SqliteHostRuntimeOptions options);
 
     public SqliteHostRunResult Run(SqliteHostScript script);
+
+    // Opens a workspace, checks the actual sqlite_version() against the
+    // definition's MinSqliteVersionNumber, disposes, and returns the
+    // outcome — lets hosts fail fast at init time (e.g. ancient
+    // system-provided SQLite on old mobile clients) instead of at the
+    // first Run. Run() itself also enforces the check on its first
+    // workspace open (code: sqlite-version-too-low).
+    public SqliteHostRunResult ValidateEnvironment();
 }
 ```
 

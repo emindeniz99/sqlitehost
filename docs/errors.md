@@ -30,6 +30,7 @@ host application decides logging/telemetry policy.
 | `duplicate-input-name` | FailedValidation | two runtime `inputs` entries share a name |
 | `duplicate-step-id` | FailedValidation | two steps share an id |
 | `max-statements-exceeded` | FailedValidation | total statements > `MaxStatementsPerRun` |
+| `sqlite-version-too-low` | FailedSchema | the actual `sqlite_version()` of the opened workspace is below the host definition's `MinSqliteVersionNumber` — checked on the first workspace open (and on demand via `ValidateEnvironment()`), so ancient system-provided SQLite builds (e.g. very old iOS clients) fail loudly instead of misbehaving; version strings are parsed tolerating the historical 4-component form (`3.8.11.1` → 3008011) |
 | `schema-error` | FailedSchema | DDL execution failed |
 | `input-insert-error` | FailedSchema | `script_inputs` insert failed |
 | `sql-error` | FailedSql | statement execution failed (includes SQLite errors such as the UNIQUE violation from a duplicate `call_id`) |

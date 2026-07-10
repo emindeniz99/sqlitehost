@@ -22,6 +22,7 @@ handlers. Error codes: `unsupported-api-level`, `missing-feature`,
 typedNamedBindings   typed named parameters (:name / @name / $name)
 splitResultTables    per-method result_<method> tables with status column
 scriptInputs         runtime inputs via the script_inputs table
+scriptVars           script-managed variable scratch table (script_vars)
 ```
 
 ## Breaking method contract changes

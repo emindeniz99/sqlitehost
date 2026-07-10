@@ -75,6 +75,11 @@ export interface InputsTableIr {
   columns: string[];
 }
 
+export interface VarsTableIr {
+  name: string;
+  columns: string[];
+}
+
 export interface ScriptEnvelopeIr {
   engine: string;
   bindingTypes: string[];
@@ -87,11 +92,14 @@ export interface HostLibraryIr {
     namespace: string;
     interfaceName: string;
     apiLevel: number;
+    /** SQLITE_VERSION_NUMBER-style minimum (major*1000000 + minor*1000 + patch). */
+    minSqliteVersionNumber: number;
     features: string[];
   };
   naming: NamingIr;
   queueTable: QueueTableIr;
   inputsTable: InputsTableIr;
+  varsTable: VarsTableIr;
   scriptEnvelope: ScriptEnvelopeIr;
   methods: HostMethodIr[];
 }
@@ -113,7 +121,14 @@ export const FEATURES_V1 = [
   "typedNamedBindings",
   "splitResultTables",
   "scriptInputs",
+  "scriptVars",
 ] as const;
+
+/** Default per-host minimum SQLite version (the plan's floor, 3.19.3). */
+export const DEFAULT_MIN_SQLITE_VERSION_NUMBER = 3019003;
+
+/** The library's own engine-verified minimum (measured in the CI matrix). */
+export const LIBRARY_ENGINE_VERIFIED_MINIMUM = 3009000;
 
 export const QUEUE_TABLE_V1: QueueTableIr = {
   name: "pending_host_calls",
@@ -122,5 +137,10 @@ export const QUEUE_TABLE_V1: QueueTableIr = {
 
 export const INPUTS_TABLE_V1: InputsTableIr = {
   name: "script_inputs",
+  columns: ["name", "value_type", "int_value", "real_value", "text_value", "blob_value"],
+};
+
+export const VARS_TABLE_V1: VarsTableIr = {
+  name: "script_vars",
   columns: ["name", "value_type", "int_value", "real_value", "text_value", "blob_value"],
 };

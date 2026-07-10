@@ -1,0 +1,47 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-008",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptVars"
+  ],
+  "requiredMethods": [
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "declare",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value) VALUES ('aa', 'int64', 55), ('kh', 'int64', 4)",
+          "bindings": {}
+        }
+      ]
+    },
+    {
+      "id": "compute",
+      "statements": [
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, int_value) SELECT 'total', 'int64', (SELECT int_value FROM script_vars WHERE name = 'aa') * (SELECT int_value FROM script_vars WHERE name = 'kh')",
+          "bindings": {}
+        }
+      ]
+    },
+    {
+      "id": "write",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT :callId, 'computed-key', int_value FROM script_vars WHERE name = 'total'",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

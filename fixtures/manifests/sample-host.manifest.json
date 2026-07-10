@@ -5,10 +5,12 @@
     "namespace": "Example.Game",
     "interfaceName": "GameHostMethods",
     "apiLevel": 1,
+    "minSqliteVersionNumber": 3019003,
     "features": [
       "typedNamedBindings",
       "splitResultTables",
-      "scriptInputs"
+      "scriptInputs",
+      "scriptVars"
     ]
   },
   "naming": {
@@ -30,6 +32,17 @@
   },
   "inputsTable": {
     "name": "script_inputs",
+    "columns": [
+      "name",
+      "value_type",
+      "int_value",
+      "real_value",
+      "text_value",
+      "blob_value"
+    ]
+  },
+  "varsTable": {
+    "name": "script_vars",
     "columns": [
       "name",
       "value_type",
