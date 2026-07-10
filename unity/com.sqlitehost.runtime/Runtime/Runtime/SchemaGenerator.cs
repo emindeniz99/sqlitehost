@@ -11,10 +11,6 @@ namespace SqliteHost
     /// </summary>
     internal static class SchemaGenerator
     {
-        public const string QueueTableName = "pending_host_calls";
-        public const string InputsTableName = "script_inputs";
-        public const string VarsTableName = "script_vars";
-
         public static string SqlColumnType(HostScalarType scalarType)
         {
             switch (scalarType)
@@ -38,9 +34,9 @@ namespace SqliteHost
             IReadOnlyList<SchemaMethodModel> methods)
         {
             var statements = new List<string>();
-            statements.Add(QueueTableDdl());
-            statements.Add(InputsTableDdl());
-            statements.Add(VarsTableDdl());
+            statements.Add(QueueTableDdl(naming));
+            statements.Add(InputsTableDdl(naming));
+            statements.Add(VarsTableDdl(naming));
             foreach (SchemaMethodModel method in methods)
             {
                 statements.Add(ParentTableDdl(
@@ -116,9 +112,9 @@ namespace SqliteHost
             return "    " + column + " " + SqlColumnType(field.ScalarType) + notNull;
         }
 
-        private static string QueueTableDdl()
+        private static string QueueTableDdl(SqliteHostNaming naming)
         {
-            return "CREATE TABLE " + QueueTableName + " (\n"
+            return "CREATE TABLE " + naming.QueueTable + " (\n"
                 + "    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
                 + "    call_id TEXT NOT NULL UNIQUE,\n"
                 + "    method TEXT NOT NULL,\n"
@@ -126,9 +122,9 @@ namespace SqliteHost
                 + ");";
         }
 
-        private static string InputsTableDdl()
+        private static string InputsTableDdl(SqliteHostNaming naming)
         {
-            return "CREATE TABLE " + InputsTableName + " (\n"
+            return "CREATE TABLE " + naming.InputsTable + " (\n"
                 + "    name TEXT NOT NULL PRIMARY KEY,\n"
                 + "    value_type TEXT NOT NULL,\n"
                 + "    int_value INTEGER,\n"
@@ -142,9 +138,9 @@ namespace SqliteHost
         /// Script scratch variable space (feature scriptVars): the runtime
         /// creates it empty and never reads or writes it.
         /// </summary>
-        private static string VarsTableDdl()
+        private static string VarsTableDdl(SqliteHostNaming naming)
         {
-            return "CREATE TABLE " + VarsTableName + " (\n"
+            return "CREATE TABLE " + naming.VarsTable + " (\n"
                 + "    name TEXT NOT NULL PRIMARY KEY,\n"
                 + "    value_type TEXT NOT NULL,\n"
                 + "    int_value INTEGER,\n"
@@ -185,7 +181,7 @@ namespace SqliteHost
             return "CREATE TRIGGER " + NamingDerivation.QueueTrigger(naming, methodName) + "\n"
                 + "AFTER INSERT ON " + NamingDerivation.CallTable(naming, methodName) + "\n"
                 + "BEGIN\n"
-                + "    INSERT INTO " + QueueTableName + " (call_id, method)\n"
+                + "    INSERT INTO " + naming.QueueTable + " (call_id, method)\n"
                 + "    VALUES (NEW.call_id, '" + methodName + "');\n"
                 + "END;";
         }

@@ -8,7 +8,8 @@ namespace SqliteHost
     public sealed class SqliteHostNaming
     {
         private static readonly SqliteHostNaming DefaultInstance = new SqliteHostNaming(
-            "call_", "result_", "input_", "result_", "__input_", "__result_");
+            "call_", "result_", "input_", "result_", "__input_", "__result_",
+            "pending_host_calls", "script_inputs", "script_vars");
 
         internal SqliteHostNaming(
             string callTablePrefix,
@@ -16,7 +17,10 @@ namespace SqliteHost
             string inputColumnPrefix,
             string resultColumnPrefix,
             string inputListTableInfix,
-            string resultListTableInfix)
+            string resultListTableInfix,
+            string queueTable,
+            string inputsTable,
+            string varsTable)
         {
             CallTablePrefix = callTablePrefix;
             ResultTablePrefix = resultTablePrefix;
@@ -24,6 +28,9 @@ namespace SqliteHost
             ResultColumnPrefix = resultColumnPrefix;
             InputListTableInfix = inputListTableInfix;
             ResultListTableInfix = resultListTableInfix;
+            QueueTable = queueTable;
+            InputsTable = inputsTable;
+            VarsTable = varsTable;
         }
 
         /// <summary>Protocol v1 defaults: call_ / result_ / input_ / result_ / __input_ / __result_.</summary>
@@ -38,5 +45,14 @@ namespace SqliteHost
         public string ResultColumnPrefix { get; }
         public string InputListTableInfix { get; }
         public string ResultListTableInfix { get; }
+
+        /// <summary>Pending-call queue table; default "pending_host_calls".</summary>
+        public string QueueTable { get; }
+
+        /// <summary>Runtime inputs table; default "script_inputs".</summary>
+        public string InputsTable { get; }
+
+        /// <summary>Script scratch variable table; default "script_vars".</summary>
+        public string VarsTable { get; }
     }
 }

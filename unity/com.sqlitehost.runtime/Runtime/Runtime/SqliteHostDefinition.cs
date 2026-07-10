@@ -111,6 +111,65 @@ namespace SqliteHost
                 _runtimeSpecs.Add(runtimeSpec);
                 _methods.Add(method);
             }
+            ValidateWorkspaceTableNames(naming, _runtimeSpecs);
+        }
+
+        /// <summary>
+        /// Workspace table names (docs/naming.md): non-empty, mutually
+        /// distinct, and no collision with any derived call/result/child
+        /// table name. Fails loud at definition build time.
+        /// </summary>
+        private static void ValidateWorkspaceTableNames(
+            SqliteHostNaming naming,
+            List<IRuntimeHostMethodSpec<THandlers>> specs)
+        {
+            if (string.IsNullOrEmpty(naming.QueueTable)
+                || string.IsNullOrEmpty(naming.InputsTable)
+                || string.IsNullOrEmpty(naming.VarsTable))
+            {
+                throw new ArgumentException(
+                    "Workspace table names (QueueTable, InputsTable, VarsTable) must be non-empty.",
+                    nameof(naming));
+            }
+            if (string.Equals(naming.QueueTable, naming.InputsTable, StringComparison.Ordinal)
+                || string.Equals(naming.QueueTable, naming.VarsTable, StringComparison.Ordinal)
+                || string.Equals(naming.InputsTable, naming.VarsTable, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Workspace table names (QueueTable, InputsTable, VarsTable) must be mutually distinct.",
+                    nameof(naming));
+            }
+            var workspaceTables = new HashSet<string>(StringComparer.Ordinal)
+            {
+                naming.QueueTable,
+                naming.InputsTable,
+                naming.VarsTable
+            };
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                var derivedTables = new List<string>();
+                derivedTables.Add(NamingDerivation.CallTable(naming, model.MethodName));
+                derivedTables.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                foreach (SchemaListFieldModel listField in model.InputListFields)
+                {
+                    derivedTables.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                }
+                foreach (SchemaListFieldModel listField in model.ResultListFields)
+                {
+                    derivedTables.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                }
+                foreach (string derivedTable in derivedTables)
+                {
+                    if (workspaceTables.Contains(derivedTable))
+                    {
+                        throw new ArgumentException(
+                            "Workspace table name '" + derivedTable
+                            + "' collides with a derived table name of method '" + model.MethodName + "'.",
+                            nameof(naming));
+                    }
+                }
+            }
         }
 
         public int ApiLevel { get; }

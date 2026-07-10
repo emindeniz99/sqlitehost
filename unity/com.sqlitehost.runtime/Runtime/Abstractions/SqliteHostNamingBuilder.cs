@@ -9,6 +9,9 @@ namespace SqliteHost
         private string _resultColumnPrefix = "result_";
         private string _inputListTableInfix = "__input_";
         private string _resultListTableInfix = "__result_";
+        private string _queueTable = "pending_host_calls";
+        private string _inputsTable = "script_inputs";
+        private string _varsTable = "script_vars";
 
         public SqliteHostNamingBuilder CallTablePrefix(string value)
         {
@@ -46,6 +49,24 @@ namespace SqliteHost
             return this;
         }
 
+        public SqliteHostNamingBuilder QueueTable(string value)
+        {
+            _queueTable = value;
+            return this;
+        }
+
+        public SqliteHostNamingBuilder InputsTable(string value)
+        {
+            _inputsTable = value;
+            return this;
+        }
+
+        public SqliteHostNamingBuilder VarsTable(string value)
+        {
+            _varsTable = value;
+            return this;
+        }
+
         internal SqliteHostNaming Build()
         {
             return new SqliteHostNaming(
@@ -54,7 +75,10 @@ namespace SqliteHost
                 _inputColumnPrefix,
                 _resultColumnPrefix,
                 _inputListTableInfix,
-                _resultListTableInfix);
+                _resultListTableInfix,
+                _queueTable,
+                _inputsTable,
+                _varsTable);
         }
     }
 }

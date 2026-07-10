@@ -140,7 +140,7 @@ namespace SqliteHost
                 {
                     foreach (SqliteHostRuntimeInput input in script.Inputs)
                     {
-                        InsertRuntimeInput(connection, input);
+                        InsertRuntimeInput(connection, _hostDefinition.Naming.InputsTable, input);
                     }
                 }
                 catch (Exception ex)
@@ -394,7 +394,8 @@ namespace SqliteHost
             try
             {
                 pending = connection.Query(
-                    "SELECT queue_id, call_id, method FROM pending_host_calls WHERE status = 'pending' ORDER BY queue_id",
+                    "SELECT queue_id, call_id, method FROM " + _hostDefinition.Naming.QueueTable
+                    + " WHERE status = 'pending' ORDER BY queue_id",
                     RuntimeSql.NoBindings,
                     delegate(ISqliteHostRow row)
                     {
@@ -453,7 +454,7 @@ namespace SqliteHost
                 try
                 {
                     connection.Execute(
-                        "UPDATE pending_host_calls SET status = 'done' WHERE queue_id = :queueId",
+                        "UPDATE " + _hostDefinition.Naming.QueueTable + " SET status = 'done' WHERE queue_id = :queueId",
                         new List<SqliteHostBinding>
                         {
                             new SqliteHostBinding("queueId", SqliteHostBindingValue.Int64(call.QueueId))
@@ -556,7 +557,10 @@ namespace SqliteHost
             return counts[0];
         }
 
-        private static void InsertRuntimeInput(ISqliteHostConnection connection, SqliteHostRuntimeInput input)
+        private static void InsertRuntimeInput(
+            ISqliteHostConnection connection,
+            string inputsTable,
+            SqliteHostRuntimeInput input)
         {
             SqliteHostBindingValue value = input.Value ?? SqliteHostBindingValue.Null();
             string valueType;
@@ -599,7 +603,7 @@ namespace SqliteHost
                     break;
             }
             connection.Execute(
-                "INSERT INTO script_inputs (name, value_type, int_value, real_value, text_value, blob_value)"
+                "INSERT INTO " + inputsTable + " (name, value_type, int_value, real_value, text_value, blob_value)"
                 + " VALUES (:name, :valueType, :intValue, :realValue, :textValue, :blobValue)",
                 new List<SqliteHostBinding>
                 {
