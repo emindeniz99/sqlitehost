@@ -27,6 +27,32 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
+  codegen/csharp-emitter:
+    dependencies:
+      '@sqlite-host/codegen-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  codegen/java-emitter:
+    dependencies:
+      '@sqlite-host/codegen-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   codegen/manifest-emitter:
     dependencies:
       '@sqlite-host/codegen-core':
@@ -38,6 +64,19 @@ importers:
       '@typespec/compiler':
         specifier: 1.13.0
         version: 1.13.0(@types/node@22.20.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  codegen/typescript-emitter:
+    dependencies:
+      '@sqlite-host/codegen-core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

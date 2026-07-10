@@ -160,9 +160,18 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
     },
     { name: "call_get_value", columns: ["call_id", "input_key"] },
-    { name: "result_get_value", columns: ["call_id", "status", "result_value"] },
-    { name: "call_set_value", columns: ["call_id", "input_key", "input_value"] },
-    { name: "result_set_value", columns: ["call_id", "status", "result_success"] },
+    {
+      name: "result_get_value",
+      columns: ["call_id", "status", "result_value"],
+    },
+    {
+      name: "call_set_value",
+      columns: ["call_id", "input_key", "input_value"],
+    },
+    {
+      name: "result_set_value",
+      columns: ["call_id", "status", "result_success"],
+    },
     { name: "call_get_values", columns: ["call_id", "input_default_value"] },
     {
       name: "call_get_values__input_keys",
@@ -171,12 +180,21 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     { name: "result_get_values", columns: ["call_id", "status"] },
     {
       name: "result_get_values__result_entries",
-      columns: ["call_id", "item_index", "result_key", "result_value", "result_found"],
+      columns: [
+        "call_id",
+        "item_index",
+        "result_key",
+        "result_value",
+        "result_found",
+      ],
     },
     {
       name: "call_put_blob",
       columns: ["call_id", "input_key", "input_data", "input_note"],
     },
-    { name: "result_put_blob", columns: ["call_id", "status", "result_stored"] },
+    {
+      name: "result_put_blob",
+      columns: ["call_id", "status", "result_stored"],
+    },
   ],
 };

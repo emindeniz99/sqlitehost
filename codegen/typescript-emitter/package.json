@@ -1,0 +1,19 @@
+{
+  "name": "@sqlite-host/emitter-typescript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Emit TypeScript envelope types, host method types, and authoring metadata from the SqliteHost IR",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "bin": { "sqlite-host-emit-typescript": "./dist/cli.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test 'dist/test/*.test.js'"
+  },
+  "dependencies": { "@sqlite-host/codegen-core": "workspace:*" },
+  "devDependencies": { "typescript": "^5.5.0", "@types/node": "^22.0.0" }
+}
