@@ -9,11 +9,30 @@ and their minimum versions: `AUTOINCREMENT`, `AFTER INSERT` triggers,
 composite primary keys, multi-row `VALUES` (3.7.11), named parameters
 (`:name`/`@name`/`$name`) — all well below 3.19.3.
 
-The test environments (Microsoft.Data.Sqlite, xerial sqlite-jdbc)
-bundle newer SQLite; 3.19.3 compatibility is enforced by construction
-(banned-feature policy above) plus the compatibility fixture tests in
-`tests/compatibility-sqlite-3.19.3` scope of the C#/Java suites. An
-actual 3.19.3 binary run is a ROADMAP item.
+Compatibility is enforced by policy **and by measurement**:
+`tests/compatibility-sqlite/run-matrix.sh` compiles real SQLite
+amalgamations and runs the full C# suite against each binary through a
+SQLitePCLRaw dynamic provider (with `sqlite_version()` identity
+assertions). Measured results:
+
+| SQLite binary | suite result | UPSERT canary (3.24+) | RETURNING canary (3.35+) |
+|---|---|---|---|
+| 3.9.2 (below floor) | PASS | throws | throws |
+| 3.19.3 (floor) | PASS | throws | throws |
+| 3.28.0 | PASS | succeeds | throws |
+| 3.53.3 (newest) | PASS | succeeds | succeeds |
+
+The canary tests prove the harness actually detects version gates.
+Honest note: the suite also passes on 3.9.2 because the generated SQL
+uses only ancient constructs — the supported floor remains **3.19.3 by
+policy**; older-version passes are informational, not a promise. See
+`tests/compatibility-sqlite/README.md`.
+
+The C# integration fixtures additionally run on three adapters:
+Microsoft.Data.Sqlite (ADO.NET), System.Data.SQLite (ADO.NET), and
+sqlite-net-pcl (wrapper `Handle` + SQLitePCL.raw — the Unity/
+SQLite4Unity3d adapter pattern). The Java suite runs on xerial
+sqlite-jdbc (bundled modern SQLite).
 
 ## C# / Unity — Unity 2021 LTS and newer
 
