@@ -9,8 +9,20 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+    <!-- Dynamic native override: SQLITEHOST_NATIVE_SQLITE=<path.so> loads an
+         arbitrary sqlite3 build instead of the bundled e_sqlite3 (see
+         Adapter/NativeSqliteOverride.cs and tests/compatibility-sqlite/). -->
+    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.8" />
+    <!-- Pin the whole SQLitePCLRaw graph to one version: sqlite-net-pcl
+         pulls core 2.1.8, so the 2.1.6 bundle Microsoft.Data.Sqlite asks
+         for would otherwise mix a 2.1.6 provider with a 2.1.8 core. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.8" />
+    <!-- Additional adapters for the multi-adapter integration matrix. -->
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+    <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

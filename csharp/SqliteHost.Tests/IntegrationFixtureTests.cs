@@ -1,4 +1,6 @@
+using System;
 using Example.Game.Generated;
+using Microsoft.Data.Sqlite;
 using SqliteHost.Tests.Adapter;
 using SqliteHost.Tests.Fixtures;
 using SqliteHost.Tests.TestSupport;
@@ -7,26 +9,52 @@ using Xunit;
 namespace SqliteHost.Tests
 {
     /// <summary>
-    /// End-to-end runs of the committed fixture payloads through the real
-    /// Microsoft.Data.Sqlite adapter with dictionary-backed fake handlers.
+    /// End-to-end runs of the committed fixture payloads with
+    /// dictionary-backed fake handlers, parameterized across every real
+    /// adapter (Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net) via
+    /// the concrete subclasses at the bottom of this file. Every scenario
+    /// runs once per adapter.
+    ///
+    /// Native-override runs (SQLITEHOST_NATIVE_SQLITE set by
+    /// tests/compatibility-sqlite/run-matrix.sh): only the
+    /// Microsoft.Data.Sqlite subclass runs. System.Data.SQLite ships its own
+    /// interop + native and never sees the SQLitePCLRaw provider override;
+    /// sqlite-net technically would, but is skipped too so each matrix run
+    /// exercises exactly one adapter against exactly one known native build.
     /// </summary>
-    public class IntegrationFixtureTests
+    public abstract class IntegrationFixtureTestsBase
     {
-        private static SqliteHostRunResult RunFixture(
+        /// <summary>Opens one in-memory workspace on the adapter under test.</summary>
+        protected abstract ISqliteHostConnection OpenAdapterConnection();
+
+        /// <summary>
+        /// True for adapters that must not run when SQLITEHOST_NATIVE_SQLITE
+        /// pins a specific native build (see class remarks).
+        /// </summary>
+        protected virtual bool SkipUnderNativeOverride => false;
+
+        private AdapterWorkspaceFactory CreateFactory(bool retainWorkspace = false)
+            => new AdapterWorkspaceFactory(OpenAdapterConnection, retainWorkspace);
+
+        private SqliteHostRunResult RunFixture(
             string payload,
             FakeGameHandlers handlers,
             SqliteHostRuntimeOptions options = null,
-            TestWorkspaceFactory factory = null)
+            AdapterWorkspaceFactory factory = null)
         {
+            Skip.If(
+                SkipUnderNativeOverride && NativeSqliteOverride.IsActive,
+                "SQLITEHOST_NATIVE_SQLITE is set: the dynamic-provider override is scoped to the "
+                + "Microsoft.Data.Sqlite adapter; this adapter bundles/loads its own native SQLite.");
             var runtime = new SqliteHostRuntime<IGeneratedHostHandlers>(
-                connectionFactory: factory ?? new TestWorkspaceFactory(),
+                connectionFactory: factory ?? CreateFactory(),
                 hostDefinition: GeneratedHostDefinition.Build(),
                 handlers: handlers,
                 options: options);
             return runtime.Run(ScriptEnvelopeJson.LoadPayload(payload));
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example001_WritesOnlyWhenStoredValueIsNot42()
         {
             var handlers = new FakeGameHandlers();
@@ -41,7 +69,7 @@ namespace SqliteHost.Tests
             Assert.Equal(42, handlers.Storage["example-key"]);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example001_SkipsTheWriteWhenStoredValueIsAlready42()
         {
             var handlers = new FakeGameHandlers();
@@ -55,12 +83,12 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example002_ListRoundTrip_ResultChildRowsDriveTheSecondStep()
         {
             var handlers = new FakeGameHandlers();
             handlers.Storage["alpha"] = 10;
-            using var factory = new TestWorkspaceFactory(retainWorkspace: true);
+            using var factory = CreateFactory(retainWorkspace: true);
 
             SqliteHostRunResult result = RunFixture(
                 "valid/example-002-list-roundtrip.json", handlers, factory: factory);
@@ -94,7 +122,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "w-beta" }, setValueCallIds);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example003_RuntimeInputsFeedTheScript_AndReadAfterWriteConfirms()
         {
             var handlers = new FakeGameHandlers();
@@ -111,7 +139,7 @@ namespace SqliteHost.Tests
             Assert.Equal(42, handlers.Storage["example-key"]);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example004_BlobBytesReachTheHandlerIntact()
         {
             var handlers = new FakeGameHandlers();
@@ -127,7 +155,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }, handlers.Blobs["blob-key"]);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example005_UnusedRequiredMethod_StillCompletes()
         {
             var handlers = new FakeGameHandlers();
@@ -141,11 +169,11 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example006_FloatScores_AverageFeedsTheFollowUpStep()
         {
             var handlers = new FakeGameHandlers();
-            using var factory = new TestWorkspaceFactory(retainWorkspace: true);
+            using var factory = CreateFactory(retainWorkspace: true);
 
             SqliteHostRunResult result = RunFixture(
                 "valid/example-006-floats.json", handlers, factory: factory);
@@ -176,7 +204,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "score-1|98.5", "score-2|49.25" }, averages);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Diagnostics_PopulateCallsWhenEnabled()
         {
             var handlers = new FakeGameHandlers();
@@ -198,7 +226,7 @@ namespace SqliteHost.Tests
             Assert.Equal("write-value", result.Calls[1].StepId);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Diagnostics_AreNullWhenDisabled()
         {
             var handlers = new FakeGameHandlers();
@@ -206,5 +234,34 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
             Assert.Null(result.Calls);
         }
+    }
+
+    /// <summary>Fixture matrix on the Microsoft.Data.Sqlite adapter (SQLitePCLRaw; honors SQLITEHOST_NATIVE_SQLITE).</summary>
+    public class MicrosoftDataSqliteIntegrationFixtureTests : IntegrationFixtureTestsBase
+    {
+        protected override ISqliteHostConnection OpenAdapterConnection()
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            connection.Open();
+            return new MicrosoftDataSqliteConnection(connection);
+        }
+    }
+
+    /// <summary>Fixture matrix on the System.Data.SQLite ADO.NET adapter (own bundled native).</summary>
+    public class SystemDataSqliteIntegrationFixtureTests : IntegrationFixtureTestsBase
+    {
+        protected override bool SkipUnderNativeOverride => true;
+
+        protected override ISqliteHostConnection OpenAdapterConnection()
+            => SystemDataSqliteConnection.OpenInMemory();
+    }
+
+    /// <summary>Fixture matrix on the sqlite-net (Unity-style wrapper) adapter.</summary>
+    public class SqliteNetIntegrationFixtureTests : IntegrationFixtureTestsBase
+    {
+        protected override bool SkipUnderNativeOverride => true;
+
+        protected override ISqliteHostConnection OpenAdapterConnection()
+            => SqliteNetConnection.OpenInMemory();
     }
 }

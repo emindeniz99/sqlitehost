@@ -8,6 +8,18 @@
     <Description>SqliteHost execution core: host definition, fluent method descriptors, schema generation, script execution, and queue draining (Unity-2021-safe).</Description>
   </PropertyGroup>
 
+  <PropertyGroup Label="NuGet pack metadata">
+    <PackageId>SqliteHost.Runtime</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Authors>SqliteHost contributors (TODO: replace placeholder)</Authors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- TODO: set the real repository URL before publishing.
+         <RepositoryUrl>https://github.com/OWNER/REPO</RepositoryUrl> -->
+    <!-- TODO: license undecided — pick one and uncomment before publishing;
+         see docs/guides/publishing.md.
+         <PackageLicenseExpression>MIT</PackageLicenseExpression> -->
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
   </ItemGroup>
