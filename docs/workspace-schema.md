@@ -19,6 +19,7 @@ CREATE TABLE script_inputs (
     name TEXT NOT NULL PRIMARY KEY,
     value_type TEXT NOT NULL,
     int_value INTEGER,
+    real_value REAL,
     text_value TEXT,
     blob_value BLOB
 );
@@ -26,9 +27,10 @@ CREATE TABLE script_inputs (
 
 Runtime inputs land in `script_inputs` before the first step:
 `value_type` is the binding type (`null`/`int32`/`int64`/`bool`/`text`/
-`blob`); `bool`, `int32`, `int64` store into `int_value` (bool as 0/1),
+`blob`/`float32`/`float64`); `bool`, `int32`, `int64` store into
+`int_value` (bool as 0/1), `float32`/`float64` into `real_value`,
 `text` into `text_value`, `blob` into `blob_value`, `null` stores all
-three as NULL.
+value columns as NULL.
 
 ## Per-method tables
 
@@ -65,6 +67,7 @@ END;
 | `boolean` | INTEGER (1/0) |
 | `string` | TEXT |
 | `bytes` | BLOB |
+| `float32`, `float64` | REAL |
 
 ## Canonical DDL bytes
 

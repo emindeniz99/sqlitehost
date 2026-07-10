@@ -25,6 +25,9 @@ export function sqlColumnType(scalarType: ScalarTypeIr): string {
       return "TEXT";
     case "bytes":
       return "BLOB";
+    case "float32":
+    case "float64":
+      return "REAL";
   }
 }
 
@@ -50,6 +53,7 @@ function inputsTableDdl(ir: HostLibraryIr): string {
     "    name TEXT NOT NULL PRIMARY KEY,",
     "    value_type TEXT NOT NULL,",
     "    int_value INTEGER,",
+    "    real_value REAL,",
     "    text_value TEXT,",
     "    blob_value BLOB",
     ");",

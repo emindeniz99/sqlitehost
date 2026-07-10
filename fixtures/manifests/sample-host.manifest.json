@@ -34,6 +34,7 @@
       "name",
       "value_type",
       "int_value",
+      "real_value",
       "text_value",
       "blob_value"
     ]
@@ -46,7 +47,9 @@
       "int64",
       "bool",
       "text",
-      "blob"
+      "blob",
+      "float32",
+      "float64"
     ]
   },
   "methods": [
@@ -243,6 +246,55 @@
             "sqlName": "stored",
             "column": "result_stored",
             "scalarType": "boolean",
+            "optional": false
+          }
+        ],
+        "listFields": []
+      }
+    },
+    {
+      "operationName": "RecordScore",
+      "methodName": "recordScore",
+      "handlerName": "RecordScore",
+      "apiLevel": 1,
+      "callTable": "call_record_score",
+      "resultTable": "result_record_score",
+      "queueTrigger": "trg_call_record_score_queue",
+      "input": {
+        "modelName": "RecordScoreInput",
+        "fields": [
+          {
+            "propertyName": "key",
+            "sqlName": "key",
+            "column": "input_key",
+            "scalarType": "string",
+            "optional": false
+          },
+          {
+            "propertyName": "score",
+            "sqlName": "score",
+            "column": "input_score",
+            "scalarType": "float64",
+            "optional": false
+          },
+          {
+            "propertyName": "weight",
+            "sqlName": "weight",
+            "column": "input_weight",
+            "scalarType": "float32",
+            "optional": true
+          }
+        ],
+        "listFields": []
+      },
+      "result": {
+        "modelName": "RecordScoreResult",
+        "fields": [
+          {
+            "propertyName": "average",
+            "sqlName": "average",
+            "column": "result_average",
+            "scalarType": "float64",
             "optional": false
           }
         ],

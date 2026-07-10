@@ -57,6 +57,13 @@ Discriminated by `type`:
 | `bool` | `true` / `false` | INTEGER 1 / 0 |
 | `text` | string | TEXT |
 | `blob` | base64 string (standard alphabet, padding, no line breaks) | BLOB |
+| `float32` | finite JSON number representable as an IEEE-754 single (parsed via round-to-nearest); string form NOT accepted | REAL |
+| `float64` | finite JSON number; string form NOT accepted | REAL |
+
+Float rules: NaN and ±Infinity are not representable (JSON has no
+literal for them) and readers must reject any string-typed value for
+`float32`/`float64` — unlike `int64`, floats never need a string form
+because every IEEE-754 double round-trips through a JSON number.
 
 Binding **names** are bare (no prefix). In SQL, named parameters may be
 written `:name`, `@name`, or `$name`; a binding matches a parameter when

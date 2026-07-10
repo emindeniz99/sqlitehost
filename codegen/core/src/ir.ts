@@ -6,7 +6,14 @@
  * this IR — see manifest.ts for the canonical serialization.
  */
 
-export type ScalarTypeIr = "int32" | "int64" | "boolean" | "string" | "bytes";
+export type ScalarTypeIr =
+  | "int32"
+  | "int64"
+  | "boolean"
+  | "string"
+  | "bytes"
+  | "float32"
+  | "float64";
 
 export interface NamingIr {
   callTablePrefix: string;
@@ -98,6 +105,8 @@ export const BINDING_TYPES_V1 = [
   "bool",
   "text",
   "blob",
+  "float32",
+  "float64",
 ] as const;
 
 export const FEATURES_V1 = [
@@ -113,5 +122,5 @@ export const QUEUE_TABLE_V1: QueueTableIr = {
 
 export const INPUTS_TABLE_V1: InputsTableIr = {
   name: "script_inputs",
-  columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+  columns: ["name", "value_type", "int_value", "real_value", "text_value", "blob_value"],
 };

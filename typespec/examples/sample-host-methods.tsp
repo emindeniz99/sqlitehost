@@ -37,6 +37,12 @@ interface GameHostMethods {
     handler: "PutBlob"
   })
   op PutBlob(input: PutBlobInput): PutBlobResult;
+
+  @hostMethod({
+    name: "recordScore",
+    handler: "RecordScore"
+  })
+  op RecordScore(input: RecordScoreInput): RecordScoreResult;
 }
 
 model GetValueInput {
@@ -105,4 +111,20 @@ model PutBlobInput {
 model PutBlobResult {
   @sqlName("stored")
   stored: boolean;
+}
+
+model RecordScoreInput {
+  @sqlName("key")
+  key: string;
+
+  @sqlName("score")
+  score: float64;
+
+  @sqlName("weight")
+  weight?: float32;
+}
+
+model RecordScoreResult {
+  @sqlName("average")
+  average: float64;
 }

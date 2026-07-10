@@ -9,6 +9,7 @@ CREATE TABLE script_inputs (
     name TEXT NOT NULL PRIMARY KEY,
     value_type TEXT NOT NULL,
     int_value INTEGER,
+    real_value REAL,
     text_value TEXT,
     blob_value BLOB
 );
@@ -101,4 +102,24 @@ AFTER INSERT ON call_put_blob
 BEGIN
     INSERT INTO pending_host_calls (call_id, method)
     VALUES (NEW.call_id, 'putBlob');
+END;
+
+CREATE TABLE call_record_score (
+    call_id TEXT NOT NULL PRIMARY KEY,
+    input_key TEXT NOT NULL,
+    input_score REAL NOT NULL,
+    input_weight REAL
+);
+
+CREATE TABLE result_record_score (
+    call_id TEXT NOT NULL PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'done',
+    result_average REAL NOT NULL
+);
+
+CREATE TRIGGER trg_call_record_score_queue
+AFTER INSERT ON call_record_score
+BEGIN
+    INSERT INTO pending_host_calls (call_id, method)
+    VALUES (NEW.call_id, 'recordScore');
 END;

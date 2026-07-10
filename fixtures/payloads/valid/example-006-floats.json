@@ -1,0 +1,54 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-006",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "requiredMethods": [
+    "recordScore"
+  ],
+  "steps": [
+    {
+      "id": "record",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_record_score (call_id, input_key, input_score, input_weight) VALUES (:callId, 'score-key', :score, :weight)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "score-1"
+            },
+            "score": {
+              "type": "float64",
+              "value": 98.5
+            },
+            "weight": {
+              "type": "float32",
+              "value": 0.75
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow-up",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_record_score (call_id, input_key, input_score, input_weight) SELECT :callId, 'score-key-2', result_average * 0.5, NULL FROM result_record_score WHERE call_id = :firstCallId AND status = 'done' AND result_average > 90.0",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "score-2"
+            },
+            "firstCallId": {
+              "type": "text",
+              "value": "score-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

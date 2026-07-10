@@ -17,7 +17,7 @@ interfaces, delegates, `List<T>`/arrays, explicit null checks.
 ### Binding values
 
 ```csharp
-public enum SqliteHostBindingType { Null, Int32, Int64, Bool, Text, Blob }
+public enum SqliteHostBindingType { Null, Int32, Int64, Bool, Text, Blob, Float32, Float64 }
 
 public sealed class SqliteHostBindingValue
 {
@@ -27,6 +27,8 @@ public sealed class SqliteHostBindingValue
     public bool BoolValue { get; }
     public string TextValue { get; }
     public byte[] BlobValue { get; }
+    public float Float32Value { get; }
+    public double Float64Value { get; }
 
     public static SqliteHostBindingValue Null();
     public static SqliteHostBindingValue Int32(int value);
@@ -34,6 +36,8 @@ public sealed class SqliteHostBindingValue
     public static SqliteHostBindingValue Bool(bool value);
     public static SqliteHostBindingValue Text(string value);
     public static SqliteHostBindingValue Blob(byte[] value);
+    public static SqliteHostBindingValue Float32(float value);
+    public static SqliteHostBindingValue Float64(double value);
 }
 
 public sealed class SqliteHostBinding
@@ -55,6 +59,8 @@ public interface ISqliteHostRow
     bool GetBool(int index);
     string GetText(int index);
     byte[] GetBlob(int index);
+    float GetFloat32(int index);
+    double GetFloat64(int index);
 }
 
 public interface ISqliteHostConnection : IDisposable
@@ -260,11 +266,15 @@ public interface IInputFieldsBuilder<TInput>
     IInputFieldsBuilder<TInput> Bool(string sqlName, Action<TInput, bool> setter);
     IInputFieldsBuilder<TInput> Text(string sqlName, Action<TInput, string> setter);
     IInputFieldsBuilder<TInput> Blob(string sqlName, Action<TInput, byte[]> setter);
+    IInputFieldsBuilder<TInput> Float(string sqlName, Action<TInput, float> setter);
+    IInputFieldsBuilder<TInput> Double(string sqlName, Action<TInput, double> setter);
     IInputFieldsBuilder<TInput> OptionalInt(string sqlName, Action<TInput, int?> setter);
     IInputFieldsBuilder<TInput> OptionalLong(string sqlName, Action<TInput, long?> setter);
     IInputFieldsBuilder<TInput> OptionalBool(string sqlName, Action<TInput, bool?> setter);
     IInputFieldsBuilder<TInput> OptionalText(string sqlName, Action<TInput, string> setter);
     IInputFieldsBuilder<TInput> OptionalBlob(string sqlName, Action<TInput, byte[]> setter);
+    IInputFieldsBuilder<TInput> OptionalFloat(string sqlName, Action<TInput, float?> setter);
+    IInputFieldsBuilder<TInput> OptionalDouble(string sqlName, Action<TInput, double?> setter);
     IInputFieldsBuilder<TInput> List<TItem>(
         string sqlName,
         Action<TInput, List<TItem>> setter,
@@ -278,11 +288,15 @@ public interface IListItemFieldsBuilder<TItem>
     IListItemFieldsBuilder<TItem> Bool(string sqlName, Action<TItem, bool> setter);
     IListItemFieldsBuilder<TItem> Text(string sqlName, Action<TItem, string> setter);
     IListItemFieldsBuilder<TItem> Blob(string sqlName, Action<TItem, byte[]> setter);
+    IListItemFieldsBuilder<TItem> Float(string sqlName, Action<TItem, float> setter);
+    IListItemFieldsBuilder<TItem> Double(string sqlName, Action<TItem, double> setter);
     IListItemFieldsBuilder<TItem> OptionalInt(string sqlName, Action<TItem, int?> setter);
     IListItemFieldsBuilder<TItem> OptionalLong(string sqlName, Action<TItem, long?> setter);
     IListItemFieldsBuilder<TItem> OptionalBool(string sqlName, Action<TItem, bool?> setter);
     IListItemFieldsBuilder<TItem> OptionalText(string sqlName, Action<TItem, string> setter);
     IListItemFieldsBuilder<TItem> OptionalBlob(string sqlName, Action<TItem, byte[]> setter);
+    IListItemFieldsBuilder<TItem> OptionalFloat(string sqlName, Action<TItem, float?> setter);
+    IListItemFieldsBuilder<TItem> OptionalDouble(string sqlName, Action<TItem, double?> setter);
 }
 
 public interface IResultFieldsBuilder<TResult>
@@ -292,11 +306,15 @@ public interface IResultFieldsBuilder<TResult>
     IResultFieldsBuilder<TResult> Bool(string sqlName, Func<TResult, bool> getter);
     IResultFieldsBuilder<TResult> Text(string sqlName, Func<TResult, string> getter);
     IResultFieldsBuilder<TResult> Blob(string sqlName, Func<TResult, byte[]> getter);
+    IResultFieldsBuilder<TResult> Float(string sqlName, Func<TResult, float> getter);
+    IResultFieldsBuilder<TResult> Double(string sqlName, Func<TResult, double> getter);
     IResultFieldsBuilder<TResult> OptionalInt(string sqlName, Func<TResult, int?> getter);
     IResultFieldsBuilder<TResult> OptionalLong(string sqlName, Func<TResult, long?> getter);
     IResultFieldsBuilder<TResult> OptionalBool(string sqlName, Func<TResult, bool?> getter);
     IResultFieldsBuilder<TResult> OptionalText(string sqlName, Func<TResult, string> getter);
     IResultFieldsBuilder<TResult> OptionalBlob(string sqlName, Func<TResult, byte[]> getter);
+    IResultFieldsBuilder<TResult> OptionalFloat(string sqlName, Func<TResult, float?> getter);
+    IResultFieldsBuilder<TResult> OptionalDouble(string sqlName, Func<TResult, double?> getter);
     IResultFieldsBuilder<TResult> List<TItem>(
         string sqlName,
         Func<TResult, List<TItem>> getter,
@@ -310,11 +328,15 @@ public interface IListItemResultFieldsBuilder<TItem>
     IListItemResultFieldsBuilder<TItem> Bool(string sqlName, Func<TItem, bool> getter);
     IListItemResultFieldsBuilder<TItem> Text(string sqlName, Func<TItem, string> getter);
     IListItemResultFieldsBuilder<TItem> Blob(string sqlName, Func<TItem, byte[]> getter);
+    IListItemResultFieldsBuilder<TItem> Float(string sqlName, Func<TItem, float> getter);
+    IListItemResultFieldsBuilder<TItem> Double(string sqlName, Func<TItem, double> getter);
     IListItemResultFieldsBuilder<TItem> OptionalInt(string sqlName, Func<TItem, int?> getter);
     IListItemResultFieldsBuilder<TItem> OptionalLong(string sqlName, Func<TItem, long?> getter);
     IListItemResultFieldsBuilder<TItem> OptionalBool(string sqlName, Func<TItem, bool?> getter);
     IListItemResultFieldsBuilder<TItem> OptionalText(string sqlName, Func<TItem, string> getter);
     IListItemResultFieldsBuilder<TItem> OptionalBlob(string sqlName, Func<TItem, byte[]> getter);
+    IListItemResultFieldsBuilder<TItem> OptionalFloat(string sqlName, Func<TItem, float?> getter);
+    IListItemResultFieldsBuilder<TItem> OptionalDouble(string sqlName, Func<TItem, double?> getter);
 }
 ```
 

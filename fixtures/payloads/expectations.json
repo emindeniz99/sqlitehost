@@ -27,6 +27,12 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-006-floats.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-005-unused-required-method.json",
       "valid": true,
       "errors": [],
@@ -109,7 +115,7 @@
       "errors": [
         {
           "code": "result-read-unknown-call",
-          "validators": ["java"]
+          "validators": ["java", "typescript"]
         }
       ],
       "warnings": []
@@ -120,7 +126,7 @@
       "errors": [
         {
           "code": "result-read-not-after-call",
-          "validators": ["java"]
+          "validators": ["java", "typescript"]
         }
       ],
       "warnings": []
@@ -138,6 +144,17 @@
     },
     {
       "payload": "invalid/binding-type-mismatch.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "binding-type-mismatch",
+          "validators": ["java"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/binding-type-mismatch-float.json",
       "valid": false,
       "errors": [
         {
