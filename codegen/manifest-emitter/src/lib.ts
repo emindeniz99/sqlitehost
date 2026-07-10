@@ -1,4 +1,8 @@
-import { createTypeSpecLibrary, type JSONSchemaType } from "@typespec/compiler";
+import {
+  createTypeSpecLibrary,
+  paramMessage,
+  type JSONSchemaType,
+} from "@typespec/compiler";
 
 export interface ManifestEmitterOptions {
   /**
@@ -20,8 +24,17 @@ const EmitterOptionsSchema: JSONSchemaType<ManifestEmitterOptions> = {
 
 export const $lib = createTypeSpecLibrary({
   name: "@sqlite-host/emitter-manifest",
-  diagnostics: {},
+  diagnostics: {
+    "base-name-multiple-libraries": {
+      severity: "error",
+      messages: {
+        default: paramMessage`base-name applies to single-library compilations only; this compilation defines ${"count"} @hostLibrary interfaces, whose base names derive from their interface names (kebab-case).`,
+      },
+    },
+  },
   emitter: {
     options: EmitterOptionsSchema,
   },
 });
+
+export const { reportDiagnostic } = $lib;

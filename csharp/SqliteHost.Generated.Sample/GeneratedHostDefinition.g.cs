@@ -18,7 +18,10 @@ namespace Example.Game.Generated
                     .InputColumnPrefix("input_")
                     .ResultColumnPrefix("result_")
                     .InputListTableInfix("__input_")
-                    .ResultListTableInfix("__result_"))
+                    .ResultListTableInfix("__result_")
+                    .QueueTable("pending_host_calls")
+                    .InputsTable("script_inputs")
+                    .VarsTable("script_vars"))
                 .Methods(GeneratedHostMethodSpecs.BuildAll());
         }
     }

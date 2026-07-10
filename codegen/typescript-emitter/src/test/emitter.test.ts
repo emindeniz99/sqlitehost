@@ -43,9 +43,9 @@ function sampleIr(): HostLibraryIr {
 
 /**
  * Hand-built non-sample IR: non-default naming prefixes (req_/resp_,
- * arg_/out_), non-default inputs/vars table names, an optional bytes
- * field, int32 + int64 fields, and a list field on each side of the
- * method.
+ * arg_/out_), non-default queue/inputs/vars table names, an optional
+ * bytes field, int32 + int64 fields, and a list field on each side of
+ * the method.
  */
 function smokeIr(): HostLibraryIr {
   return {
@@ -67,7 +67,7 @@ function smokeIr(): HostLibraryIr {
       resultListTableInfix: "__out_",
     },
     queueTable: {
-      name: "pending_host_calls",
+      name: "host_queue",
       columns: ["queue_id", "call_id", "method", "status"],
     },
     inputsTable: {
@@ -288,6 +288,10 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
       'resultColumns: { revision: "out_revision", confidence: "out_confidence" }',
     ),
   );
+  assert.ok(
+    output.includes('name: "host_queue"'),
+    "queue table name comes from the IR",
+  );
   assert.ok(output.includes('name: "script_params"'));
   assert.ok(
     output.includes('name: "script_scratch"'),
@@ -301,6 +305,17 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
   assert.ok(
     output.includes('columns: ["call_id", "status", "out_revision", "out_confidence"]'),
   );
+});
+
+test("smoke IR: no emitted file mentions the default shared table names", () => {
+  for (const file of emitTypeScript(smokeIr(), { baseName: "acme-warehouse" })) {
+    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+      assert.ok(
+        !file.contents.includes(name),
+        `${file.path} still mentions default table name ${name}`,
+      );
+    }
+  }
 });
 
 test("emitEnvelope fails loud on an unknown binding type", () => {

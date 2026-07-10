@@ -72,7 +72,8 @@ test("emitting twice from independently parsed manifests is deterministic", () =
 });
 
 // ---------------------------------------------------------------------------
-// Non-sample smoke IR: different naming prefixes, optional bytes field.
+// Non-sample smoke IR: different naming prefixes, custom shared workspace
+// table names, optional bytes field.
 // ---------------------------------------------------------------------------
 
 function smokeIr(): HostLibraryIr {
@@ -95,11 +96,11 @@ function smokeIr(): HostLibraryIr {
       resultListTableInfix: "__out_",
     },
     queueTable: {
-      name: "pending_host_calls",
+      name: "host_queue",
       columns: ["queue_id", "call_id", "method", "status"],
     },
     inputsTable: {
-      name: "script_inputs",
+      name: "script_params",
       columns: [
         "name",
         "value_type",
@@ -110,7 +111,7 @@ function smokeIr(): HostLibraryIr {
       ],
     },
     varsTable: {
-      name: "script_vars",
+      name: "script_scratch",
       columns: [
         "name",
         "value_type",
@@ -267,10 +268,15 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
     /public static final int MIN_SQLITE_VERSION_NUMBER = 3008011;/,
   );
 
-  // Envelope files are protocol-shaped and unaffected by library naming.
+  // Envelope files are protocol-shaped and unaffected by library naming
+  // prefixes; only the inputs-table name flows into the RuntimeInput doc.
   const script = fileByName(files, "Script.java");
   assert.equal(script.path, `${envelopeDir}/Script.java`);
   assert.match(script.contents, /ENGINE_V1 = "sqlite-host-v1";/);
+
+  // The custom inputs-table name reaches the RuntimeInput javadoc.
+  const runtimeInput = fileByName(files, "RuntimeInput.java");
+  assert.match(runtimeInput.contents, /\{@code script_params\} table/);
 
   // Float binding types produce enum members, factories, and accessors.
   const binding = fileByName(files, "BindingValue.java");
@@ -285,6 +291,17 @@ test("smoke IR: emitted DTO list has no duplicates and reuses shared items", () 
   const files = emitJava(smokeIr());
   const paths = files.map((f) => f.path);
   assert.equal(new Set(paths).size, paths.length);
+});
+
+test("smoke IR: no emitted file mentions the default shared table names", () => {
+  for (const file of emitJava(smokeIr())) {
+    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+      assert.ok(
+        !file.contents.includes(name),
+        `${file.path} still mentions default table name ${name}`,
+      );
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------

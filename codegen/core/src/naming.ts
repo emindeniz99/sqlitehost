@@ -48,6 +48,16 @@ export function toSnakeCase(name: string): string {
   return out;
 }
 
+/**
+ * Convert a camelCase / PascalCase identifier to kebab-case (the
+ * snake_case rule with "-" separators). Used to derive per-library
+ * artifact base names from @hostLibrary interface names, e.g.
+ * GameHostMethods -> game-host-methods.
+ */
+export function toKebabCase(name: string): string {
+  return toSnakeCase(name).replace(/_/g, "-");
+}
+
 export function deriveCallTable(naming: NamingIr, methodName: string): string {
   return naming.callTablePrefix + toSnakeCase(methodName);
 }

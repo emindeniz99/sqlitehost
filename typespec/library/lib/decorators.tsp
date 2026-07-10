@@ -8,6 +8,10 @@ namespace SqliteHost;
  * (see docs/naming.md). `minSqliteVersion` is the minimum SQLite
  * version required by the host library, as a dotted version string
  * (e.g. "3.19.3" or "3.8.11.1"); it defaults to 3.19.3 when absent.
+ * The three shared workspace table names default to the protocol v1
+ * names (`pending_host_calls`, `script_inputs`, `script_vars`); they
+ * must be non-empty, mutually distinct, and must not collide with any
+ * derived call/result/child table name.
  */
 model HostLibraryOptions {
   apiLevel: int32;
@@ -18,6 +22,9 @@ model HostLibraryOptions {
   resultColumnPrefix?: string;
   inputListTableInfix?: string;
   resultListTableInfix?: string;
+  queueTable?: string;
+  inputsTable?: string;
+  varsTable?: string;
 }
 
 /**

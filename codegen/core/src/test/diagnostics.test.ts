@@ -1,5 +1,10 @@
 import { test } from "node:test";
-import { assertDiagnostic, compileSource } from "./helpers.js";
+import {
+  assertDiagnostic,
+  assertLibrariesDiagnostic,
+  compileSource,
+  compileSourceAll,
+} from "./helpers.js";
 
 /** Wrap interface/model snippets in a valid host-library shell. */
 function shell(body: string): string {
@@ -302,4 +307,110 @@ test("reports when no @hostLibrary interface exists", async () => {
     `),
   );
   assertDiagnostic(result, "no-host-library");
+});
+
+test("rejects an empty shared workspace table name", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-shared-table-name");
+});
+
+test("rejects shared workspace table names that are not mutually distinct", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, inputsTable: "shared_kv", varsTable: "shared_kv" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-shared-table-name");
+});
+
+test("rejects a shared table name colliding with a default-name workspace table", async () => {
+  // Renaming the queue table onto the inputs table's default collides
+  // with the resolved (defaulted) inputs table name.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "script_inputs" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-shared-table-name");
+});
+
+test("rejects a shared table name colliding with a derived call table", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "call_get_value" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "shared-table-name-collision");
+});
+
+test("rejects a shared table name colliding with a derived list child table", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, varsTable: "call_get_values__input_keys" })
+      interface Methods {
+        @hostMethod({ name: "getValues", handler: "GetValues" })
+        op GetValues(input: In): Out;
+      }
+      model Item { key: string; }
+      model In { keys: Item[]; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "shared-table-name-collision");
+});
+
+test("rejects duplicate @hostLibrary interface names across libraries", async () => {
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace A {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @SqliteHost.hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    }
+
+    namespace B {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @SqliteHost.hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    }
+  `);
+  assertLibrariesDiagnostic(result, "duplicate-host-library-name");
 });

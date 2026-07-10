@@ -103,7 +103,7 @@ export function emitEnvelopeModel(ir: HostLibraryIr): EmittedFile[] {
     },
     {
       path: packagePath(ENVELOPE_PACKAGE, "RuntimeInput"),
-      contents: runtimeInputSource(header),
+      contents: runtimeInputSource(header, ir.inputsTable.name),
     },
     {
       path: packagePath(ENVELOPE_PACKAGE, "BindingValue"),
@@ -191,10 +191,10 @@ public record Statement(String sql, Map<String, BindingValue> bindings) {
 `;
 }
 
-function runtimeInputSource(header: string): string {
+function runtimeInputSource(header: string, inputsTable: string): string {
   return `${header}
 /**
- * A runtime input inserted into the {@code script_inputs} table before
+ * A runtime input inserted into the {@code ${inputsTable}} table before
  * the first step runs.
  */
 public record RuntimeInput(String name, BindingValue value) {

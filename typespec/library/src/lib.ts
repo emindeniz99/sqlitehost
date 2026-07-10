@@ -49,7 +49,13 @@ export const $lib = createTypeSpecLibrary({
     "multiple-host-libraries": {
       severity: "error",
       messages: {
-        default: paramMessage`Expected exactly one @hostLibrary interface per host definition, found ${"count"}.`,
+        default: paramMessage`This compilation defines ${"count"} @hostLibrary interfaces but the single-library API compiles exactly one; use the multi-library API (compileHostLibraries), which emits one artifact set per library.`,
+      },
+    },
+    "duplicate-host-library-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Duplicate @hostLibrary interface name "${"name"}"; interface names must be unique within a compilation because they name the emitted artifacts.`,
       },
     },
     "missing-host-method": {
@@ -116,6 +122,24 @@ export const $lib = createTypeSpecLibrary({
       severity: "error",
       messages: {
         default: paramMessage`Derived table name "${"table"}" is used more than once; method or list field names collide after naming derivation.`,
+      },
+    },
+    "invalid-shared-table-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"option"} must be a non-empty table name.`,
+      },
+    },
+    "duplicate-shared-table-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Shared workspace table name "${"table"}" is used by more than one of queueTable/inputsTable/varsTable; the three names must be distinct.`,
+      },
+    },
+    "shared-table-name-collision": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"option"} "${"table"}" collides with a derived call/result/child table name; pick a name no host method derives.`,
       },
     },
   },

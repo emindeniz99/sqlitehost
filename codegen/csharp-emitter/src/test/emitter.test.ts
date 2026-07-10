@@ -97,7 +97,8 @@ test("CLI exits non-zero on bad usage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Non-sample smoke IR: different naming prefixes + optional bytes field.
+// Non-sample smoke IR: different naming prefixes, custom shared workspace
+// table names, + optional bytes field.
 // ---------------------------------------------------------------------------
 
 function smokeIr(): HostLibraryIr {
@@ -122,11 +123,11 @@ function smokeIr(): HostLibraryIr {
     },
     naming,
     queueTable: {
-      name: "pending_host_calls",
+      name: "host_queue",
       columns: ["queue_id", "call_id", "method", "status"],
     },
     inputsTable: {
-      name: "script_inputs",
+      name: "script_params",
       columns: [
         "name",
         "value_type",
@@ -137,7 +138,7 @@ function smokeIr(): HostLibraryIr {
       ],
     },
     varsTable: {
-      name: "script_vars",
+      name: "script_scratch",
       columns: [
         "name",
         "value_type",
@@ -301,7 +302,7 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
   assert.match(specs, /handlers\.ArchiveReport\(input\)/);
 });
 
-test("smoke IR: host definition reproduces the IR naming prefixes", () => {
+test("smoke IR: host definition reproduces the IR naming prefixes and table names", () => {
   const definition = smokeFile("GeneratedHostDefinition.g.cs");
   assert.match(definition, /\.ApiLevel\(2\)/);
   // MinSqliteVersion is always emitted, between ApiLevel and Naming.
@@ -315,12 +316,24 @@ test("smoke IR: host definition reproduces the IR naming prefixes", () => {
   assert.match(definition, /\.ResultColumnPrefix\("out_"\)/);
   assert.match(definition, /\.InputListTableInfix\("__in_"\)/);
   assert.match(definition, /\.ResultListTableInfix\("__out_"\)/);
+  // The shared workspace table names always follow the six prefixes,
+  // in queue/inputs/vars order, closing the Naming block.
+  assert.match(
+    definition,
+    /\.ResultListTableInfix\("__out_"\)\n\s+\.QueueTable\("host_queue"\)\n\s+\.InputsTable\("script_params"\)\n\s+\.VarsTable\("script_scratch"\)\)/,
+  );
 });
 
 test("smoke IR: schema constant embeds the IR-derived DDL", () => {
   const schema = smokeFile("GeneratedSchemaSql.g.cs");
   assert.match(schema, /CREATE TABLE hc_archive_report \(/);
   assert.match(schema, /CREATE TABLE hr_archive_report__out_tags \(/);
+  // Custom shared workspace table names flow into the DDL and the
+  // queue-trigger body.
+  assert.match(schema, /CREATE TABLE host_queue \(/);
+  assert.match(schema, /CREATE TABLE script_params \(/);
+  assert.match(schema, /CREATE TABLE script_scratch \(/);
+  assert.match(schema, /INSERT INTO host_queue \(call_id, method\)/);
   // Optional bytes column: BLOB without NOT NULL.
   assert.match(schema, /in_payload BLOB,\\n/);
   assert.doesNotMatch(schema, /in_payload BLOB NOT NULL/);
@@ -330,6 +343,17 @@ test("smoke IR: schema constant embeds the IR-derived DDL", () => {
   assert.doesNotMatch(schema, /in_weight REAL NOT NULL/);
   assert.match(schema, /out_ratio REAL NOT NULL/);
   assert.match(schema, /CREATE TRIGGER trg_hc_archive_report_queue/);
+});
+
+test("smoke IR: no emitted file mentions the default shared table names", () => {
+  for (const file of emitCSharp(smokeIr())) {
+    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+      assert.ok(
+        !file.contents.includes(name),
+        `${file.path} still mentions default table name ${name}`,
+      );
+    }
+  }
 });
 
 test("smoke IR: emission is deterministic", () => {

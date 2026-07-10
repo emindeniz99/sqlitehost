@@ -56,7 +56,7 @@ public final class DdlGenerator {
                 ");");
     }
 
-    /** Shared name/value table shape: {@code script_inputs} and {@code script_vars}. */
+    /** Shared name/value table shape used by the inputs and vars tables (names come from the manifest). */
     private static String namedValueTableDdl(String tableName) {
         return String.join("\n",
                 "CREATE TABLE " + tableName + " (",

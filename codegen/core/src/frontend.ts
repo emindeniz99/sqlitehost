@@ -1,9 +1,16 @@
 /**
  * TypeSpec frontend: compiles a .tsp entrypoint (or walks an already
  * compiled Program), resolves the @sqlite-host/typespec decorators, and
- * normalizes the @hostLibrary interface into the language-neutral
+ * normalizes each @hostLibrary interface into the language-neutral
  * HostLibraryIr. All physical names are resolved here via naming.ts —
  * emitters never derive names themselves (docs/manifest.md).
+ *
+ * One compilation may define multiple @hostLibrary interfaces, each an
+ * independent runtime definition with its own workspace
+ * (docs/manifest.md); use compileHostLibraries / buildHostLibraryIrs
+ * for that. The single-library APIs (compileHostLibrary /
+ * buildHostLibraryIr) keep their original semantics and error on
+ * multi-library programs.
  */
 
 import { resolve } from "node:path";
@@ -54,7 +61,11 @@ import {
   deriveResultTable,
   toSnakeCase,
 } from "./naming.js";
-import { mapSupportedScalar, validateHostLibraryInterface } from "./validate.js";
+import {
+  mapSupportedScalar,
+  validateHostLibraryInterface,
+  type SharedTableNames,
+} from "./validate.js";
 
 export interface FrontendResult {
   program: Program;
@@ -63,11 +74,23 @@ export interface FrontendResult {
   diagnostics: readonly Diagnostic[];
 }
 
+export interface FrontendLibrariesResult {
+  program: Program;
+  /**
+   * One IR per @hostLibrary interface, in declaration order. Undefined
+   * when compilation or model validation reported errors.
+   */
+  irs?: HostLibraryIr[];
+  diagnostics: readonly Diagnostic[];
+}
+
 /**
  * Compile a .tsp entrypoint with the Node host and normalize the
- * @hostLibrary interface into the IR. Diagnostics (TypeSpec compile
- * errors plus SqliteHost model validation) are returned; `ir` is only
- * set when there are no errors.
+ * single @hostLibrary interface into the IR. Diagnostics (TypeSpec
+ * compile errors plus SqliteHost model validation) are returned; `ir`
+ * is only set when there are no errors. Errors when the compilation
+ * defines more than one @hostLibrary interface — use
+ * compileHostLibraries for multi-library programs.
  */
 export async function compileHostLibrary(
   entrypoint: string,
@@ -81,16 +104,30 @@ export async function compileHostLibrary(
 }
 
 /**
- * Normalize an already compiled Program (e.g. inside a TypeSpec emitter's
- * $onEmit). Reports diagnostics into the program and returns undefined
- * when validation fails.
+ * Compile a .tsp entrypoint with the Node host and normalize every
+ * @hostLibrary interface into one IR each, in declaration order. `irs`
+ * is only set when there are no errors.
+ */
+export async function compileHostLibraries(
+  entrypoint: string,
+): Promise<FrontendLibrariesResult> {
+  const program = await compile(NodeHost, resolve(entrypoint), { emit: [] });
+  let irs: HostLibraryIr[] | undefined;
+  if (!program.hasError()) {
+    irs = buildHostLibraryIrs(program);
+  }
+  return { program, irs, diagnostics: program.diagnostics };
+}
+
+/**
+ * Normalize an already compiled single-library Program (e.g. inside a
+ * TypeSpec emitter's $onEmit). Reports diagnostics into the program and
+ * returns undefined when validation fails. Kept single-library for
+ * back-compat: a multi-library program reports multiple-host-libraries
+ * (directing callers to the plural API) instead of silently picking one.
  */
 export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined {
   const interfaces = getHostLibraryInterfaces(program);
-  if (interfaces.length === 0) {
-    reportDiagnostic(program, { code: "no-host-library", target: NoTarget });
-    return undefined;
-  }
   if (interfaces.length > 1) {
     reportDiagnostic(program, {
       code: "multiple-host-libraries",
@@ -99,8 +136,57 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
     });
     return undefined;
   }
+  return buildHostLibraryIrs(program)?.[0];
+}
 
-  const iface = interfaces[0];
+/**
+ * Normalize an already compiled Program into one IR per @hostLibrary
+ * interface, in declaration order. Interface names must be unique
+ * across the compilation (they name the emitted artifacts); derived
+ * table names may collide *across* libraries because each library is an
+ * independent workspace. Reports diagnostics into the program and
+ * returns undefined when any library fails validation.
+ */
+export function buildHostLibraryIrs(
+  program: Program,
+): HostLibraryIr[] | undefined {
+  const interfaces = getHostLibraryInterfaces(program);
+  if (interfaces.length === 0) {
+    reportDiagnostic(program, { code: "no-host-library", target: NoTarget });
+    return undefined;
+  }
+
+  let ok = true;
+  const names = new Set<string>();
+  for (const iface of interfaces) {
+    if (names.has(iface.name)) {
+      reportDiagnostic(program, {
+        code: "duplicate-host-library-name",
+        format: { name: iface.name },
+        target: iface,
+      });
+      ok = false;
+    } else {
+      names.add(iface.name);
+    }
+  }
+
+  const irs: HostLibraryIr[] = [];
+  for (const iface of interfaces) {
+    const ir = buildLibraryIr(program, iface);
+    if (ir === undefined) {
+      ok = false;
+    } else {
+      irs.push(ir);
+    }
+  }
+  return ok ? irs : undefined;
+}
+
+function buildLibraryIr(
+  program: Program,
+  iface: Interface,
+): HostLibraryIr | undefined {
   const options = getHostLibraryOptions(program, iface)!;
   const naming: NamingIr = {
     callTablePrefix: options.callTablePrefix ?? DEFAULT_NAMING.callTablePrefix,
@@ -115,8 +201,15 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
     resultListTableInfix:
       options.resultListTableInfix ?? DEFAULT_NAMING.resultListTableInfix,
   };
+  // Shared workspace table names are host-level naming; the column
+  // shapes stay the fixed protocol constants (docs/naming.md).
+  const sharedTables: SharedTableNames = {
+    queueTable: options.queueTable ?? QUEUE_TABLE_V1.name,
+    inputsTable: options.inputsTable ?? INPUTS_TABLE_V1.name,
+    varsTable: options.varsTable ?? VARS_TABLE_V1.name,
+  };
 
-  if (!validateHostLibraryInterface(program, iface, naming)) {
+  if (!validateHostLibraryInterface(program, iface, naming, sharedTables)) {
     return undefined;
   }
 
@@ -146,15 +239,15 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
     },
     naming,
     queueTable: {
-      name: QUEUE_TABLE_V1.name,
+      name: sharedTables.queueTable,
       columns: [...QUEUE_TABLE_V1.columns],
     },
     inputsTable: {
-      name: INPUTS_TABLE_V1.name,
+      name: sharedTables.inputsTable,
       columns: [...INPUTS_TABLE_V1.columns],
     },
     varsTable: {
-      name: VARS_TABLE_V1.name,
+      name: sharedTables.varsTable,
       columns: [...VARS_TABLE_V1.columns],
     },
     scriptEnvelope: {

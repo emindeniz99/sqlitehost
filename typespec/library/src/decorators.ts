@@ -17,6 +17,9 @@ export interface HostLibraryOptions {
   resultColumnPrefix?: string;
   inputListTableInfix?: string;
   resultListTableInfix?: string;
+  queueTable?: string;
+  inputsTable?: string;
+  varsTable?: string;
 }
 
 /** Resolved `@hostMethod` options. `apiLevel` defaults to the library api level in the frontend. */

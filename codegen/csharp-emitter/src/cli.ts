@@ -5,6 +5,10 @@
  * Reads a canonical host library manifest and writes the generated C#
  * sources into <out-dir> (the protocol envelope lands under
  * <out-dir>/envelope/). Prints each written path.
+ *
+ * Multi-library compilations: the manifest emitter writes one manifest
+ * per @hostLibrary interface; run this tool once per manifest (with a
+ * distinct <out-dir> each).
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,6 +18,13 @@ import { emitCSharp } from "./emit.js";
 
 function usage(): never {
   console.error("usage: sqlite-host-emit-csharp <manifest.json> <out-dir>");
+  console.error(
+    "  Takes one manifest per invocation. Multi-library compilations produce",
+  );
+  console.error(
+    "  one manifest per @hostLibrary (see sqlite-host-emit-manifest); run",
+  );
+  console.error("  this tool once per manifest.");
   process.exit(2);
 }
 

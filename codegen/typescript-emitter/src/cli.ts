@@ -5,6 +5,10 @@
  * Reads a canonical SqliteHost manifest and writes the generated
  * TypeScript sources (protocol envelope contract + per-host authoring
  * module) under <out-dir>, mirroring the vendored `typescript/` layout.
+ *
+ * Multi-library compilations: the manifest emitter writes one manifest
+ * per @hostLibrary interface; run this tool once per manifest, passing
+ * a per-library --base-name so the authoring modules do not collide.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -15,6 +19,15 @@ import { DEFAULT_BASE_NAME, emitTypeScript } from "./emit.js";
 function usage(): never {
   console.error(
     "usage: sqlite-host-emit-typescript <manifest.json> <out-dir> [--base-name <name>]",
+  );
+  console.error(
+    "  Takes one manifest per invocation. Multi-library compilations produce",
+  );
+  console.error(
+    "  one manifest per @hostLibrary (see sqlite-host-emit-manifest); run",
+  );
+  console.error(
+    "  this tool once per manifest with a per-library --base-name.",
   );
   process.exit(2);
 }

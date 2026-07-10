@@ -72,6 +72,13 @@ function error(
   reportDiagnostic(ctx.program, { code, format, target } as DiagnosticReportArg);
 }
 
+/** Resolved shared workspace table names (defaults already applied). */
+export interface SharedTableNames {
+  queueTable: string;
+  inputsTable: string;
+  varsTable: string;
+}
+
 /**
  * Validate one @hostLibrary interface against the v1 model rules.
  * Reports diagnostics into the program; returns false when any error
@@ -81,10 +88,32 @@ export function validateHostLibraryInterface(
   program: Program,
   iface: Interface,
   naming: NamingIr,
+  sharedTables: SharedTableNames,
 ): boolean {
   const ctx: ValidationContext = { program, ok: true };
   const methodNames = new Set<string>();
   const tableNames = new Set<string>();
+
+  // Shared workspace table names: non-empty and mutually distinct
+  // (docs/naming.md). Collisions with derived tables are checked after
+  // the method loop, once every derived name is known.
+  const shared: Array<[keyof SharedTableNames, string]> = [
+    ["queueTable", sharedTables.queueTable],
+    ["inputsTable", sharedTables.inputsTable],
+    ["varsTable", sharedTables.varsTable],
+  ];
+  const seenShared = new Set<string>();
+  for (const [option, table] of shared) {
+    if (table.length === 0) {
+      error(ctx, "invalid-shared-table-name", { option }, iface);
+      continue;
+    }
+    if (seenShared.has(table)) {
+      error(ctx, "duplicate-shared-table-name", { table }, iface);
+    } else {
+      seenShared.add(table);
+    }
+  }
 
   const claimTable = (table: string, target: DiagnosticTarget) => {
     if (tableNames.has(table)) {
@@ -135,6 +164,12 @@ export function validateHostLibraryInterface(
           claimTable(deriveResultListTable(naming, methodName, sqlName), target);
         }
       }
+    }
+  }
+
+  for (const [option, table] of shared) {
+    if (tableNames.has(table)) {
+      error(ctx, "shared-table-name-collision", { option, table }, iface);
     }
   }
 

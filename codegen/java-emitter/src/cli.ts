@@ -5,6 +5,9 @@
  * Reads a canonical SqliteHost manifest and writes the generated Java
  * sources (envelope model, host method DTO records, MethodDescriptors)
  * into <out-dir>, package directories included.
+ *
+ * Multi-library compilations: the manifest emitter writes one manifest
+ * per @hostLibrary interface; run this tool once per manifest.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,6 +17,13 @@ import { emitJava } from "./emit.js";
 
 function usage(): never {
   console.error("usage: sqlite-host-emit-java <manifest.json> <out-dir>");
+  console.error(
+    "  Takes one manifest per invocation. Multi-library compilations produce",
+  );
+  console.error(
+    "  one manifest per @hostLibrary (see sqlite-host-emit-manifest); run",
+  );
+  console.error("  this tool once per manifest.");
   process.exit(2);
 }
 

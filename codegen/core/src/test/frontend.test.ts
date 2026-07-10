@@ -2,11 +2,17 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { compileHostLibrary } from "../frontend.js";
-import { DEFAULT_MIN_SQLITE_VERSION_NUMBER } from "../ir.js";
+import {
+  DEFAULT_MIN_SQLITE_VERSION_NUMBER,
+  INPUTS_TABLE_V1,
+  QUEUE_TABLE_V1,
+  VARS_TABLE_V1,
+} from "../ir.js";
 import { DEFAULT_NAMING } from "../naming.js";
 import {
   assertDiagnostic,
   compileSource,
+  compileSourceAll,
   manifestFixturePath,
   samplePath,
 } from "./helpers.js";
@@ -322,6 +328,146 @@ test("minSqliteVersionNumber defaults to 3019003 when minSqliteVersion is absent
     result.ir.library.minSqliteVersionNumber,
     DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   );
+});
+
+test("queueTable/inputsTable/varsTable overrides rename the shared tables only", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({
+      apiLevel: 1,
+      queueTable: "host_queue",
+      inputsTable: "script_params",
+      varsTable: "script_scratch"
+    })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const ir = result.ir;
+  assert.equal(ir.queueTable.name, "host_queue");
+  assert.equal(ir.inputsTable.name, "script_params");
+  assert.equal(ir.varsTable.name, "script_scratch");
+  // Column shapes are protocol constants and never change with the name.
+  assert.deepEqual(ir.queueTable.columns, QUEUE_TABLE_V1.columns);
+  assert.deepEqual(ir.inputsTable.columns, INPUTS_TABLE_V1.columns);
+  assert.deepEqual(ir.varsTable.columns, VARS_TABLE_V1.columns);
+  // Derived per-method naming is unaffected.
+  assert.deepEqual(ir.naming, DEFAULT_NAMING);
+  assert.equal(ir.methods[0].callTable, "call_get_value");
+});
+
+test("shared table names default to the protocol v1 names when absent", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.deepEqual(result.ir.queueTable, QUEUE_TABLE_V1);
+  assert.deepEqual(result.ir.inputsTable, INPUTS_TABLE_V1);
+  assert.deepEqual(result.ir.varsTable, VARS_TABLE_V1);
+});
+
+// Two @hostLibrary interfaces in one compilation. Both declare a
+// "getValue" method deriving the same call_get_value/result_get_value
+// tables — that is FINE across libraries, because each library is an
+// independent runtime definition with its own workspace
+// (docs/manifest.md); table-name uniqueness is a per-library rule.
+const TWO_LIBRARY_SOURCE = `
+  import "@sqlite-host/typespec";
+  using SqliteHost;
+  namespace Test;
+
+  @hostLibrary({ apiLevel: 1 })
+  interface GameHostMethods {
+    @hostMethod({ name: "getValue", handler: "GetValue" })
+    op GetValue(input: KeyInput): ValueResult;
+  }
+
+  @hostLibrary({ apiLevel: 2, varsTable: "admin_vars" })
+  interface AdminHostMethods {
+    @hostMethod({ name: "getValue", handler: "GetValue" })
+    op GetValue(input: KeyInput): ValueResult;
+
+    @hostMethod({ name: "resetValue", handler: "ResetValue" })
+    op ResetValue(input: KeyInput): ValueResult;
+  }
+
+  model KeyInput { key: string; }
+  model ValueResult { value: int64; }
+`;
+
+test("compileHostLibraries returns one IR per library in declaration order", async () => {
+  const result = await compileSourceAll(TWO_LIBRARY_SOURCE);
+  assert.ok(
+    result.irs,
+    JSON.stringify(result.diagnostics.map((d) => d.message)),
+  );
+  assert.deepEqual(
+    result.irs.map((ir) => ir.library.interfaceName),
+    ["GameHostMethods", "AdminHostMethods"],
+  );
+  const [game, admin] = result.irs;
+  assert.equal(game.library.apiLevel, 1);
+  assert.equal(admin.library.apiLevel, 2);
+  // Cross-library derived-table "collision": both libraries own a
+  // call_get_value in their own workspace — no diagnostic.
+  assert.equal(game.methods[0].callTable, "call_get_value");
+  assert.equal(admin.methods[0].callTable, "call_get_value");
+  // Per-library shared-table overrides apply independently.
+  assert.equal(game.varsTable.name, "script_vars");
+  assert.equal(admin.varsTable.name, "admin_vars");
+  // The shared KeyInput/ValueResult models resolve into both IRs.
+  assert.equal(game.methods[0].input.modelName, "KeyInput");
+  assert.equal(admin.methods[0].input.modelName, "KeyInput");
+  assert.deepEqual(game.methods[0].input, admin.methods[0].input);
+  assert.deepEqual(game.methods[0].result, admin.methods[0].result);
+});
+
+test("the single-library API rejects multi-library programs, pointing to the plural API", async () => {
+  const result = await compileSource(TWO_LIBRARY_SOURCE);
+  assertDiagnostic(result, "multiple-host-libraries");
+  const diagnostic = result.diagnostics.find(
+    (d) => d.code === "@sqlite-host/typespec/multiple-host-libraries",
+  );
+  assert.match(diagnostic!.message, /compileHostLibraries/);
+});
+
+test("compileHostLibraries still works for a single library", async () => {
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.irs, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.irs.length, 1);
+  assert.equal(result.irs[0].library.interfaceName, "Methods");
 });
 
 test("methods appear in declaration order and library metadata is resolved", async () => {
