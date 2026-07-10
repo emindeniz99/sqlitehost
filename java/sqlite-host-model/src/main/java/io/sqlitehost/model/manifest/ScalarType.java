@@ -9,7 +9,9 @@ public enum ScalarType {
     INT64("int64"),
     BOOLEAN("boolean"),
     STRING("string"),
-    BYTES("bytes");
+    BYTES("bytes"),
+    FLOAT32("float32"),
+    FLOAT64("float64");
 
     private final String jsonName;
 

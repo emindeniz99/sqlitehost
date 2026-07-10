@@ -164,6 +164,81 @@ class ValidationEngineTest {
     }
 
     @Test
+    void float64ColumnAcceptsFloat64AndFloat32Bindings() throws IOException {
+        // Compatibility table: float64 column ← float64 | float32.
+        for (String scoreBinding : List.of(
+                "{\"type\":\"float64\",\"value\":98.5}",
+                "{\"type\":\"float32\",\"value\":0.75}")) {
+            ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                    + "\"requiredApiLevel\":1,\"requiredMethods\":[\"recordScore\"],"
+                    + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                    + "{\"sql\":\"INSERT INTO call_record_score (call_id, input_key, input_score)"
+                    + " VALUES (:c, 'k', :score)\","
+                    + "\"bindings\":{"
+                    + "\"c\":{\"type\":\"text\",\"value\":\"r-1\"},"
+                    + "\"score\":" + scoreBinding + "}}]}]}");
+            assertTrue(report.isValid(), report.findings().toString());
+        }
+    }
+
+    @Test
+    void float32ColumnRejectsFloat64Binding() throws IOException {
+        // input_weight is float32 — a float64 binding does not narrow.
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"recordScore\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_record_score (call_id, input_key, input_score, input_weight)"
+                + " VALUES (:c, 'k', :score, :weight)\","
+                + "\"bindings\":{"
+                + "\"c\":{\"type\":\"text\",\"value\":\"r-1\"},"
+                + "\"score\":{\"type\":\"float64\",\"value\":98.5},"
+                + "\"weight\":{\"type\":\"float64\",\"value\":0.75}}}]}]}");
+        assertEquals(List.of(ValidationCodes.BINDING_TYPE_MISMATCH), errorCodes(report),
+                "only the float32 column fed with float64 mismatches");
+    }
+
+    @Test
+    void integerAndFloatBindingsDoNotCoerce() throws IOException {
+        // int64 column ← float64 is a mismatch…
+        ValidationReport intColumn = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"setValue\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_set_value (call_id, input_key, input_value)"
+                + " VALUES (:c, 'k', :v)\","
+                + "\"bindings\":{"
+                + "\"c\":{\"type\":\"text\",\"value\":\"w-1\"},"
+                + "\"v\":{\"type\":\"float64\",\"value\":42.5}}}]}]}");
+        assertTrue(errorCodes(intColumn).contains(ValidationCodes.BINDING_TYPE_MISMATCH),
+                errorCodes(intColumn).toString());
+
+        // …and so is float64 column ← int64, even for an integral value.
+        ValidationReport floatColumn = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"recordScore\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_record_score (call_id, input_key, input_score)"
+                + " VALUES (:c, 'k', :score)\","
+                + "\"bindings\":{"
+                + "\"c\":{\"type\":\"text\",\"value\":\"r-1\"},"
+                + "\"score\":{\"type\":\"int64\",\"value\":98}}}]}]}");
+        assertTrue(errorCodes(floatColumn).contains(ValidationCodes.BINDING_TYPE_MISMATCH),
+                errorCodes(floatColumn).toString());
+    }
+
+    @Test
+    void optionalFloat32ColumnAcceptsNullBinding() throws IOException {
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"recordScore\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_record_score (call_id, input_key, input_score, input_weight)"
+                + " VALUES (:c, 'k', :score, :weight)\","
+                + "\"bindings\":{"
+                + "\"c\":{\"type\":\"text\",\"value\":\"r-1\"},"
+                + "\"score\":{\"type\":\"float64\",\"value\":98.5},"
+                + "\"weight\":{\"type\":\"null\"}}}]}]}");
+        assertTrue(report.isValid(), report.findings().toString());
+    }
+
+    @Test
     void callIdColumnRequiresTextBinding() throws IOException {
         ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
                 + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"

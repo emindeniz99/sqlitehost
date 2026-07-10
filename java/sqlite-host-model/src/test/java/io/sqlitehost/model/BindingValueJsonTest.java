@@ -113,6 +113,63 @@ class BindingValueJsonTest {
     }
 
     @Test
+    void floatsAcceptFiniteJsonNumbers() throws IOException {
+        BindingValue score = onlyBinding(
+                scriptWithBinding("{\"type\":\"float64\",\"value\":98.5}"));
+        assertEquals(BindingValue.Type.FLOAT64, score.type());
+        assertEquals(98.5, score.asFloat64());
+
+        BindingValue weight = onlyBinding(
+                scriptWithBinding("{\"type\":\"float32\",\"value\":0.75}"));
+        assertEquals(BindingValue.Type.FLOAT32, weight.type());
+        assertEquals(0.75f, weight.asFloat32());
+    }
+
+    @Test
+    void integralJsonNumbersAreValidFloatValues() throws IOException {
+        // Only the string form is banned — an integral number is a
+        // perfectly good float value (docs/script-envelope.md).
+        assertEquals(42.0, onlyBinding(
+                scriptWithBinding("{\"type\":\"float64\",\"value\":42}")).asFloat64());
+        assertEquals(3.0f, onlyBinding(
+                scriptWithBinding("{\"type\":\"float32\",\"value\":3}")).asFloat32());
+    }
+
+    @Test
+    void floatStringFormIsRejected() {
+        // Unlike int64, floats never need a string form: every IEEE-754
+        // double round-trips through a JSON number.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float64\",\"value\":\"98.5\"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float32\",\"value\":\"0.75\"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float64\",\"value\":\"42\"}"));
+    }
+
+    @Test
+    void float32MustStayFiniteAfterRoundToNearestSingle() throws IOException {
+        // 1e39 is a finite double but overflows an IEEE-754 single.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float32\",\"value\":1e39}"));
+        // Parsed via round-to-nearest, so inexact singles are fine.
+        assertEquals(0.1f, onlyBinding(
+                scriptWithBinding("{\"type\":\"float32\",\"value\":0.1}")).asFloat32());
+    }
+
+    @Test
+    void nonFiniteOrNonNumericFloatValuesAreRejected() {
+        // JSON has no NaN/Infinity literal; 1e309 parses to a non-finite
+        // double and must be rejected, as must non-number values.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float64\",\"value\":1e309}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float64\",\"value\":true}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"float32\"}"));
+    }
+
+    @Test
     void unknownBindingTypeIsAReaderError() {
         JsonReadException e = assertThrows(JsonReadException.class,
                 () -> scriptWithBinding("{\"type\":\"float\",\"value\":1.0}"));

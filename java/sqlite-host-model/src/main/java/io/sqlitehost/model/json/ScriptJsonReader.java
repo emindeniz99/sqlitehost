@@ -24,7 +24,8 @@ import java.util.regex.Pattern;
  *
  * <p>Strictness rules: field types must match the contract, an unknown
  * envelope binding {@code type} is an error, {@code int32}/{@code int64}
- * accept a JSON number or a decimal string (with range checks), and
+ * accept a JSON number or a decimal string (with range checks),
+ * {@code float32}/{@code float64} accept a finite JSON number only, and
  * {@code blob} must be valid base64. Structural rules that the semantic
  * validator owns (missing engine, empty steps, duplicate step ids, …)
  * are deliberately NOT enforced here — the validator reports them as
@@ -201,6 +202,17 @@ public final class ScriptJsonReader {
                             + " (standard alphabet, padded, no whitespace)");
                 }
                 return BindingValue.blob(Base64.getDecoder().decode(value.asText()));
+            case FLOAT32: {
+                double parsed = parseFloat(value, context, "float32");
+                float single = (float) parsed;
+                if (!Float.isFinite(single)) {
+                    throw new JsonReadException(context
+                            + ": float32 value overflows an IEEE-754 single: " + value);
+                }
+                return BindingValue.float32(single);
+            }
+            case FLOAT64:
+                return BindingValue.float64(parseFloat(value, context, "float64"));
             default:
                 throw new JsonReadException(context + ": unhandled binding type " + type);
         }
@@ -242,6 +254,29 @@ public final class ScriptJsonReader {
         }
         throw new JsonReadException(context + ": " + typeName
                 + " value must be a number or decimal string");
+    }
+
+    /**
+     * float32/float64 wire rule: a finite JSON number only (integral
+     * numbers are valid float values); unlike int64, the string form is
+     * never accepted because every IEEE-754 double round-trips through
+     * a JSON number (docs/script-envelope.md).
+     */
+    private static double parseFloat(JsonNode value, String context, String typeName)
+            throws JsonReadException {
+        if (value == null || value.isNull()) {
+            throw new JsonReadException(context + ": " + typeName + " value is missing");
+        }
+        if (!value.isNumber()) {
+            throw new JsonReadException(context + ": " + typeName
+                    + " value must be a JSON number (string form is not accepted)");
+        }
+        double parsed = value.doubleValue();
+        if (!Double.isFinite(parsed)) {
+            throw new JsonReadException(
+                    context + ": " + typeName + " value must be finite: " + value);
+        }
+        return parsed;
     }
 
     private static String optionalString(JsonNode parent, String field)

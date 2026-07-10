@@ -40,15 +40,16 @@ class ManifestReaderTest {
                 manifest.queueTable().columns());
         assertEquals("script_inputs", manifest.inputsTable().name());
         assertEquals("sqlite-host-v1", manifest.scriptEnvelope().engine());
-        assertEquals(List.of("null", "int32", "int64", "bool", "text", "blob"),
+        assertEquals(
+                List.of("null", "int32", "int64", "bool", "text", "blob", "float32", "float64"),
                 manifest.scriptEnvelope().bindingTypes());
     }
 
     @Test
     void readsMethodsInDeclarationOrderWithResolvedNames() throws IOException {
         Manifest manifest = readSampleManifest();
-        assertEquals(4, manifest.methods().size());
-        assertEquals(List.of("getValue", "setValue", "getValues", "putBlob"),
+        assertEquals(5, manifest.methods().size());
+        assertEquals(List.of("getValue", "setValue", "getValues", "putBlob", "recordScore"),
                 manifest.methods().stream().map(MethodDescriptor::methodName).toList());
 
         MethodDescriptor getValues = manifest.methodByName("getValues");
@@ -76,6 +77,13 @@ class ManifestReaderTest {
         MethodDescriptor putBlob = manifest.methodByName("putBlob");
         assertEquals(ScalarType.BYTES, putBlob.input().fields().get(1).scalarType());
         assertTrue(putBlob.input().fields().get(2).optional());
+
+        // Float scalars: required float64 score, optional float32 weight.
+        MethodDescriptor recordScore = manifest.methodByName("recordScore");
+        assertEquals(ScalarType.FLOAT64, recordScore.input().fields().get(1).scalarType());
+        assertEquals(ScalarType.FLOAT32, recordScore.input().fields().get(2).scalarType());
+        assertTrue(recordScore.input().fields().get(2).optional());
+        assertEquals(ScalarType.FLOAT64, recordScore.result().fields().get(0).scalarType());
     }
 
     @Test

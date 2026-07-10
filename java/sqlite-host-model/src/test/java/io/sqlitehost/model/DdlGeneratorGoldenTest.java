@@ -45,7 +45,7 @@ class DdlGeneratorGoldenTest {
         // pending_host_calls, script_inputs, then per method (declaration
         // order): call table, input child tables, result table, result
         // child tables, trigger (docs/workspace-schema.md).
-        assertEquals(16, statements.size());
+        assertEquals(19, statements.size());
         assertEquals("CREATE TABLE pending_host_calls", firstLine(statements.get(0)).substring(0, 31));
         assertEquals("CREATE TABLE script_inputs (", firstLine(statements.get(1)));
         assertEquals("CREATE TABLE call_get_values (", firstLine(statements.get(8)));

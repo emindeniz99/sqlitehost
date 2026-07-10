@@ -111,6 +111,14 @@ public final class ScriptJsonWriter {
             case BLOB:
                 node.put("value", Base64.getEncoder().encodeToString(value.asBlob()));
                 break;
+            case FLOAT32:
+                // Floats are always JSON numbers (no string form); a
+                // float32 is written via its exact double value.
+                node.put("value", (double) value.asFloat32());
+                break;
+            case FLOAT64:
+                node.put("value", value.asFloat64());
+                break;
         }
         return node;
     }

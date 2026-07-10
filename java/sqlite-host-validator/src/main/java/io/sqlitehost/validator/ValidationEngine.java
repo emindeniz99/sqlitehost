@@ -322,6 +322,11 @@ public final class ValidationEngine {
                 return type == BindingValue.Type.INT32;
             case INT64:
                 return type == BindingValue.Type.INT32 || type == BindingValue.Type.INT64;
+            case FLOAT32:
+                // Integer bindings do NOT coerce into float columns.
+                return type == BindingValue.Type.FLOAT32;
+            case FLOAT64:
+                return type == BindingValue.Type.FLOAT64 || type == BindingValue.Type.FLOAT32;
             default:
                 return false;
         }

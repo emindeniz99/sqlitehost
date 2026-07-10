@@ -33,6 +33,9 @@ public final class DdlGenerator {
                 return "TEXT";
             case BYTES:
                 return "BLOB";
+            case FLOAT32:
+            case FLOAT64:
+                return "REAL";
             default:
                 throw new IllegalArgumentException("unknown scalar type " + scalarType);
         }
@@ -59,6 +62,7 @@ public final class DdlGenerator {
                 "    name TEXT NOT NULL PRIMARY KEY,",
                 "    value_type TEXT NOT NULL,",
                 "    int_value INTEGER,",
+                "    real_value REAL,",
                 "    text_value TEXT,",
                 "    blob_value BLOB",
                 ");");

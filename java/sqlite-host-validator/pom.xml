@@ -31,4 +31,49 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Distributable CLI: shade an executable fat jar
+           (…-cli.jar) next to the plain library jar. Launched by
+           java/bin/sqlite-host-validate (see java/README.md). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>cli</shadedClassifierName>
+              <!-- The shaded jar is a local tool, not a published
+                   artifact — don't write dependency-reduced-pom.xml
+                   into the module directory. -->
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>io.sqlitehost.validator.cli.ValidatorCli</mainClass>
+                </transformer>
+              </transformers>
+              <filters>
+                <!-- Drop per-dependency module descriptors: the fat jar
+                     is classpath-only and shading them just warns. -->
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>
