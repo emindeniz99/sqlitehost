@@ -92,6 +92,12 @@ namespace SqliteHost.Tests.Fixtures
                     return SqliteHostBindingValue.Text(element.GetProperty("value").GetString());
                 case "blob":
                     return SqliteHostBindingValue.Blob(Convert.FromBase64String(element.GetProperty("value").GetString()));
+                case "float32":
+                    // float32/float64 are JSON numbers only (string form is
+                    // rejected); float32 rounds to nearest single.
+                    return SqliteHostBindingValue.Float32((float)element.GetProperty("value").GetDouble());
+                case "float64":
+                    return SqliteHostBindingValue.Float64(element.GetProperty("value").GetDouble());
                 default:
                     throw new InvalidDataException("Unknown binding value type '" + type + "'.");
             }

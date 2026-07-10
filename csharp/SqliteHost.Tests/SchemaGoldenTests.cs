@@ -40,7 +40,7 @@ namespace SqliteHost.Tests
             // order: call table, input list child tables, result table,
             // result list child tables, trigger (docs/workspace-schema.md).
             var statements = GeneratedHostDefinition.Build().GenerateSchemaStatements();
-            Assert.Equal(16, statements.Count);
+            Assert.Equal(19, statements.Count);
             Assert.StartsWith("CREATE TABLE pending_host_calls (", statements[0]);
             Assert.StartsWith("CREATE TABLE script_inputs (", statements[1]);
             Assert.StartsWith("CREATE TABLE call_get_value (", statements[2]);
@@ -57,6 +57,9 @@ namespace SqliteHost.Tests
             Assert.StartsWith("CREATE TABLE call_put_blob (", statements[13]);
             Assert.StartsWith("CREATE TABLE result_put_blob (", statements[14]);
             Assert.StartsWith("CREATE TRIGGER trg_call_put_blob_queue", statements[15]);
+            Assert.StartsWith("CREATE TABLE call_record_score (", statements[16]);
+            Assert.StartsWith("CREATE TABLE result_record_score (", statements[17]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_record_score_queue", statements[18]);
         }
 
         [Fact]
@@ -73,11 +76,12 @@ namespace SqliteHost.Tests
         {
             var definition = GeneratedHostDefinition.Build();
             Assert.Equal(1, definition.ApiLevel);
-            Assert.Equal(4, definition.Methods.Count);
+            Assert.Equal(5, definition.Methods.Count);
             Assert.Equal("getValue", definition.Methods[0].MethodName);
             Assert.Equal("setValue", definition.Methods[1].MethodName);
             Assert.Equal("getValues", definition.Methods[2].MethodName);
             Assert.Equal("putBlob", definition.Methods[3].MethodName);
+            Assert.Equal("recordScore", definition.Methods[4].MethodName);
             Assert.All(definition.Methods, method => Assert.Equal(1, method.ApiLevel));
         }
     }

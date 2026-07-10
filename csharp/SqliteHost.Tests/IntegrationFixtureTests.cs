@@ -142,6 +142,41 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void Example006_FloatScores_AverageFeedsTheFollowUpStep()
+        {
+            var handlers = new FakeGameHandlers();
+            using var factory = new TestWorkspaceFactory(retainWorkspace: true);
+
+            SqliteHostRunResult result = RunFixture(
+                "valid/example-006-floats.json", handlers, factory: factory);
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.Equal(2, result.ExecutedCallCount);
+            Assert.Equal(new[] { "recordScore:score-key", "recordScore:score-key-2" }, handlers.Log);
+
+            // The first call carries the payload's dyadic-exact floats.
+            Assert.Equal(2, handlers.RecordScoreInputs.Count);
+            RecordScoreInput first = handlers.RecordScoreInputs[0];
+            Assert.Equal("score-key", first.Key);
+            Assert.Equal(98.5, first.Score);
+            Assert.Equal(0.75f, first.Weight);
+
+            // The 98.5 average written after step 1 drove step 2's insert:
+            // input_score = result_average * 0.5 with a NULL weight.
+            RecordScoreInput second = handlers.RecordScoreInputs[1];
+            Assert.Equal("score-key-2", second.Key);
+            Assert.Equal(49.25, second.Score);
+            Assert.Null(second.Weight);
+
+            var averages = factory.LastWorkspace.Query(
+                "SELECT call_id, result_average FROM result_record_score ORDER BY call_id",
+                null,
+                row => row.GetText(0) + "|" + row.GetFloat64(1).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal(new[] { "score-1|98.5", "score-2|49.25" }, averages);
+        }
+
+        [Fact]
         public void Diagnostics_PopulateCallsWhenEnabled()
         {
             var handlers = new FakeGameHandlers();

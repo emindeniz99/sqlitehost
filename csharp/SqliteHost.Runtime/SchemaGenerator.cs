@@ -24,6 +24,9 @@ namespace SqliteHost
                     return "INTEGER";
                 case HostScalarType.String:
                     return "TEXT";
+                case HostScalarType.Float32:
+                case HostScalarType.Float64:
+                    return "REAL";
                 default:
                     return "BLOB";
             }
@@ -127,6 +130,7 @@ namespace SqliteHost
                 + "    name TEXT NOT NULL PRIMARY KEY,\n"
                 + "    value_type TEXT NOT NULL,\n"
                 + "    int_value INTEGER,\n"
+                + "    real_value REAL,\n"
                 + "    text_value TEXT,\n"
                 + "    blob_value BLOB\n"
                 + ");";

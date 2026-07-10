@@ -38,6 +38,18 @@ namespace SqliteHost
             return this;
         }
 
+        public IInputFieldsBuilder<TInput> Float(string sqlName, Action<TInput, float> setter)
+        {
+            Fields.Add(ScalarFields.Float(sqlName, setter));
+            return this;
+        }
+
+        public IInputFieldsBuilder<TInput> Double(string sqlName, Action<TInput, double> setter)
+        {
+            Fields.Add(ScalarFields.Double(sqlName, setter));
+            return this;
+        }
+
         public IInputFieldsBuilder<TInput> OptionalInt(string sqlName, Action<TInput, int?> setter)
         {
             Fields.Add(ScalarFields.OptionalInt(sqlName, setter));
@@ -65,6 +77,18 @@ namespace SqliteHost
         public IInputFieldsBuilder<TInput> OptionalBlob(string sqlName, Action<TInput, byte[]> setter)
         {
             Fields.Add(ScalarFields.OptionalBlob(sqlName, setter));
+            return this;
+        }
+
+        public IInputFieldsBuilder<TInput> OptionalFloat(string sqlName, Action<TInput, float?> setter)
+        {
+            Fields.Add(ScalarFields.OptionalFloat(sqlName, setter));
+            return this;
+        }
+
+        public IInputFieldsBuilder<TInput> OptionalDouble(string sqlName, Action<TInput, double?> setter)
+        {
+            Fields.Add(ScalarFields.OptionalDouble(sqlName, setter));
             return this;
         }
 
@@ -149,6 +173,18 @@ namespace SqliteHost
             return this;
         }
 
+        public IListItemFieldsBuilder<TItem> Float(string sqlName, Action<TItem, float> setter)
+        {
+            Fields.Add(ScalarFields.Float(sqlName, setter));
+            return this;
+        }
+
+        public IListItemFieldsBuilder<TItem> Double(string sqlName, Action<TItem, double> setter)
+        {
+            Fields.Add(ScalarFields.Double(sqlName, setter));
+            return this;
+        }
+
         public IListItemFieldsBuilder<TItem> OptionalInt(string sqlName, Action<TItem, int?> setter)
         {
             Fields.Add(ScalarFields.OptionalInt(sqlName, setter));
@@ -176,6 +212,18 @@ namespace SqliteHost
         public IListItemFieldsBuilder<TItem> OptionalBlob(string sqlName, Action<TItem, byte[]> setter)
         {
             Fields.Add(ScalarFields.OptionalBlob(sqlName, setter));
+            return this;
+        }
+
+        public IListItemFieldsBuilder<TItem> OptionalFloat(string sqlName, Action<TItem, float?> setter)
+        {
+            Fields.Add(ScalarFields.OptionalFloat(sqlName, setter));
+            return this;
+        }
+
+        public IListItemFieldsBuilder<TItem> OptionalDouble(string sqlName, Action<TItem, double?> setter)
+        {
+            Fields.Add(ScalarFields.OptionalDouble(sqlName, setter));
             return this;
         }
     }
@@ -215,6 +263,18 @@ namespace SqliteHost
             return this;
         }
 
+        public IResultFieldsBuilder<TResult> Float(string sqlName, Func<TResult, float> getter)
+        {
+            Fields.Add(ScalarFields.WriteFloat(sqlName, getter));
+            return this;
+        }
+
+        public IResultFieldsBuilder<TResult> Double(string sqlName, Func<TResult, double> getter)
+        {
+            Fields.Add(ScalarFields.WriteDouble(sqlName, getter));
+            return this;
+        }
+
         public IResultFieldsBuilder<TResult> OptionalInt(string sqlName, Func<TResult, int?> getter)
         {
             Fields.Add(ScalarFields.WriteOptionalInt(sqlName, getter));
@@ -242,6 +302,18 @@ namespace SqliteHost
         public IResultFieldsBuilder<TResult> OptionalBlob(string sqlName, Func<TResult, byte[]> getter)
         {
             Fields.Add(ScalarFields.WriteOptionalBlob(sqlName, getter));
+            return this;
+        }
+
+        public IResultFieldsBuilder<TResult> OptionalFloat(string sqlName, Func<TResult, float?> getter)
+        {
+            Fields.Add(ScalarFields.WriteOptionalFloat(sqlName, getter));
+            return this;
+        }
+
+        public IResultFieldsBuilder<TResult> OptionalDouble(string sqlName, Func<TResult, double?> getter)
+        {
+            Fields.Add(ScalarFields.WriteOptionalDouble(sqlName, getter));
             return this;
         }
 
@@ -333,6 +405,18 @@ namespace SqliteHost
             return this;
         }
 
+        public IListItemResultFieldsBuilder<TItem> Float(string sqlName, Func<TItem, float> getter)
+        {
+            Fields.Add(ScalarFields.WriteFloat(sqlName, getter));
+            return this;
+        }
+
+        public IListItemResultFieldsBuilder<TItem> Double(string sqlName, Func<TItem, double> getter)
+        {
+            Fields.Add(ScalarFields.WriteDouble(sqlName, getter));
+            return this;
+        }
+
         public IListItemResultFieldsBuilder<TItem> OptionalInt(string sqlName, Func<TItem, int?> getter)
         {
             Fields.Add(ScalarFields.WriteOptionalInt(sqlName, getter));
@@ -360,6 +444,18 @@ namespace SqliteHost
         public IListItemResultFieldsBuilder<TItem> OptionalBlob(string sqlName, Func<TItem, byte[]> getter)
         {
             Fields.Add(ScalarFields.WriteOptionalBlob(sqlName, getter));
+            return this;
+        }
+
+        public IListItemResultFieldsBuilder<TItem> OptionalFloat(string sqlName, Func<TItem, float?> getter)
+        {
+            Fields.Add(ScalarFields.WriteOptionalFloat(sqlName, getter));
+            return this;
+        }
+
+        public IListItemResultFieldsBuilder<TItem> OptionalDouble(string sqlName, Func<TItem, double?> getter)
+        {
+            Fields.Add(ScalarFields.WriteOptionalDouble(sqlName, getter));
             return this;
         }
     }

@@ -9,5 +9,7 @@ namespace SqliteHost
         bool GetBool(int index);
         string GetText(int index);
         byte[] GetBlob(int index);
+        float GetFloat32(int index);
+        double GetFloat64(int index);
     }
 }

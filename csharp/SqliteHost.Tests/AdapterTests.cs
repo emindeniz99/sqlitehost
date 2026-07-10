@@ -51,6 +51,61 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void FloatBindings_StoreAsRealAndReadBackThroughFloatAccessors()
+        {
+            var factory = new TestWorkspaceFactory();
+            using var connection = (MicrosoftDataSqliteConnection)factory.OpenWorkspace();
+            connection.Execute("CREATE TABLE t (a REAL, b REAL)", null);
+            connection.Execute(
+                "INSERT INTO t (a, b) VALUES (:f32, :f64)",
+                new[]
+                {
+                    new SqliteHostBinding("f32", SqliteHostBindingValue.Float32(0.75f)),
+                    new SqliteHostBinding("f64", SqliteHostBindingValue.Float64(98.5))
+                });
+
+            var rows = connection.Query(
+                "SELECT a, b, typeof(a), typeof(b) FROM t",
+                null,
+                row => new
+                {
+                    F32 = row.GetFloat32(0),
+                    F64 = row.GetFloat64(1),
+                    AType = row.GetText(2),
+                    BType = row.GetText(3)
+                });
+
+            var row0 = Assert.Single(rows);
+            Assert.Equal(0.75f, row0.F32);     // dyadic-exact single round trip
+            Assert.Equal(98.5, row0.F64);
+            Assert.Equal("real", row0.AType);  // Float32 binds as a double parameter
+            Assert.Equal("real", row0.BType);
+        }
+
+        [Fact]
+        public void GetFloat32AndGetFloat64_ReadTheSameRealColumn()
+        {
+            var factory = new TestWorkspaceFactory();
+            using var connection = (MicrosoftDataSqliteConnection)factory.OpenWorkspace();
+            connection.Execute("CREATE TABLE t (a REAL)", null);
+            connection.Execute(
+                "INSERT INTO t (a) VALUES (:v)",
+                new[]
+                {
+                    new SqliteHostBinding("v", SqliteHostBindingValue.Float64(-12.25))
+                });
+
+            var rows = connection.Query(
+                "SELECT a FROM t",
+                null,
+                row => new { F32 = row.GetFloat32(0), F64 = row.GetFloat64(0) });
+
+            var row0 = Assert.Single(rows);
+            Assert.Equal(-12.25f, row0.F32);
+            Assert.Equal(-12.25, row0.F64);
+        }
+
+        [Fact]
         public void SameBareName_BindsAllPrefixedOccurrences()
         {
             var factory = new TestWorkspaceFactory();

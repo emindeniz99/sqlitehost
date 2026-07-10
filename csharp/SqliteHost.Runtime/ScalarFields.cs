@@ -35,6 +35,18 @@ namespace SqliteHost
                 delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetBlob(index)); });
         }
 
+        public static ScalarReadField<T> Float<T>(string sqlName, Action<T, float> setter)
+        {
+            return new ScalarReadField<T>(sqlName, HostScalarType.Float32, false,
+                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat32(index)); });
+        }
+
+        public static ScalarReadField<T> Double<T>(string sqlName, Action<T, double> setter)
+        {
+            return new ScalarReadField<T>(sqlName, HostScalarType.Float64, false,
+                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat64(index)); });
+        }
+
         public static ScalarReadField<T> OptionalInt<T>(string sqlName, Action<T, int?> setter)
         {
             return new ScalarReadField<T>(sqlName, HostScalarType.Int32, true,
@@ -80,6 +92,24 @@ namespace SqliteHost
                 });
         }
 
+        public static ScalarReadField<T> OptionalFloat<T>(string sqlName, Action<T, float?> setter)
+        {
+            return new ScalarReadField<T>(sqlName, HostScalarType.Float32, true,
+                delegate(T dto, ISqliteHostRow row, int index)
+                {
+                    setter(dto, row.IsNull(index) ? (float?)null : row.GetFloat32(index));
+                });
+        }
+
+        public static ScalarReadField<T> OptionalDouble<T>(string sqlName, Action<T, double?> setter)
+        {
+            return new ScalarReadField<T>(sqlName, HostScalarType.Float64, true,
+                delegate(T dto, ISqliteHostRow row, int index)
+                {
+                    setter(dto, row.IsNull(index) ? (double?)null : row.GetFloat64(index));
+                });
+        }
+
         public static ScalarWriteField<T> WriteInt<T>(string sqlName, Func<T, int> getter)
         {
             return new ScalarWriteField<T>(sqlName, HostScalarType.Int32, false,
@@ -116,6 +146,18 @@ namespace SqliteHost
                     byte[] blob = getter(value);
                     return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
                 });
+        }
+
+        public static ScalarWriteField<T> WriteFloat<T>(string sqlName, Func<T, float> getter)
+        {
+            return new ScalarWriteField<T>(sqlName, HostScalarType.Float32, false,
+                delegate(T value) { return SqliteHostBindingValue.Float32(getter(value)); });
+        }
+
+        public static ScalarWriteField<T> WriteDouble<T>(string sqlName, Func<T, double> getter)
+        {
+            return new ScalarWriteField<T>(sqlName, HostScalarType.Float64, false,
+                delegate(T value) { return SqliteHostBindingValue.Float64(getter(value)); });
         }
 
         public static ScalarWriteField<T> WriteOptionalInt<T>(string sqlName, Func<T, int?> getter)
@@ -171,6 +213,30 @@ namespace SqliteHost
                 {
                     byte[] blob = getter(value);
                     return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
+                });
+        }
+
+        public static ScalarWriteField<T> WriteOptionalFloat<T>(string sqlName, Func<T, float?> getter)
+        {
+            return new ScalarWriteField<T>(sqlName, HostScalarType.Float32, true,
+                delegate(T value)
+                {
+                    float? number = getter(value);
+                    return number.HasValue
+                        ? SqliteHostBindingValue.Float32(number.Value)
+                        : SqliteHostBindingValue.Null();
+                });
+        }
+
+        public static ScalarWriteField<T> WriteOptionalDouble<T>(string sqlName, Func<T, double?> getter)
+        {
+            return new ScalarWriteField<T>(sqlName, HostScalarType.Float64, true,
+                delegate(T value)
+                {
+                    double? number = getter(value);
+                    return number.HasValue
+                        ? SqliteHostBindingValue.Float64(number.Value)
+                        : SqliteHostBindingValue.Null();
                 });
         }
     }

@@ -9,7 +9,9 @@ namespace SqliteHost
         Int64,
         Boolean,
         String,
-        Bytes
+        Bytes,
+        Float32,
+        Float64
     }
 
     /// <summary>Logical description of one scalar field (no physical names).</summary>

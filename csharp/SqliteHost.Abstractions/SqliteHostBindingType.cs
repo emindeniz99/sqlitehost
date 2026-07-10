@@ -8,6 +8,8 @@ namespace SqliteHost
         Int64,
         Bool,
         Text,
-        Blob
+        Blob,
+        Float32,
+        Float64
     }
 }

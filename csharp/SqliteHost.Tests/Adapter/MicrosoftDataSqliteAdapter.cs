@@ -99,6 +99,10 @@ namespace SqliteHost.Tests.Adapter
                     return (object)value.TextValue ?? DBNull.Value;
                 case SqliteHostBindingType.Blob:
                     return (object)value.BlobValue ?? DBNull.Value;
+                case SqliteHostBindingType.Float32:
+                    return (double)value.Float32Value;
+                case SqliteHostBindingType.Float64:
+                    return value.Float64Value;
                 default:
                     return DBNull.Value;
             }
@@ -120,6 +124,8 @@ namespace SqliteHost.Tests.Adapter
         public bool GetBool(int index) => _reader.GetInt64(index) != 0;
         public string GetText(int index) => _reader.GetString(index);
         public byte[] GetBlob(int index) => _reader.GetFieldValue<byte[]>(index);
+        public float GetFloat32(int index) => _reader.GetFloat(index);
+        public double GetFloat64(int index) => _reader.GetDouble(index);
     }
 
     public sealed class MicrosoftDataSqlitePreparedStatement : ISqliteHostPreparedStatement

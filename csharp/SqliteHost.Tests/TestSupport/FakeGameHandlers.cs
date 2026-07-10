@@ -9,12 +9,16 @@ namespace SqliteHost.Tests.TestSupport
     {
         public Dictionary<string, long> Storage { get; } = new Dictionary<string, long>(StringComparer.Ordinal);
         public Dictionary<string, byte[]> Blobs { get; } = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        public Dictionary<string, List<double>> Scores { get; } = new Dictionary<string, List<double>>(StringComparer.Ordinal);
 
         /// <summary>Invocation log: "method:key[:value]" entries in call order.</summary>
         public List<string> Log { get; } = new List<string>();
 
         public GetValuesInput LastGetValuesInput { get; private set; }
         public PutBlobInput LastPutBlobInput { get; private set; }
+
+        /// <summary>Every RecordScore input in call order.</summary>
+        public List<RecordScoreInput> RecordScoreInputs { get; } = new List<RecordScoreInput>();
 
         public Func<GetValueInput, GetValueResult> GetValueOverride { get; set; }
 
@@ -62,6 +66,24 @@ namespace SqliteHost.Tests.TestSupport
             LastPutBlobInput = input;
             Blobs[input.Key] = input.Data;
             return new PutBlobResult { Stored = true };
+        }
+
+        public RecordScoreResult RecordScore(RecordScoreInput input)
+        {
+            Log.Add("recordScore:" + input.Key);
+            RecordScoreInputs.Add(input);
+            if (!Scores.TryGetValue(input.Key, out List<double> scores))
+            {
+                scores = new List<double>();
+                Scores[input.Key] = scores;
+            }
+            scores.Add(input.Score);
+            double sum = 0;
+            foreach (double score in scores)
+            {
+                sum += score;
+            }
+            return new RecordScoreResult { Average = sum / scores.Count };
         }
     }
 }
