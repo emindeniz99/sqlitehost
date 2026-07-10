@@ -15,6 +15,7 @@ namespace Example.Game.Generated
                 BuildSetValueSpec(),
                 BuildGetValuesSpec(),
                 BuildPutBlobSpec(),
+                BuildRecordScoreSpec(),
             };
         }
 
@@ -75,6 +76,21 @@ namespace Example.Game.Generated
                 .Results(r => r
                     .Bool("stored", x => x.Stored))
                 .Handler((handlers, input) => handlers.PutBlob(input))
+                .Build();
+        }
+
+        private static IHostMethodSpec<IGeneratedHostHandlers> BuildRecordScoreSpec()
+        {
+            return HostMethod
+                .For<IGeneratedHostHandlers, RecordScoreInput, RecordScoreResult>("recordScore")
+                .ApiLevel(1)
+                .Inputs(i => i
+                    .Text("key", (x, v) => x.Key = v)
+                    .Double("score", (x, v) => x.Score = v)
+                    .OptionalFloat("weight", (x, v) => x.Weight = v))
+                .Results(r => r
+                    .Double("average", x => x.Average))
+                .Handler((handlers, input) => handlers.RecordScore(input))
                 .Build();
         }
     }

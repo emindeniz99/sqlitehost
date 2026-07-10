@@ -357,6 +357,7 @@ namespace SqliteHost
             SqliteHostBindingValue value = input.Value ?? SqliteHostBindingValue.Null();
             string valueType;
             SqliteHostBindingValue intValue = SqliteHostBindingValue.Null();
+            SqliteHostBindingValue realValue = SqliteHostBindingValue.Null();
             SqliteHostBindingValue textValue = SqliteHostBindingValue.Null();
             SqliteHostBindingValue blobValue = SqliteHostBindingValue.Null();
             switch (value.Type)
@@ -381,18 +382,27 @@ namespace SqliteHost
                     valueType = "blob";
                     blobValue = value;
                     break;
+                case SqliteHostBindingType.Float32:
+                    valueType = "float32";
+                    realValue = value;
+                    break;
+                case SqliteHostBindingType.Float64:
+                    valueType = "float64";
+                    realValue = value;
+                    break;
                 default:
                     valueType = "null";
                     break;
             }
             connection.Execute(
-                "INSERT INTO script_inputs (name, value_type, int_value, text_value, blob_value)"
-                + " VALUES (:name, :valueType, :intValue, :textValue, :blobValue)",
+                "INSERT INTO script_inputs (name, value_type, int_value, real_value, text_value, blob_value)"
+                + " VALUES (:name, :valueType, :intValue, :realValue, :textValue, :blobValue)",
                 new List<SqliteHostBinding>
                 {
                     new SqliteHostBinding("name", SqliteHostBindingValue.Text(input.Name)),
                     new SqliteHostBinding("valueType", SqliteHostBindingValue.Text(valueType)),
                     new SqliteHostBinding("intValue", intValue),
+                    new SqliteHostBinding("realValue", realValue),
                     new SqliteHostBinding("textValue", textValue),
                     new SqliteHostBinding("blobValue", blobValue)
                 });

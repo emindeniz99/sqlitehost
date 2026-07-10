@@ -15,11 +15,15 @@ namespace SqliteHost
         IResultFieldsBuilder<TResult> Bool(string sqlName, Func<TResult, bool> getter);
         IResultFieldsBuilder<TResult> Text(string sqlName, Func<TResult, string> getter);
         IResultFieldsBuilder<TResult> Blob(string sqlName, Func<TResult, byte[]> getter);
+        IResultFieldsBuilder<TResult> Float(string sqlName, Func<TResult, float> getter);
+        IResultFieldsBuilder<TResult> Double(string sqlName, Func<TResult, double> getter);
         IResultFieldsBuilder<TResult> OptionalInt(string sqlName, Func<TResult, int?> getter);
         IResultFieldsBuilder<TResult> OptionalLong(string sqlName, Func<TResult, long?> getter);
         IResultFieldsBuilder<TResult> OptionalBool(string sqlName, Func<TResult, bool?> getter);
         IResultFieldsBuilder<TResult> OptionalText(string sqlName, Func<TResult, string> getter);
         IResultFieldsBuilder<TResult> OptionalBlob(string sqlName, Func<TResult, byte[]> getter);
+        IResultFieldsBuilder<TResult> OptionalFloat(string sqlName, Func<TResult, float?> getter);
+        IResultFieldsBuilder<TResult> OptionalDouble(string sqlName, Func<TResult, double?> getter);
 
         IResultFieldsBuilder<TResult> List<TItem>(
             string sqlName,
