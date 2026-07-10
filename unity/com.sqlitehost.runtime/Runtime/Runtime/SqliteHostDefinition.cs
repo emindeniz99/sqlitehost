@@ -18,12 +18,14 @@ namespace SqliteHost
         ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel);
         ISqliteHostDefinitionBuilder<THandlers> MinSqliteVersion(int versionNumber);
         ISqliteHostDefinitionBuilder<THandlers> Naming(Action<SqliteHostNamingBuilder> configure);
+        ISqliteHostDefinitionBuilder<THandlers> Columns(Action<SqliteHostColumnsBuilder> configure);
         SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods);
     }
 
     internal sealed class SqliteHostDefinitionBuilder<THandlers> : ISqliteHostDefinitionBuilder<THandlers>
     {
         private readonly SqliteHostNamingBuilder _naming = new SqliteHostNamingBuilder();
+        private readonly SqliteHostColumnsBuilder _columns = new SqliteHostColumnsBuilder();
         private int _apiLevel = 1;
         private int _minSqliteVersionNumber = SqliteHostDefinition<THandlers>.DefaultMinSqliteVersionNumber;
 
@@ -45,9 +47,16 @@ namespace SqliteHost
             return this;
         }
 
+        public ISqliteHostDefinitionBuilder<THandlers> Columns(Action<SqliteHostColumnsBuilder> configure)
+        {
+            configure(_columns);
+            return this;
+        }
+
         public SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods)
         {
-            return new SqliteHostDefinition<THandlers>(_apiLevel, _minSqliteVersionNumber, _naming.Build(), methods);
+            return new SqliteHostDefinition<THandlers>(
+                _apiLevel, _minSqliteVersionNumber, _naming.Build(), _columns.Build(), methods);
         }
     }
 
@@ -65,7 +74,8 @@ namespace SqliteHost
             "typedNamedBindings",
             "splitResultTables",
             "scriptInputs",
-            "scriptVars"
+            "scriptVars",
+            "scriptControl"
         };
 
         private readonly List<IRuntimeHostMethodSpec<THandlers>> _runtimeSpecs;
@@ -76,11 +86,16 @@ namespace SqliteHost
             int apiLevel,
             int minSqliteVersionNumber,
             SqliteHostNaming naming,
+            SqliteHostColumns columns,
             IReadOnlyList<IHostMethodSpec<THandlers>> methods)
         {
             if (naming == null)
             {
                 throw new ArgumentNullException(nameof(naming));
+            }
+            if (columns == null)
+            {
+                throw new ArgumentNullException(nameof(columns));
             }
             if (methods == null)
             {
@@ -89,6 +104,7 @@ namespace SqliteHost
             ApiLevel = apiLevel;
             MinSqliteVersionNumber = minSqliteVersionNumber;
             Naming = naming;
+            Columns = columns;
             _runtimeSpecs = new List<IRuntimeHostMethodSpec<THandlers>>();
             _specsByMethod = new Dictionary<string, IRuntimeHostMethodSpec<THandlers>>(StringComparer.Ordinal);
             _methods = new List<IHostMethodSpec<THandlers>>();
@@ -112,6 +128,7 @@ namespace SqliteHost
                 _methods.Add(method);
             }
             ValidateWorkspaceTableNames(naming, _runtimeSpecs);
+            ValidateColumnNames(naming, columns, _runtimeSpecs);
         }
 
         /// <summary>
@@ -125,25 +142,29 @@ namespace SqliteHost
         {
             if (string.IsNullOrEmpty(naming.QueueTable)
                 || string.IsNullOrEmpty(naming.InputsTable)
-                || string.IsNullOrEmpty(naming.VarsTable))
+                || string.IsNullOrEmpty(naming.VarsTable)
+                || string.IsNullOrEmpty(naming.ControlTable))
             {
                 throw new ArgumentException(
-                    "Workspace table names (QueueTable, InputsTable, VarsTable) must be non-empty.",
+                    "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be non-empty.",
                     nameof(naming));
             }
-            if (string.Equals(naming.QueueTable, naming.InputsTable, StringComparison.Ordinal)
-                || string.Equals(naming.QueueTable, naming.VarsTable, StringComparison.Ordinal)
-                || string.Equals(naming.InputsTable, naming.VarsTable, StringComparison.Ordinal))
+            var distinctTables = new HashSet<string>(StringComparer.Ordinal);
+            if (!distinctTables.Add(naming.QueueTable)
+                || !distinctTables.Add(naming.InputsTable)
+                || !distinctTables.Add(naming.VarsTable)
+                || !distinctTables.Add(naming.ControlTable))
             {
                 throw new ArgumentException(
-                    "Workspace table names (QueueTable, InputsTable, VarsTable) must be mutually distinct.",
+                    "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be mutually distinct.",
                     nameof(naming));
             }
             var workspaceTables = new HashSet<string>(StringComparer.Ordinal)
             {
                 naming.QueueTable,
                 naming.InputsTable,
-                naming.VarsTable
+                naming.VarsTable,
+                naming.ControlTable
             };
             foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
             {
@@ -172,6 +193,111 @@ namespace SqliteHost
             }
         }
 
+        /// <summary>
+        /// Shared column names and the done literal (docs/naming.md):
+        /// non-empty, mutually distinct within each table, and the
+        /// row-identity columns (CallId/ItemIndex/Status) must not collide
+        /// with any derived input/result field column. Fails loud at
+        /// definition build time.
+        /// </summary>
+        private static void ValidateColumnNames(
+            SqliteHostNaming naming,
+            SqliteHostColumns columns,
+            List<IRuntimeHostMethodSpec<THandlers>> specs)
+        {
+            RequireNonEmpty(columns.CallId, "CallId");
+            RequireNonEmpty(columns.ItemIndex, "ItemIndex");
+            RequireNonEmpty(columns.Status, "Status");
+            RequireNonEmpty(columns.DoneValue, "DoneValue");
+            RequireNonEmpty(columns.QueueId, "QueueId");
+            RequireNonEmpty(columns.Method, "Method");
+            RequireNonEmpty(columns.Name, "Name");
+            RequireNonEmpty(columns.ValueType, "ValueType");
+            RequireNonEmpty(columns.IntValue, "IntValue");
+            RequireNonEmpty(columns.RealValue, "RealValue");
+            RequireNonEmpty(columns.TextValue, "TextValue");
+            RequireNonEmpty(columns.BlobValue, "BlobValue");
+            RequireNonEmpty(columns.Action, "Action");
+            RequireNonEmpty(columns.Message, "Message");
+
+            RequireDistinctWithinTable("queue",
+                columns.QueueId, columns.CallId, columns.Method, columns.Status);
+            RequireDistinctWithinTable("inputs/vars",
+                columns.Name, columns.ValueType, columns.IntValue,
+                columns.RealValue, columns.TextValue, columns.BlobValue);
+            RequireDistinctWithinTable("control",
+                columns.Action, columns.Message);
+
+            var rowIdentityColumns = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { columns.CallId, "CallId" },
+                { columns.ItemIndex, "ItemIndex" },
+                { columns.Status, "Status" }
+            };
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                var derivedColumns = new List<string>();
+                foreach (SchemaFieldModel field in model.InputFields)
+                {
+                    derivedColumns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                }
+                foreach (SchemaListFieldModel listField in model.InputListFields)
+                {
+                    foreach (SchemaFieldModel field in listField.ItemFields)
+                    {
+                        derivedColumns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                    }
+                }
+                foreach (SchemaFieldModel field in model.ResultFields)
+                {
+                    derivedColumns.Add(NamingDerivation.ResultColumn(naming, field.SqlName));
+                }
+                foreach (SchemaListFieldModel listField in model.ResultListFields)
+                {
+                    foreach (SchemaFieldModel field in listField.ItemFields)
+                    {
+                        derivedColumns.Add(NamingDerivation.ResultColumn(naming, field.SqlName));
+                    }
+                }
+                foreach (string derivedColumn in derivedColumns)
+                {
+                    string identityName;
+                    if (rowIdentityColumns.TryGetValue(derivedColumn, out identityName))
+                    {
+                        throw new ArgumentException(
+                            "Row-identity column " + identityName + " ('" + derivedColumn
+                            + "') collides with a derived field column of method '" + model.MethodName + "'.",
+                            "columns");
+                    }
+                }
+            }
+        }
+
+        private static void RequireNonEmpty(string value, string columnProperty)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                throw new ArgumentException(
+                    "Column name " + columnProperty + " (and the done literal) must be non-empty.",
+                    "columns");
+            }
+        }
+
+        private static void RequireDistinctWithinTable(string table, params string[] names)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string name in names)
+            {
+                if (!seen.Add(name))
+                {
+                    throw new ArgumentException(
+                        "Column name '" + name + "' occurs more than once in the " + table + " table.",
+                        "columns");
+                }
+            }
+        }
+
         public int ApiLevel { get; }
 
         /// <summary>
@@ -184,12 +310,14 @@ namespace SqliteHost
 
         public SqliteHostNaming Naming { get; }
 
+        public SqliteHostColumns Columns { get; }
+
         public IReadOnlyList<IHostMethodSpec<THandlers>> Methods
         {
             get { return _methods; }
         }
 
-        /// <summary>Protocol v1 features: typedNamedBindings, splitResultTables, scriptInputs, scriptVars.</summary>
+        /// <summary>Protocol v1 features: typedNamedBindings, splitResultTables, scriptInputs, scriptVars, scriptControl.</summary>
         public IReadOnlyList<string> SupportedFeatures
         {
             get { return FeaturesV1; }
@@ -202,7 +330,7 @@ namespace SqliteHost
             {
                 models.Add(spec.SchemaModel);
             }
-            return SchemaGenerator.GenerateStatements(Naming, models);
+            return SchemaGenerator.GenerateStatements(Naming, Columns, models);
         }
 
         /// <summary>Full DDL script — byte-identical to the committed DDL snapshot fixture.</summary>
@@ -213,7 +341,7 @@ namespace SqliteHost
             {
                 models.Add(spec.SchemaModel);
             }
-            return SchemaGenerator.GenerateScript(Naming, models);
+            return SchemaGenerator.GenerateScript(Naming, Columns, models);
         }
 
         internal IRuntimeHostMethodSpec<THandlers> ResolveSpec(string methodName)

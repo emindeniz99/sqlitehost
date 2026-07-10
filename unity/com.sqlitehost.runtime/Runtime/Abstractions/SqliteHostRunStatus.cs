@@ -9,6 +9,7 @@ namespace SqliteHost
         FailedBinding,
         FailedHandler,
         FailedSchema,
-        FailedValidation
+        FailedValidation,
+        FailedScript
     }
 }

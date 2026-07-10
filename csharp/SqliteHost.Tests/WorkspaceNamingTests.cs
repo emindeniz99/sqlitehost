@@ -52,7 +52,7 @@ namespace SqliteHost.Tests
                 .Build();
         }
 
-        /// <summary>Single-method host with all three workspace tables renamed.</summary>
+        /// <summary>Single-method host with all four workspace tables renamed.</summary>
         private static SqliteHostDefinition<ICustomHandlers> BuildCustomNamedHost()
         {
             return SqliteHostDefinition
@@ -61,7 +61,8 @@ namespace SqliteHost.Tests
                 .Naming(n => n
                     .QueueTable("host_queue")
                     .InputsTable("script_params")
-                    .VarsTable("script_scratch"))
+                    .VarsTable("script_scratch")
+                    .ControlTable("script_flow"))
                 .Methods(new[] { GetValueSpec() });
         }
 
@@ -72,6 +73,7 @@ namespace SqliteHost.Tests
             Assert.Equal("pending_host_calls", naming.QueueTable);
             Assert.Equal("script_inputs", naming.InputsTable);
             Assert.Equal("script_vars", naming.VarsTable);
+            Assert.Equal("script_control", naming.ControlTable);
         }
 
         [Fact]
@@ -82,14 +84,17 @@ namespace SqliteHost.Tests
             Assert.Equal("host_queue", definition.Naming.QueueTable);
             Assert.Equal("script_params", definition.Naming.InputsTable);
             Assert.Equal("script_scratch", definition.Naming.VarsTable);
+            Assert.Equal("script_flow", definition.Naming.ControlTable);
 
             string script = definition.GenerateSchemaScript();
             Assert.Contains("CREATE TABLE host_queue (", script);
             Assert.Contains("CREATE TABLE script_params (", script);
             Assert.Contains("CREATE TABLE script_scratch (", script);
+            Assert.Contains("CREATE TABLE script_flow (", script);
             Assert.DoesNotContain("pending_host_calls", script);
             Assert.DoesNotContain("script_inputs", script);
             Assert.DoesNotContain("script_vars", script);
+            Assert.DoesNotContain("script_control", script);
         }
 
         [Fact]
@@ -181,14 +186,16 @@ namespace SqliteHost.Tests
         }
 
         [Theory]
-        [InlineData("pending_host_calls", "shared", "shared")]
-        [InlineData("shared", "shared", "script_vars")]
-        [InlineData("shared", "script_inputs", "shared")]
-        public void DuplicateWorkspaceTableNames_ThrowAtBuildTime(string queue, string inputs, string vars)
+        [InlineData("pending_host_calls", "shared", "shared", "script_control")]
+        [InlineData("shared", "shared", "script_vars", "script_control")]
+        [InlineData("shared", "script_inputs", "shared", "script_control")]
+        [InlineData("pending_host_calls", "script_inputs", "shared", "shared")]
+        public void DuplicateWorkspaceTableNames_ThrowAtBuildTime(
+            string queue, string inputs, string vars, string control)
         {
             var builder = SqliteHostDefinition
                 .ForHandlers<ICustomHandlers>()
-                .Naming(n => n.QueueTable(queue).InputsTable(inputs).VarsTable(vars));
+                .Naming(n => n.QueueTable(queue).InputsTable(inputs).VarsTable(vars).ControlTable(control));
 
             var ex = Assert.Throws<ArgumentException>(
                 () => builder.Methods(new[] { GetValueSpec() }));

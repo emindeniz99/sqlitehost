@@ -12,11 +12,13 @@ namespace SqliteHost
         /// <summary>
         /// Reads the parent call row + input list child rows, maps them to
         /// the input DTO, invokes the handler, and writes the result parent
-        /// row (status 'done') + result list child rows.
+        /// row (status = the configured done literal) + result list child
+        /// rows.
         /// </summary>
         void ExecuteCall(
             ISqliteHostConnection connection,
             SqliteHostNaming naming,
+            SqliteHostColumns columns,
             THandlers handlers,
             string callId);
     }

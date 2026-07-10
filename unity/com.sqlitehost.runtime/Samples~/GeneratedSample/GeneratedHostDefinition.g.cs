@@ -21,7 +21,23 @@ namespace Example.Game.Generated
                     .ResultListTableInfix("__result_")
                     .QueueTable("pending_host_calls")
                     .InputsTable("script_inputs")
-                    .VarsTable("script_vars"))
+                    .VarsTable("script_vars")
+                    .ControlTable("script_control"))
+                .Columns(c => c
+                    .CallId("call_id")
+                    .ItemIndex("item_index")
+                    .Status("status")
+                    .DoneValue("done")
+                    .QueueId("queue_id")
+                    .Method("method")
+                    .Name("name")
+                    .ValueType("value_type")
+                    .IntValue("int_value")
+                    .RealValue("real_value")
+                    .TextValue("text_value")
+                    .BlobValue("blob_value")
+                    .Action("action")
+                    .Message("message"))
                 .Methods(GeneratedHostMethodSpecs.BuildAll());
         }
     }

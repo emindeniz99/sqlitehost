@@ -232,6 +232,42 @@ namespace SqliteHost.Tests
         }
 
         [SkippableFact]
+        public void Example009_HaltsWithoutWriting_WhenStoredValueIsAlreadyAtTarget()
+        {
+            var handlers = new FakeGameHandlers();
+            handlers.Storage["example-key"] = 42;
+
+            SqliteHostRunResult result = RunFixture("valid/example-009-halt.json", handlers);
+
+            // The script wrote 'halt' after seeing result_value = 42: the run
+            // completes gracefully, the setValue handler is never invoked.
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.True(result.Halted);
+            Assert.Equal("value already at target", result.HaltMessage);
+            Assert.Equal("halt-if-satisfied", result.StepId);
+            Assert.Null(result.ErrorCode);
+            Assert.Equal(1, result.ExecutedCallCount);
+            Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
+            Assert.Equal(42, handlers.Storage["example-key"]);
+        }
+
+        [SkippableFact]
+        public void Example009_WritesAndDoesNotHalt_WhenStoredValueDiffers()
+        {
+            var handlers = new FakeGameHandlers();
+            handlers.Storage["example-key"] = 7;
+
+            SqliteHostRunResult result = RunFixture("valid/example-009-halt.json", handlers);
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.False(result.Halted);
+            Assert.Null(result.HaltMessage);
+            Assert.Equal(2, result.ExecutedCallCount);
+            Assert.Equal(new[] { "getValue:example-key", "setValue:example-key:42" }, handlers.Log);
+            Assert.Equal(42, handlers.Storage["example-key"]);
+        }
+
+        [SkippableFact]
         public void Diagnostics_PopulateCallsWhenEnabled()
         {
             var handlers = new FakeGameHandlers();

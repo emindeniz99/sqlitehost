@@ -40,10 +40,11 @@ namespace SqliteHost
         public void ExecuteCall(
             ISqliteHostConnection connection,
             SqliteHostNaming naming,
+            SqliteHostColumns columns,
             THandlers handlers,
             string callId)
         {
-            TInput input = ReadInput(connection, naming, callId);
+            TInput input = ReadInput(connection, naming, columns, callId);
 
             TResult result;
             try
@@ -57,10 +58,10 @@ namespace SqliteHost
 
             try
             {
-                WriteResultParentRow(connection, naming, callId, result);
+                WriteResultParentRow(connection, naming, columns, callId, result);
                 foreach (ResultListField<TResult> listField in _resultListFields)
                 {
-                    listField.Write(result, connection, naming, MethodName, callId);
+                    listField.Write(result, connection, naming, columns, MethodName, callId);
                 }
             }
             catch (Exception ex)
@@ -69,7 +70,11 @@ namespace SqliteHost
             }
         }
 
-        private TInput ReadInput(ISqliteHostConnection connection, SqliteHostNaming naming, string callId)
+        private TInput ReadInput(
+            ISqliteHostConnection connection,
+            SqliteHostNaming naming,
+            SqliteHostColumns hostColumns,
+            string callId)
         {
             string callTable = NamingDerivation.CallTable(naming, MethodName);
             var columns = new List<string>();
@@ -77,8 +82,9 @@ namespace SqliteHost
             {
                 columns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
             }
-            string selectList = columns.Count > 0 ? string.Join(", ", columns) : "call_id";
-            string sql = "SELECT " + selectList + " FROM " + callTable + " WHERE call_id = :callId";
+            string selectList = columns.Count > 0 ? string.Join(", ", columns) : hostColumns.CallId;
+            string sql = "SELECT " + selectList + " FROM " + callTable
+                + " WHERE " + hostColumns.CallId + " = :callId";
 
             List<ScalarReadField<TInput>> inputFields = _inputFields;
             IReadOnlyList<TInput> rows = connection.Query(
@@ -103,7 +109,7 @@ namespace SqliteHost
             TInput input = rows[0];
             foreach (InputListField<TInput> listField in _inputListFields)
             {
-                listField.Load(input, connection, naming, MethodName, callId);
+                listField.Load(input, connection, naming, hostColumns, MethodName, callId);
             }
             return input;
         }
@@ -111,16 +117,17 @@ namespace SqliteHost
         private void WriteResultParentRow(
             ISqliteHostConnection connection,
             SqliteHostNaming naming,
+            SqliteHostColumns hostColumns,
             string callId,
             TResult result)
         {
             string resultTable = NamingDerivation.ResultTable(naming, MethodName);
-            var columns = new List<string> { "call_id", "status" };
+            var columns = new List<string> { hostColumns.CallId, hostColumns.Status };
             var placeholders = new List<string> { ":callId", ":status" };
             var bindings = new List<SqliteHostBinding>
             {
                 new SqliteHostBinding("callId", SqliteHostBindingValue.Text(callId)),
-                new SqliteHostBinding("status", SqliteHostBindingValue.Text("done"))
+                new SqliteHostBinding("status", SqliteHostBindingValue.Text(hostColumns.DoneValue))
             };
             for (int i = 0; i < _resultFields.Count; i++)
             {

@@ -31,44 +31,51 @@ namespace SqliteHost
 
         public static List<string> GenerateStatements(
             SqliteHostNaming naming,
+            SqliteHostColumns columns,
             IReadOnlyList<SchemaMethodModel> methods)
         {
             var statements = new List<string>();
-            statements.Add(QueueTableDdl(naming));
-            statements.Add(InputsTableDdl(naming));
-            statements.Add(VarsTableDdl(naming));
+            statements.Add(QueueTableDdl(naming, columns));
+            statements.Add(NameValueTableDdl(naming.InputsTable, columns));
+            statements.Add(NameValueTableDdl(naming.VarsTable, columns));
+            statements.Add(ControlTableDdl(naming, columns));
             foreach (SchemaMethodModel method in methods)
             {
                 statements.Add(ParentTableDdl(
                     NamingDerivation.CallTable(naming, method.MethodName),
+                    columns,
                     InputColumnLines(naming, method.InputFields),
                     false));
                 foreach (SchemaListFieldModel listField in method.InputListFields)
                 {
                     statements.Add(ChildTableDdl(
                         NamingDerivation.InputListTable(naming, method.MethodName, listField.SqlName),
+                        columns,
                         InputColumnLines(naming, listField.ItemFields)));
                 }
                 statements.Add(ParentTableDdl(
                     NamingDerivation.ResultTable(naming, method.MethodName),
+                    columns,
                     ResultColumnLines(naming, method.ResultFields),
                     true));
                 foreach (SchemaListFieldModel listField in method.ResultListFields)
                 {
                     statements.Add(ChildTableDdl(
                         NamingDerivation.ResultListTable(naming, method.MethodName, listField.SqlName),
+                        columns,
                         ResultColumnLines(naming, listField.ItemFields)));
                 }
-                statements.Add(QueueTriggerDdl(naming, method.MethodName));
+                statements.Add(QueueTriggerDdl(naming, columns, method.MethodName));
             }
             return statements;
         }
 
         public static string GenerateScript(
             SqliteHostNaming naming,
+            SqliteHostColumns columns,
             IReadOnlyList<SchemaMethodModel> methods)
         {
-            List<string> statements = GenerateStatements(naming, methods);
+            List<string> statements = GenerateStatements(naming, columns, methods);
             var builder = new StringBuilder();
             for (int i = 0; i < statements.Count; i++)
             {
@@ -112,51 +119,57 @@ namespace SqliteHost
             return "    " + column + " " + SqlColumnType(field.ScalarType) + notNull;
         }
 
-        private static string QueueTableDdl(SqliteHostNaming naming)
+        private static string QueueTableDdl(SqliteHostNaming naming, SqliteHostColumns columns)
         {
             return "CREATE TABLE " + naming.QueueTable + " (\n"
-                + "    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
-                + "    call_id TEXT NOT NULL UNIQUE,\n"
-                + "    method TEXT NOT NULL,\n"
-                + "    status TEXT NOT NULL DEFAULT 'pending'\n"
-                + ");";
-        }
-
-        private static string InputsTableDdl(SqliteHostNaming naming)
-        {
-            return "CREATE TABLE " + naming.InputsTable + " (\n"
-                + "    name TEXT NOT NULL PRIMARY KEY,\n"
-                + "    value_type TEXT NOT NULL,\n"
-                + "    int_value INTEGER,\n"
-                + "    real_value REAL,\n"
-                + "    text_value TEXT,\n"
-                + "    blob_value BLOB\n"
+                + "    " + columns.QueueId + " INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                + "    " + columns.CallId + " TEXT NOT NULL UNIQUE,\n"
+                + "    " + columns.Method + " TEXT NOT NULL,\n"
+                + "    " + columns.Status + " TEXT NOT NULL DEFAULT 'pending'\n"
                 + ");";
         }
 
         /// <summary>
-        /// Script scratch variable space (feature scriptVars): the runtime
-        /// creates it empty and never reads or writes it.
+        /// Shared shape of the inputs table and the script scratch variable
+        /// table (feature scriptVars); the runtime creates the vars table
+        /// empty and never reads or writes it.
         /// </summary>
-        private static string VarsTableDdl(SqliteHostNaming naming)
+        private static string NameValueTableDdl(string tableName, SqliteHostColumns columns)
         {
-            return "CREATE TABLE " + naming.VarsTable + " (\n"
-                + "    name TEXT NOT NULL PRIMARY KEY,\n"
-                + "    value_type TEXT NOT NULL,\n"
-                + "    int_value INTEGER,\n"
-                + "    real_value REAL,\n"
-                + "    text_value TEXT,\n"
-                + "    blob_value BLOB\n"
+            return "CREATE TABLE " + tableName + " (\n"
+                + "    " + columns.Name + " TEXT NOT NULL PRIMARY KEY,\n"
+                + "    " + columns.ValueType + " TEXT NOT NULL,\n"
+                + "    " + columns.IntValue + " INTEGER,\n"
+                + "    " + columns.RealValue + " REAL,\n"
+                + "    " + columns.TextValue + " TEXT,\n"
+                + "    " + columns.BlobValue + " BLOB\n"
                 + ");";
         }
 
-        private static string ParentTableDdl(string tableName, List<string> scalarColumnLines, bool isResultTable)
+        /// <summary>
+        /// Script early-exit channel (feature scriptControl): the runtime
+        /// creates it empty, checks it after every statement, and never
+        /// writes it.
+        /// </summary>
+        private static string ControlTableDdl(SqliteHostNaming naming, SqliteHostColumns columns)
+        {
+            return "CREATE TABLE " + naming.ControlTable + " (\n"
+                + "    " + columns.Action + " TEXT NOT NULL,\n"
+                + "    " + columns.Message + " TEXT\n"
+                + ");";
+        }
+
+        private static string ParentTableDdl(
+            string tableName,
+            SqliteHostColumns columns,
+            List<string> scalarColumnLines,
+            bool isResultTable)
         {
             var columnLines = new List<string>();
-            columnLines.Add("    call_id TEXT NOT NULL PRIMARY KEY");
+            columnLines.Add("    " + columns.CallId + " TEXT NOT NULL PRIMARY KEY");
             if (isResultTable)
             {
-                columnLines.Add("    status TEXT NOT NULL DEFAULT 'done'");
+                columnLines.Add("    " + columns.Status + " TEXT NOT NULL DEFAULT '" + columns.DoneValue + "'");
             }
             columnLines.AddRange(scalarColumnLines);
             return "CREATE TABLE " + tableName + " (\n"
@@ -164,25 +177,31 @@ namespace SqliteHost
                 + ");";
         }
 
-        private static string ChildTableDdl(string tableName, List<string> scalarColumnLines)
+        private static string ChildTableDdl(
+            string tableName,
+            SqliteHostColumns columns,
+            List<string> scalarColumnLines)
         {
             var columnLines = new List<string>();
-            columnLines.Add("    call_id TEXT NOT NULL");
-            columnLines.Add("    item_index INTEGER NOT NULL");
+            columnLines.Add("    " + columns.CallId + " TEXT NOT NULL");
+            columnLines.Add("    " + columns.ItemIndex + " INTEGER NOT NULL");
             columnLines.AddRange(scalarColumnLines);
-            columnLines.Add("    PRIMARY KEY (call_id, item_index)");
+            columnLines.Add("    PRIMARY KEY (" + columns.CallId + ", " + columns.ItemIndex + ")");
             return "CREATE TABLE " + tableName + " (\n"
                 + string.Join(",\n", columnLines) + "\n"
                 + ");";
         }
 
-        private static string QueueTriggerDdl(SqliteHostNaming naming, string methodName)
+        private static string QueueTriggerDdl(
+            SqliteHostNaming naming,
+            SqliteHostColumns columns,
+            string methodName)
         {
             return "CREATE TRIGGER " + NamingDerivation.QueueTrigger(naming, methodName) + "\n"
                 + "AFTER INSERT ON " + NamingDerivation.CallTable(naming, methodName) + "\n"
                 + "BEGIN\n"
-                + "    INSERT INTO " + naming.QueueTable + " (call_id, method)\n"
-                + "    VALUES (NEW.call_id, '" + methodName + "');\n"
+                + "    INSERT INTO " + naming.QueueTable + " (" + columns.CallId + ", " + columns.Method + ")\n"
+                + "    VALUES (NEW." + columns.CallId + ", '" + methodName + "');\n"
                 + "END;";
         }
     }

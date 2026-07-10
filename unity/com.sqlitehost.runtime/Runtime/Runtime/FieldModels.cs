@@ -65,7 +65,7 @@ namespace SqliteHost
         public InputListField(
             string sqlName,
             IReadOnlyList<SchemaFieldModel> itemSchemaFields,
-            Action<TInput, ISqliteHostConnection, SqliteHostNaming, string, string> load)
+            Action<TInput, ISqliteHostConnection, SqliteHostNaming, SqliteHostColumns, string, string> load)
         {
             SqlName = sqlName;
             ItemSchemaFields = itemSchemaFields;
@@ -75,8 +75,8 @@ namespace SqliteHost
         public string SqlName { get; }
         public IReadOnlyList<SchemaFieldModel> ItemSchemaFields { get; }
 
-        /// <summary>(dto, connection, naming, methodName, callId) — reads child rows ordered by item_index.</summary>
-        public Action<TInput, ISqliteHostConnection, SqliteHostNaming, string, string> Load { get; }
+        /// <summary>(dto, connection, naming, columns, methodName, callId) — reads child rows ordered by the configured item-index column.</summary>
+        public Action<TInput, ISqliteHostConnection, SqliteHostNaming, SqliteHostColumns, string, string> Load { get; }
     }
 
     /// <summary>One result list&lt;object&gt; field: writes child rows from the result DTO.</summary>
@@ -85,7 +85,7 @@ namespace SqliteHost
         public ResultListField(
             string sqlName,
             IReadOnlyList<SchemaFieldModel> itemSchemaFields,
-            Action<TResult, ISqliteHostConnection, SqliteHostNaming, string, string> write)
+            Action<TResult, ISqliteHostConnection, SqliteHostNaming, SqliteHostColumns, string, string> write)
         {
             SqlName = sqlName;
             ItemSchemaFields = itemSchemaFields;
@@ -95,7 +95,7 @@ namespace SqliteHost
         public string SqlName { get; }
         public IReadOnlyList<SchemaFieldModel> ItemSchemaFields { get; }
 
-        /// <summary>(result, connection, naming, methodName, callId) — inserts one child row per list item.</summary>
-        public Action<TResult, ISqliteHostConnection, SqliteHostNaming, string, string> Write { get; }
+        /// <summary>(result, connection, naming, columns, methodName, callId) — inserts one child row per list item.</summary>
+        public Action<TResult, ISqliteHostConnection, SqliteHostNaming, SqliteHostColumns, string, string> Write { get; }
     }
 }

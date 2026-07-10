@@ -110,7 +110,7 @@ namespace SqliteHost
             ListFields.Add(new InputListField<TInput>(
                 sqlName,
                 itemSchemaFields,
-                delegate(TInput dto, ISqliteHostConnection connection, SqliteHostNaming naming, string methodName, string callId)
+                delegate(TInput dto, ISqliteHostConnection connection, SqliteHostNaming naming, SqliteHostColumns hostColumns, string methodName, string callId)
                 {
                     string childTable = NamingDerivation.InputListTable(naming, methodName, sqlName);
                     var columns = new List<string>();
@@ -120,7 +120,7 @@ namespace SqliteHost
                     }
                     string sql = "SELECT " + string.Join(", ", columns)
                         + " FROM " + childTable
-                        + " WHERE call_id = :callId ORDER BY item_index";
+                        + " WHERE " + hostColumns.CallId + " = :callId ORDER BY " + hostColumns.ItemIndex;
                     IReadOnlyList<TItem> items = connection.Query(
                         sql,
                         RuntimeSql.CallIdBindings(callId),
@@ -335,7 +335,7 @@ namespace SqliteHost
             ListFields.Add(new ResultListField<TResult>(
                 sqlName,
                 itemSchemaFields,
-                delegate(TResult result, ISqliteHostConnection connection, SqliteHostNaming naming, string methodName, string callId)
+                delegate(TResult result, ISqliteHostConnection connection, SqliteHostNaming naming, SqliteHostColumns hostColumns, string methodName, string callId)
                 {
                     List<TItem> items = getter(result);
                     if (items == null || items.Count == 0)
@@ -343,7 +343,7 @@ namespace SqliteHost
                         return;
                     }
                     string childTable = NamingDerivation.ResultListTable(naming, methodName, sqlName);
-                    var columns = new List<string> { "call_id", "item_index" };
+                    var columns = new List<string> { hostColumns.CallId, hostColumns.ItemIndex };
                     var placeholders = new List<string> { ":callId", ":itemIndex" };
                     for (int i = 0; i < itemFields.Count; i++)
                     {

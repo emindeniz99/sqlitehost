@@ -32,6 +32,12 @@ namespace SqliteHost
         /// </summary>
         public int SqliteErrorCode { get; set; }
 
+        /// <summary>True when the script halted itself via the control table (Status stays Completed).</summary>
+        public bool Halted { get; set; }
+
+        /// <summary>The script's optional halt message.</summary>
+        public string HaltMessage { get; set; }
+
         /// <summary>Successfully completed handler invocations.</summary>
         public int ExecutedCallCount { get; set; }
 

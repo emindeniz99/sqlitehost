@@ -36,32 +36,33 @@ namespace SqliteHost.Tests
         [Fact]
         public void GenerateSchemaStatements_FollowsPinnedStatementOrder()
         {
-            // pending_host_calls, script_inputs, script_vars, then per method
-            // in declaration order: call table, input list child tables,
-            // result table, result list child tables, trigger
+            // pending_host_calls, script_inputs, script_vars, script_control,
+            // then per method in declaration order: call table, input list
+            // child tables, result table, result list child tables, trigger
             // (docs/workspace-schema.md).
             var statements = GeneratedHostDefinition.Build().GenerateSchemaStatements();
-            Assert.Equal(20, statements.Count);
+            Assert.Equal(21, statements.Count);
             Assert.StartsWith("CREATE TABLE pending_host_calls (", statements[0]);
             Assert.StartsWith("CREATE TABLE script_inputs (", statements[1]);
             Assert.StartsWith("CREATE TABLE script_vars (", statements[2]);
-            Assert.StartsWith("CREATE TABLE call_get_value (", statements[3]);
-            Assert.StartsWith("CREATE TABLE result_get_value (", statements[4]);
-            Assert.StartsWith("CREATE TRIGGER trg_call_get_value_queue", statements[5]);
-            Assert.StartsWith("CREATE TABLE call_set_value (", statements[6]);
-            Assert.StartsWith("CREATE TABLE result_set_value (", statements[7]);
-            Assert.StartsWith("CREATE TRIGGER trg_call_set_value_queue", statements[8]);
-            Assert.StartsWith("CREATE TABLE call_get_values (", statements[9]);
-            Assert.StartsWith("CREATE TABLE call_get_values__input_keys (", statements[10]);
-            Assert.StartsWith("CREATE TABLE result_get_values (", statements[11]);
-            Assert.StartsWith("CREATE TABLE result_get_values__result_entries (", statements[12]);
-            Assert.StartsWith("CREATE TRIGGER trg_call_get_values_queue", statements[13]);
-            Assert.StartsWith("CREATE TABLE call_put_blob (", statements[14]);
-            Assert.StartsWith("CREATE TABLE result_put_blob (", statements[15]);
-            Assert.StartsWith("CREATE TRIGGER trg_call_put_blob_queue", statements[16]);
-            Assert.StartsWith("CREATE TABLE call_record_score (", statements[17]);
-            Assert.StartsWith("CREATE TABLE result_record_score (", statements[18]);
-            Assert.StartsWith("CREATE TRIGGER trg_call_record_score_queue", statements[19]);
+            Assert.StartsWith("CREATE TABLE script_control (", statements[3]);
+            Assert.StartsWith("CREATE TABLE call_get_value (", statements[4]);
+            Assert.StartsWith("CREATE TABLE result_get_value (", statements[5]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_get_value_queue", statements[6]);
+            Assert.StartsWith("CREATE TABLE call_set_value (", statements[7]);
+            Assert.StartsWith("CREATE TABLE result_set_value (", statements[8]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_set_value_queue", statements[9]);
+            Assert.StartsWith("CREATE TABLE call_get_values (", statements[10]);
+            Assert.StartsWith("CREATE TABLE call_get_values__input_keys (", statements[11]);
+            Assert.StartsWith("CREATE TABLE result_get_values (", statements[12]);
+            Assert.StartsWith("CREATE TABLE result_get_values__result_entries (", statements[13]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_get_values_queue", statements[14]);
+            Assert.StartsWith("CREATE TABLE call_put_blob (", statements[15]);
+            Assert.StartsWith("CREATE TABLE result_put_blob (", statements[16]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_put_blob_queue", statements[17]);
+            Assert.StartsWith("CREATE TABLE call_record_score (", statements[18]);
+            Assert.StartsWith("CREATE TABLE result_record_score (", statements[19]);
+            Assert.StartsWith("CREATE TRIGGER trg_call_record_score_queue", statements[20]);
         }
 
         [Fact]
@@ -69,7 +70,7 @@ namespace SqliteHost.Tests
         {
             var definition = GeneratedHostDefinition.Build();
             Assert.Equal(
-                new[] { "typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars" },
+                new[] { "typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars", "scriptControl" },
                 definition.SupportedFeatures);
         }
 

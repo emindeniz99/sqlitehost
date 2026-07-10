@@ -140,7 +140,8 @@ namespace SqliteHost
                 {
                     foreach (SqliteHostRuntimeInput input in script.Inputs)
                     {
-                        InsertRuntimeInput(connection, _hostDefinition.Naming.InputsTable, input);
+                        InsertRuntimeInput(
+                            connection, _hostDefinition.Naming.InputsTable, _hostDefinition.Columns, input);
                     }
                 }
                 catch (Exception ex)
@@ -152,6 +153,8 @@ namespace SqliteHost
 
             foreach (SqliteHostStep step in script.Steps)
             {
+                bool halted = false;
+                string haltMessage = null;
                 for (int statementIndex = 0; statementIndex < step.Statements.Count; statementIndex++)
                 {
                     SqliteHostStatement statement = step.Statements[statementIndex];
@@ -175,12 +178,67 @@ namespace SqliteHost
                         return WithSqliteErrorCode(StatementFailure(
                             state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, step.Id, statementIndex), ex);
                     }
+
+                    // Statement-granular control check (docs/workspace-schema.md):
+                    // a fail written by the last statement of a step must be
+                    // seen BEFORE that step's drain, so the check runs after
+                    // every successful statement.
+                    ControlRow control;
+                    try
+                    {
+                        control = ReadControlRow(connection);
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(StatementFailure(
+                            state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, step.Id, statementIndex), ex);
+                    }
+                    if (control == null)
+                    {
+                        continue;
+                    }
+                    if (control.Action == "halt")
+                    {
+                        // Graceful stop: skip the remaining statements, drain
+                        // the calls this step already emitted, skip the rest.
+                        halted = true;
+                        haltMessage = control.Message;
+                        break;
+                    }
+                    if (control.Action == "fail")
+                    {
+                        // Script-initiated abort: no drain for this step.
+                        return StatementFailure(
+                            state, SqliteHostRunStatus.FailedScript, "script-abort",
+                            control.Message, step.Id, statementIndex);
+                    }
+                    return StatementFailure(
+                        state, SqliteHostRunStatus.FailedValidation, "invalid-control-action",
+                        "Control table action '" + control.Action + "' is not 'halt' or 'fail'.",
+                        step.Id, statementIndex);
                 }
 
                 SqliteHostRunResult drainFailure = DrainPendingCalls(connection, step.Id, state);
                 if (drainFailure != null)
                 {
                     return drainFailure;
+                }
+
+                if (halted)
+                {
+                    return new SqliteHostRunResult
+                    {
+                        Status = SqliteHostRunStatus.Completed,
+                        ErrorCode = null,
+                        ErrorMessage = null,
+                        StepId = step.Id,
+                        StatementIndex = -1,
+                        Method = null,
+                        Halted = true,
+                        HaltMessage = haltMessage,
+                        ExecutedCallCount = state.ExecutedCallCount,
+                        Calls = state.Calls
+                    };
                 }
             }
 
@@ -196,6 +254,27 @@ namespace SqliteHost
                 Calls = state.Calls
             };
             return completed;
+        }
+
+        /// <summary>
+        /// Reads the control table's winning row (first by rowid); null when
+        /// the table is empty. The runtime only ever reads this table.
+        /// </summary>
+        private ControlRow ReadControlRow(ISqliteHostConnection connection)
+        {
+            SqliteHostColumns columns = _hostDefinition.Columns;
+            IReadOnlyList<ControlRow> rows = connection.Query(
+                "SELECT " + columns.Action + ", " + columns.Message
+                + " FROM " + _hostDefinition.Naming.ControlTable
+                + " ORDER BY rowid LIMIT 1",
+                RuntimeSql.NoBindings,
+                delegate(ISqliteHostRow row)
+                {
+                    return new ControlRow(
+                        row.GetText(0),
+                        row.IsNull(1) ? null : row.GetText(1));
+                });
+            return rows.Count > 0 ? rows[0] : null;
         }
 
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
@@ -390,12 +469,14 @@ namespace SqliteHost
                 return staleListFailure;
             }
 
+            SqliteHostColumns columns = _hostDefinition.Columns;
             IReadOnlyList<PendingCall> pending;
             try
             {
                 pending = connection.Query(
-                    "SELECT queue_id, call_id, method FROM " + _hostDefinition.Naming.QueueTable
-                    + " WHERE status = 'pending' ORDER BY queue_id",
+                    "SELECT " + columns.QueueId + ", " + columns.CallId + ", " + columns.Method
+                    + " FROM " + _hostDefinition.Naming.QueueTable
+                    + " WHERE " + columns.Status + " = 'pending' ORDER BY " + columns.QueueId,
                     RuntimeSql.NoBindings,
                     delegate(ISqliteHostRow row)
                     {
@@ -428,7 +509,7 @@ namespace SqliteHost
 
                 try
                 {
-                    spec.ExecuteCall(connection, _hostDefinition.Naming, _handlers, call.CallId);
+                    spec.ExecuteCall(connection, _hostDefinition.Naming, columns, _handlers, call.CallId);
                 }
                 catch (SqliteHostCallRowMissingException ex)
                 {
@@ -454,9 +535,11 @@ namespace SqliteHost
                 try
                 {
                     connection.Execute(
-                        "UPDATE " + _hostDefinition.Naming.QueueTable + " SET status = 'done' WHERE queue_id = :queueId",
+                        "UPDATE " + _hostDefinition.Naming.QueueTable
+                        + " SET " + columns.Status + " = :done WHERE " + columns.QueueId + " = :queueId",
                         new List<SqliteHostBinding>
                         {
+                            new SqliteHostBinding("done", SqliteHostBindingValue.Text(columns.DoneValue)),
                             new SqliteHostBinding("queueId", SqliteHostBindingValue.Int64(call.QueueId))
                         });
                     RecordDrainedListCall(connection, spec, call, state);
@@ -504,7 +587,7 @@ namespace SqliteHost
                 string childTable = NamingDerivation.InputListTable(
                     _hostDefinition.Naming, call.Method, listField.SqlName);
                 childTables.Add(childTable);
-                rowCounts.Add(CountChildRows(connection, childTable, call.CallId));
+                rowCounts.Add(CountChildRows(connection, childTable, _hostDefinition.Columns, call.CallId));
             }
             state.DrainedListCalls.Add(new DrainedListCall(call.CallId, call.Method, childTables, rowCounts));
         }
@@ -526,7 +609,8 @@ namespace SqliteHost
                     long count;
                     try
                     {
-                        count = CountChildRows(connection, drained.ChildTables[i], drained.CallId);
+                        count = CountChildRows(
+                            connection, drained.ChildTables[i], _hostDefinition.Columns, drained.CallId);
                     }
                     catch (Exception ex)
                     {
@@ -545,10 +629,14 @@ namespace SqliteHost
             return null;
         }
 
-        private static long CountChildRows(ISqliteHostConnection connection, string childTable, string callId)
+        private static long CountChildRows(
+            ISqliteHostConnection connection,
+            string childTable,
+            SqliteHostColumns columns,
+            string callId)
         {
             IReadOnlyList<long> counts = connection.Query(
-                "SELECT COUNT(*) FROM " + childTable + " WHERE call_id = :callId",
+                "SELECT COUNT(*) FROM " + childTable + " WHERE " + columns.CallId + " = :callId",
                 RuntimeSql.CallIdBindings(callId),
                 delegate(ISqliteHostRow row)
                 {
@@ -560,6 +648,7 @@ namespace SqliteHost
         private static void InsertRuntimeInput(
             ISqliteHostConnection connection,
             string inputsTable,
+            SqliteHostColumns columns,
             SqliteHostRuntimeInput input)
         {
             SqliteHostBindingValue value = input.Value ?? SqliteHostBindingValue.Null();
@@ -603,7 +692,9 @@ namespace SqliteHost
                     break;
             }
             connection.Execute(
-                "INSERT INTO " + inputsTable + " (name, value_type, int_value, real_value, text_value, blob_value)"
+                "INSERT INTO " + inputsTable
+                + " (" + columns.Name + ", " + columns.ValueType + ", " + columns.IntValue
+                + ", " + columns.RealValue + ", " + columns.TextValue + ", " + columns.BlobValue + ")"
                 + " VALUES (:name, :valueType, :intValue, :realValue, :textValue, :blobValue)",
                 new List<SqliteHostBinding>
                 {
@@ -741,6 +832,19 @@ namespace SqliteHost
             public long QueueId { get; }
             public string CallId { get; }
             public string Method { get; }
+        }
+
+        /// <summary>The control table's winning row (first by rowid).</summary>
+        private sealed class ControlRow
+        {
+            public ControlRow(string action, string message)
+            {
+                Action = action;
+                Message = message;
+            }
+
+            public string Action { get; }
+            public string Message { get; }
         }
     }
 }
