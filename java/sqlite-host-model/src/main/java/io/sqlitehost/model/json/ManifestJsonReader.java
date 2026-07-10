@@ -1,0 +1,206 @@
+package io.sqlitehost.model.json;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.sqlitehost.model.manifest.ListField;
+import io.sqlitehost.model.manifest.Manifest;
+import io.sqlitehost.model.manifest.ManifestLibrary;
+import io.sqlitehost.model.manifest.ManifestNaming;
+import io.sqlitehost.model.manifest.ManifestTable;
+import io.sqlitehost.model.manifest.MethodDescriptor;
+import io.sqlitehost.model.manifest.ObjectShape;
+import io.sqlitehost.model.manifest.ScalarField;
+import io.sqlitehost.model.manifest.ScalarType;
+import io.sqlitehost.model.manifest.ScriptEnvelopeDescriptor;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Strict JSON reader for the canonical manifest (docs/manifest.md).
+ * The manifest is trusted generated output, but shape violations
+ * (missing blocks, unknown scalar types) fail loudly rather than
+ * producing a half-built model.
+ */
+public final class ManifestJsonReader {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private ManifestJsonReader() {
+    }
+
+    public static Manifest read(String json) throws IOException {
+        return fromTree(MAPPER.readTree(json));
+    }
+
+    public static Manifest read(InputStream in) throws IOException {
+        return fromTree(MAPPER.readTree(in));
+    }
+
+    private static Manifest fromTree(JsonNode root) throws JsonReadException {
+        if (root == null || !root.isObject()) {
+            throw new JsonReadException("manifest must be a JSON object");
+        }
+        JsonNode libraryNode = requireObject(root, "library");
+        ManifestLibrary library = new ManifestLibrary(
+                requireString(libraryNode, "namespace"),
+                requireString(libraryNode, "interfaceName"),
+                requireInt(libraryNode, "apiLevel"),
+                requireStringList(libraryNode, "features"));
+
+        JsonNode namingNode = requireObject(root, "naming");
+        ManifestNaming naming = new ManifestNaming(
+                requireString(namingNode, "callTablePrefix"),
+                requireString(namingNode, "resultTablePrefix"),
+                requireString(namingNode, "inputColumnPrefix"),
+                requireString(namingNode, "resultColumnPrefix"),
+                requireString(namingNode, "inputListTableInfix"),
+                requireString(namingNode, "resultListTableInfix"));
+
+        JsonNode envelopeNode = requireObject(root, "scriptEnvelope");
+        ScriptEnvelopeDescriptor scriptEnvelope = new ScriptEnvelopeDescriptor(
+                requireString(envelopeNode, "engine"),
+                requireStringList(envelopeNode, "bindingTypes"));
+
+        List<MethodDescriptor> methods = new ArrayList<>();
+        JsonNode methodsNode = root.get("methods");
+        if (methodsNode == null || !methodsNode.isArray()) {
+            throw new JsonReadException("manifest methods must be an array");
+        }
+        for (JsonNode methodNode : methodsNode) {
+            methods.add(readMethod(methodNode));
+        }
+
+        return new Manifest(
+                requireInt(root, "manifestVersion"),
+                requireString(root, "engine"),
+                library,
+                naming,
+                readTable(requireObject(root, "queueTable")),
+                readTable(requireObject(root, "inputsTable")),
+                scriptEnvelope,
+                methods);
+    }
+
+    private static ManifestTable readTable(JsonNode node) throws JsonReadException {
+        return new ManifestTable(
+                requireString(node, "name"),
+                requireStringList(node, "columns"));
+    }
+
+    private static MethodDescriptor readMethod(JsonNode node) throws JsonReadException {
+        if (node == null || !node.isObject()) {
+            throw new JsonReadException("manifest method must be an object");
+        }
+        return new MethodDescriptor(
+                requireString(node, "operationName"),
+                requireString(node, "methodName"),
+                requireString(node, "handlerName"),
+                requireInt(node, "apiLevel"),
+                requireString(node, "callTable"),
+                requireString(node, "resultTable"),
+                requireString(node, "queueTrigger"),
+                readShape(requireObject(node, "input")),
+                readShape(requireObject(node, "result")));
+    }
+
+    private static ObjectShape readShape(JsonNode node) throws JsonReadException {
+        List<ScalarField> fields = new ArrayList<>();
+        JsonNode fieldsNode = node.get("fields");
+        if (fieldsNode == null || !fieldsNode.isArray()) {
+            throw new JsonReadException("shape fields must be an array");
+        }
+        for (JsonNode fieldNode : fieldsNode) {
+            fields.add(readScalarField(fieldNode));
+        }
+        List<ListField> listFields = new ArrayList<>();
+        JsonNode listFieldsNode = node.get("listFields");
+        if (listFieldsNode == null || !listFieldsNode.isArray()) {
+            throw new JsonReadException("shape listFields must be an array");
+        }
+        for (JsonNode listFieldNode : listFieldsNode) {
+            List<ScalarField> itemFields = new ArrayList<>();
+            JsonNode itemFieldsNode = listFieldNode.get("itemFields");
+            if (itemFieldsNode == null || !itemFieldsNode.isArray()) {
+                throw new JsonReadException("list field itemFields must be an array");
+            }
+            for (JsonNode itemFieldNode : itemFieldsNode) {
+                itemFields.add(readScalarField(itemFieldNode));
+            }
+            listFields.add(new ListField(
+                    requireString(listFieldNode, "propertyName"),
+                    requireString(listFieldNode, "sqlName"),
+                    requireString(listFieldNode, "childTable"),
+                    requireString(listFieldNode, "itemModelName"),
+                    itemFields));
+        }
+        return new ObjectShape(requireString(node, "modelName"), fields, listFields);
+    }
+
+    private static ScalarField readScalarField(JsonNode node) throws JsonReadException {
+        if (node == null || !node.isObject()) {
+            throw new JsonReadException("scalar field must be an object");
+        }
+        String scalarTypeName = requireString(node, "scalarType");
+        ScalarType scalarType = ScalarType.fromJsonName(scalarTypeName);
+        if (scalarType == null) {
+            throw new JsonReadException("unknown scalar type '" + scalarTypeName + "'");
+        }
+        JsonNode optionalNode = node.get("optional");
+        if (optionalNode == null || !optionalNode.isBoolean()) {
+            throw new JsonReadException("scalar field optional must be a boolean");
+        }
+        return new ScalarField(
+                requireString(node, "propertyName"),
+                requireString(node, "sqlName"),
+                requireString(node, "column"),
+                scalarType,
+                optionalNode.asBoolean());
+    }
+
+    private static JsonNode requireObject(JsonNode parent, String field)
+            throws JsonReadException {
+        JsonNode node = parent.get(field);
+        if (node == null || !node.isObject()) {
+            throw new JsonReadException("manifest field '" + field + "' must be an object");
+        }
+        return node;
+    }
+
+    private static String requireString(JsonNode parent, String field)
+            throws JsonReadException {
+        JsonNode node = parent.get(field);
+        if (node == null || !node.isTextual()) {
+            throw new JsonReadException("manifest field '" + field + "' must be a string");
+        }
+        return node.asText();
+    }
+
+    private static int requireInt(JsonNode parent, String field) throws JsonReadException {
+        JsonNode node = parent.get(field);
+        if (node == null || !node.isIntegralNumber() || !node.canConvertToInt()) {
+            throw new JsonReadException("manifest field '" + field + "' must be an integer");
+        }
+        return node.asInt();
+    }
+
+    private static List<String> requireStringList(JsonNode parent, String field)
+            throws JsonReadException {
+        JsonNode node = parent.get(field);
+        if (node == null || !node.isArray()) {
+            throw new JsonReadException(
+                    "manifest field '" + field + "' must be an array of strings");
+        }
+        List<String> values = new ArrayList<>();
+        for (JsonNode entry : node) {
+            if (!entry.isTextual()) {
+                throw new JsonReadException(
+                        "manifest field '" + field + "' must contain only strings");
+            }
+            values.add(entry.asText());
+        }
+        return values;
+    }
+}
