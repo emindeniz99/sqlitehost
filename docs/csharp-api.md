@@ -147,8 +147,16 @@ public sealed class SqliteHostRunResult
     public string StepId { get; set; }
     public int StatementIndex { get; set; }     // -1 when not applicable
     public string Method { get; set; }
+    public string BindingName { get; set; }     // set for missing-/unused-binding
+    public int SqliteErrorCode { get; set; }    // native code via SqliteHostAdapterException; 0 = not available
     public int ExecutedCallCount { get; set; }
     public List<SqliteHostCallDiagnostic> Calls { get; set; }  // populated when EnableDiagnostics
+}
+
+public class SqliteHostAdapterException : Exception   // adapters wrap native failures in this
+{
+    public SqliteHostAdapterException(string message, int sqliteErrorCode, Exception innerException);
+    public int SqliteErrorCode { get; }
 }
 
 public sealed class SqliteHostCallDiagnostic

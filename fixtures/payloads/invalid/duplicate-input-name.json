@@ -1,0 +1,43 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-duplicate-input-name",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptInputs"
+  ],
+  "requiredMethods": [
+    "getValue"
+  ],
+  "inputs": [
+    {
+      "name": "targetValue",
+      "value": {
+        "type": "int64",
+        "value": 1
+      }
+    },
+    {
+      "name": "targetValue",
+      "value": {
+        "type": "int64",
+        "value": 2
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "read",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

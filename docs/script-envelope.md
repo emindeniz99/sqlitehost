@@ -41,7 +41,7 @@ golden tests keep the three projections in sync.
 | `requiredApiLevel` | yes | integer ≥ 1 |
 | `requiredFeatures` | no | subset of the host's supported features, else clean skip |
 | `requiredMethods` | no | methods the script uses; missing method → clean skip |
-| `inputs` | no | runtime inputs inserted into `script_inputs` before step 1 |
+| `inputs` | no | runtime inputs inserted into `script_inputs` before step 1; names must be unique (`duplicate-input-name`); SqliteHost never computes or injects runtime facts itself — the caller places them in `inputs` before `Run(script)` |
 | `steps` | yes | ordered; step `id`s must be unique and non-empty |
 | `steps[].statements` | yes | ordered, non-empty; each has `sql` and optional `bindings` |
 
@@ -67,8 +67,11 @@ because every IEEE-754 double round-trips through a JSON number.
 
 Binding **names** are bare (no prefix). In SQL, named parameters may be
 written `:name`, `@name`, or `$name`; a binding matches a parameter when
-the names are equal after stripping the prefix character. Positional
-(`?`) parameters are not supported in v1.
+the names are equal after stripping the prefix character. One binding
+may feed the same name through several prefix forms in one statement
+(supported; validators warn with `mixed-prefix-binding`) — prefer
+`:name` consistently. Positional (`?`) parameters are not supported in
+v1.
 
 ## Semantics
 

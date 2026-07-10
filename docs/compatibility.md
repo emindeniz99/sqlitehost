@@ -44,6 +44,19 @@ delegates, lists, explicit null checks. An in-Unity compile spike is a
 ROADMAP item (no Unity available in this environment); the source is
 kept vendorable (copy the two folders + generated sample).
 
+### IL2CPP guardrail
+
+The runtime is delegate/interface-based by construction: no
+`Reflection.Emit`, no reflection-dependent row↔DTO mapping (generated
+descriptors register compile-time delegates), no dynamic code
+generation — enforced by a source-level guard test. Therefore
+`[Preserve]` attributes and `link.xml` are **not required** for the
+runtime under IL2CPP code stripping in v1. (The Unity sample's
+`SmokeRunner` uses one reflection type-lookup for demo convenience —
+that is sample-only; see `docs/guides/unity-2021-spike.md`.) If a
+future implementation ever introduces reflection-based mapping,
+Preserve/link.xml guidance becomes mandatory at that point.
+
 ## Java — 17+
 
 Generated/handwritten Java targets release 17 (records allowed,

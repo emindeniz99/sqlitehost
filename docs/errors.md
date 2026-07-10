@@ -27,6 +27,7 @@ host application decides logging/telemetry policy.
 | `missing-feature` | SkippedUnsupported | a `requiredFeatures` entry not supported |
 | `missing-method` | SkippedUnsupported | a `requiredMethods` entry not registered |
 | `invalid-script` | FailedValidation | null/empty steps, empty step id, null statement sql, step with an empty/missing statements list |
+| `duplicate-input-name` | FailedValidation | two runtime `inputs` entries share a name |
 | `duplicate-step-id` | FailedValidation | two steps share an id |
 | `max-statements-exceeded` | FailedValidation | total statements > `MaxStatementsPerRun` |
 | `schema-error` | FailedSchema | DDL execution failed |
@@ -39,11 +40,23 @@ host application decides logging/telemetry policy.
 | `call-row-missing` | FailedSql | queue row exists but the parent call row is missing |
 | `handler-error` | FailedHandler | handler threw; `Method` and `ErrorMessage` carry details |
 | `result-write-error` | FailedSql | writing result rows failed |
+| `list-child-after-drain` | FailedSql | input list child rows appeared for a call that was already drained in an earlier step (the validator blocks this statically; the runtime detects it defensively by re-counting child rows of drained calls after each step) |
 
 Failure context fields: `StepId` and `StatementIndex` are set for
 statement-scoped failures (`StatementIndex` is `-1` otherwise);
-`Method` is set for call-scoped failures; `ExecutedCallCount` always
-counts successfully completed handler invocations.
+`Method` is set for call-scoped failures; `BindingName` is set for
+`missing-binding`/`unused-binding`; `SqliteErrorCode` carries the
+native SQLite error code when the adapter surfaced one via
+`SqliteHostAdapterException` (`0` = not available);
+`ExecutedCallCount` always counts successfully completed handler
+invocations.
+
+## Logging policy
+
+The runtime emits **no logs** — no `Console.WriteLine`, no
+`Debug.Log`, no telemetry hooks. All failure information travels in
+the structured `SqliteHostRunResult`; the consumer maps it to its own
+logging/telemetry. A source-level guard test enforces this.
 
 ## Binding validation
 

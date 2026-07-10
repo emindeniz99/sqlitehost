@@ -33,6 +33,17 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-007-mixed-prefix.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "mixed-prefix-binding",
+          "validators": ["java", "typescript"]
+        }
+      ]
+    },
+    {
       "payload": "valid/example-005-unused-required-method.json",
       "valid": true,
       "errors": [],
@@ -42,6 +53,17 @@
           "validators": ["java", "typescript"]
         }
       ]
+    },
+    {
+      "payload": "invalid/duplicate-input-name.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "duplicate-input-name",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
     },
     {
       "payload": "invalid/empty-statements.json",

@@ -47,7 +47,12 @@ For each method (naming derives from host-level conventions, see
   `result_<method>__result_<field>`: `call_id TEXT NOT NULL`,
   `item_index INTEGER NOT NULL`, one column per item field,
   `PRIMARY KEY (call_id, item_index)`. List order is defined by
-  `item_index`, not insertion order.
+  `item_index`, not insertion order. Pinned index semantics:
+  `item_index` values may have gaps — the mapped DTO list is dense,
+  ordered by ascending `item_index` (gaps do not produce nulls or
+  placeholders); duplicate `(call_id, item_index)` pairs fail at
+  insert time through the primary-key constraint (`sql-error`);
+  an empty list maps to an empty DTO list, never null.
 - **Queue trigger** `trg_call_<method>_queue`:
 
 ```sql
