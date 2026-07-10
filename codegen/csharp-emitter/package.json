@@ -6,13 +6,27 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": "./dist/index.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "bin": {
+    "sqlite-host-emit-csharp": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test 'dist/test/*.test.js'"
   },
-  "dependencies": { "@sqlite-host/codegen-core": "workspace:*" },
-  "devDependencies": { "typescript": "^5.5.0", "@types/node": "^22.0.0" }
+  "dependencies": {
+    "@sqlite-host/codegen-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  }
 }

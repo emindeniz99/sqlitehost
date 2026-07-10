@@ -19,9 +19,10 @@ UPM:   com.sqlitehost.runtime          # optional/later
 
 ## Copy-paste / source inclusion (supported today)
 
-Unity/game projects can vendor the C# source directly: copy
-`csharp/SqliteHost.Abstractions/src`, `csharp/SqliteHost.Runtime/src`,
-and your generated folder into the project. No reflection-only runtime
+Unity/game projects can vendor the C# source directly: copy the
+sources from `csharp/SqliteHost.Abstractions/`,
+`csharp/SqliteHost.Runtime/`, and your generated folder into the
+project (see `docs/guides/getting-started.md`, Path A). No reflection-only runtime
 requirement, no external dependencies, single namespace root
 (`SqliteHost`) that can be find/replace-renamed. Unity Package Manager
 is not required to consume the sources.
