@@ -1,0 +1,29 @@
+{
+  "name": "@sqlite-host/authoring",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SqliteHost TypeScript authoring SDK: generated typed method surface, manifest metadata/autocomplete, fluent script builder, and static payload lint",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test 'dist/test/*.test.js'"
+  },
+  "dependencies": {
+    "@sqlite-host/runtime-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

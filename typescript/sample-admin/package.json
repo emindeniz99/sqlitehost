@@ -1,0 +1,25 @@
+{
+  "name": "@sqlite-host/sample-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo admin CLI for SqliteHost: prints the sample host method/table reference and lints a script payload",
+  "type": "module",
+  "bin": {
+    "sqlite-host-demo": "bin/demo.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test 'dist/test/*.test.js'"
+  },
+  "dependencies": {
+    "@sqlite-host/authoring": "workspace:*",
+    "@sqlite-host/runtime-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
