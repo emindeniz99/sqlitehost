@@ -30,7 +30,13 @@ indent, LF, trailing newline. Committed snapshot:
 `itemModelName`, `itemFields`).
 
 All physical names in the manifest are **resolved** — consumers
-(validators, DDL generators, editors) never re-derive naming.
+(validators, DDL generators, editors) never re-derive naming. The
+shared table names (`queueTable`/`inputsTable`/`varsTable`) are
+configurable per host via `@hostLibrary` (see `docs/naming.md`); one
+`.tsp` compilation may define **multiple** `@hostLibrary` interfaces,
+each producing its own manifest and generated artifacts (each library
+is an independent runtime definition with its own workspace — e.g.
+dev/prod or per-screen feature APIs).
 
 ## Consumers
 
