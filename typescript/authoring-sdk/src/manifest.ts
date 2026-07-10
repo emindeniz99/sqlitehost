@@ -60,6 +60,7 @@ export interface HostManifest {
     namespace: string;
     interfaceName: string;
     apiLevel: number;
+    minSqliteVersionNumber: number;
     features: string[];
   };
   naming: {
@@ -72,6 +73,7 @@ export interface HostManifest {
   };
   queueTable: ManifestTable;
   inputsTable: ManifestTable;
+  varsTable: ManifestTable;
   scriptEnvelope: {
     engine: string;
     bindingTypes: string[];

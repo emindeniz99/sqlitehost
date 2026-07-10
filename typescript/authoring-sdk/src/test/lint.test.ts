@@ -112,6 +112,37 @@ test("CTE-prefixed INSERT into a declared call table counts as a use", () => {
   assert.deepStrictEqual(codes(findings), []);
 });
 
+test("INSERT OR REPLACE INTO a call table still lints as a call-table insert", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: [],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT OR REPLACE INTO call_get_value (call_id, input_key) VALUES ('c-1', 'k')",
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  // Recognized as an insert into the getValue call table…
+  assert.ok(codes(findings).includes("undeclared-method-use"));
+  // …with the explicit column list parsed (OR REPLACE must not shift it).
+  assert.ok(!codes(findings).includes("implicit-column-list"));
+});
+
+test("script_vars inserts (plain and OR REPLACE) produce no findings", () => {
+  // script_vars is not a call table: writing variables — including via
+  // INSERT OR REPLACE — is plain workspace SQL, not a host-call emit.
+  const payload = JSON.parse(readFixture("payloads/valid/example-008-variables.json"));
+  const findings = lintScript(payload, manifest);
+  assert.deepStrictEqual(findings, []);
+});
+
 test("list-child-without-parent is skipped when the parent call_id is computed", () => {
   // The parent insert's call_id is a computed expression, so it is not
   // statically resolvable — the child check must not false-positive

@@ -46,9 +46,11 @@ export interface HostMetadata {
   namespace: string;
   interfaceName: string;
   apiLevel: number;
+  minSqliteVersionNumber: number;
   features: string[];
   queueTable: TableMetadata;
   inputsTable: TableMetadata;
+  varsTable: TableMetadata;
   methods: MethodMetadata[];
   /** Every workspace table with its columns, in canonical DDL order. */
   tables: TableMetadata[];
@@ -84,6 +86,7 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
   const tables: TableMetadata[] = [
     { name: m.queueTable.name, columns: [...m.queueTable.columns] },
     { name: m.inputsTable.name, columns: [...m.inputsTable.columns] },
+    { name: m.varsTable.name, columns: [...m.varsTable.columns] },
   ];
   const methods: MethodMetadata[] = [];
 
@@ -123,9 +126,11 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
     namespace: m.library.namespace,
     interfaceName: m.library.interfaceName,
     apiLevel: m.library.apiLevel,
+    minSqliteVersionNumber: m.library.minSqliteVersionNumber,
     features: [...m.library.features],
     queueTable: { name: m.queueTable.name, columns: [...m.queueTable.columns] },
     inputsTable: { name: m.inputsTable.name, columns: [...m.inputsTable.columns] },
+    varsTable: { name: m.varsTable.name, columns: [...m.varsTable.columns] },
     methods,
     tables,
   };
