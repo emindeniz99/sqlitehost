@@ -3,6 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "description": "Vendored generated script envelope types for SqliteHost (protocol v1) plus parsing, canonical serialization, and binding value helpers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TODO-OWNER/TODO-REPO.git",
+    "directory": "projects/sqlitehost/typescript/runtime-types"
+  },
+  "keywords": [
+    "sqlitehost",
+    "sqlite",
+    "script-envelope",
+    "types",
+    "typescript"
+  ],
+  "author": "TODO: SqliteHost maintainers",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

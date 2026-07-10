@@ -15,6 +15,33 @@
     SqliteHost script payloads (plan phase 4). See projects/sqlitehost/docs.
   </description>
 
+  <!-- Maven Central publishing metadata — placeholders inherited by all
+       modules; fill the TODOs before the first release.
+       See docs/guides/publishing.md section e. -->
+  <url>https://github.com/TODO-OWNER/TODO-REPO</url>
+  <!-- TODO(license): undecided (docs/guides/publishing.md section b).
+       Uncomment and set once chosen — required by Maven Central.
+  <licenses>
+    <license>
+      <name>TODO: e.g. Apache-2.0</name>
+      <url>TODO: e.g. https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  -->
+  <developers>
+    <developer>
+      <id>TODO</id>
+      <name>TODO: maintainer name</name>
+      <email>TODO: maintainer email</email>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/TODO-OWNER/TODO-REPO.git</connection>
+    <developerConnection>scm:git:git@github.com:TODO-OWNER/TODO-REPO.git</developerConnection>
+    <url>https://github.com/TODO-OWNER/TODO-REPO/tree/main/projects/sqlitehost/java</url>
+  </scm>
+
   <modules>
     <module>sqlite-host-model</module>
     <module>sqlite-host-validator</module>
@@ -66,4 +93,71 @@
       </plugins>
     </pluginManagement>
   </build>
+
+  <profiles>
+    <!-- Maven Central release profile: attaches sources + javadoc jars,
+         GPG-signs everything, and uploads via the Central Portal
+         publishing plugin. All bindings live inside this profile so
+         normal `mvn test` / `mvn package` builds never need GPG or a
+         Portal token. Activate with `mvn -Prelease clean deploy`.
+         autoPublish=false: the bundle waits in the Portal for a manual
+         Publish click. See docs/guides/publishing.md section e. -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.10.1</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.6.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>false</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

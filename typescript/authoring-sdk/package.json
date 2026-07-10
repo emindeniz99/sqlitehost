@@ -3,6 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "description": "SqliteHost TypeScript authoring SDK: generated typed method surface, manifest metadata/autocomplete, fluent script builder, and static payload lint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TODO-OWNER/TODO-REPO.git",
+    "directory": "projects/sqlitehost/typescript/authoring-sdk"
+  },
+  "keywords": [
+    "sqlitehost",
+    "sqlite",
+    "authoring",
+    "script-builder",
+    "lint",
+    "typescript"
+  ],
+  "author": "TODO: SqliteHost maintainers",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
