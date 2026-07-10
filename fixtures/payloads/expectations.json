@@ -1,0 +1,195 @@
+{
+  "description": "Validator conformance matrix. Every case is validated against fixtures/manifests/sample-host.manifest.json. `validators` names the implementations that MUST report the code: `java` = sqlite-host-validator (full engine, includes prepare-only SQLite checks), `typescript` = @sqlite-host/authoring lint (static subset, no SQLite). Implementations may report additional findings for invalid payloads, but valid payloads must produce no errors and exactly the listed warnings.",
+  "manifest": "../manifests/sample-host.manifest.json",
+  "cases": [
+    {
+      "payload": "valid/example-001-read-then-conditional-write.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-002-list-roundtrip.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-003-runtime-inputs.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-004-blob.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-005-unused-required-method.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "unused-required-method",
+          "validators": ["java", "typescript"]
+        }
+      ]
+    },
+    {
+      "payload": "invalid/list-child-later-step.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "list-child-later-step",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/missing-binding.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "missing-binding",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unused-binding.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unused-binding",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unknown-column.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sql-prepare-error",
+          "validators": ["java"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/implicit-column-list.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "implicit-column-list",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/result-read-unknown-call.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "result-read-unknown-call",
+          "validators": ["java"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/result-read-not-after-call.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "result-read-not-after-call",
+          "validators": ["java"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/undeclared-method-use.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "undeclared-method-use",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/binding-type-mismatch.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "binding-type-mismatch",
+          "validators": ["java"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/duplicate-call-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "duplicate-call-id",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/duplicate-step-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "duplicate-step-id",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/api-level-too-high.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "required-api-level-too-high",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unknown-required-feature.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unknown-required-feature",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unknown-required-method.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unknown-required-method",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-unknown-required-method",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "deleteValue"
+  ],
+  "steps": [
+    {
+      "id": "noop",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-duplicate-call-id",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "read-twice",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'first-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "dup-1"
+            }
+          }
+        },
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'second-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "dup-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

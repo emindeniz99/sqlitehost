@@ -1,0 +1,24 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-unknown-column",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "read",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_wrong) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

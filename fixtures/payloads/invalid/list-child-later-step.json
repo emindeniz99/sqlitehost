@@ -1,0 +1,38 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-list-child-later-step",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValues"
+  ],
+  "steps": [
+    {
+      "id": "parent-only",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_values (call_id, input_default_value) VALUES (:callId, NULL)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "list-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "children-too-late",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:callId, 0, 'alpha')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "list-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

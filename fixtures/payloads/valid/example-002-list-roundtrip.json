@@ -1,0 +1,60 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-002",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "requiredMethods": [
+    "getValues",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "query-values",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_values (call_id, input_default_value) VALUES (:callId, :defaultValue)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "list-1"
+            },
+            "defaultValue": {
+              "type": "int64",
+              "value": 7
+            }
+          }
+        },
+        {
+          "sql": "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:callId, 0, 'alpha'), (:callId, 1, 'beta')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "list-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "write-missing",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT 'w-' || result_key, result_key, :fallback FROM result_get_values__result_entries WHERE call_id = :listCallId AND result_found = 0",
+          "bindings": {
+            "fallback": {
+              "type": "int64",
+              "value": 7
+            },
+            "listCallId": {
+              "type": "text",
+              "value": "list-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

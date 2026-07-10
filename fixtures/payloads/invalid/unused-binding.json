@@ -1,0 +1,28 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-unused-binding",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "read",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            },
+            "leftover": {
+              "type": "int32",
+              "value": 5
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

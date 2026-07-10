@@ -1,0 +1,32 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-binding-type-mismatch",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "write-value",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) VALUES (:callId, :key, :value)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            },
+            "key": {
+              "type": "text",
+              "value": "example-key"
+            },
+            "value": {
+              "type": "blob",
+              "value": "3q2+7w=="
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

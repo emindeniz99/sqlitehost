@@ -1,0 +1,39 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-result-read-unknown-call",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "read-current",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "write-value",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT :callId, 'example-key', 42 WHERE EXISTS (SELECT 1 FROM result_get_value WHERE call_id = 'never-emitted' AND status = 'done')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
