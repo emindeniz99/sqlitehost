@@ -8,5 +8,6 @@ namespace Example.Game.Generated
         SetValueResult SetValue(SetValueInput input);
         GetValuesResult GetValues(GetValuesInput input);
         PutBlobResult PutBlob(PutBlobInput input);
+        RecordScoreResult RecordScore(RecordScoreInput input);
     }
 }

@@ -99,11 +99,27 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_inputs",
-      columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
     },
     scriptEnvelope: {
       engine: "sqlite-host-v1",
-      bindingTypes: ["null", "int32", "int64", "bool", "text", "blob"],
+      bindingTypes: [
+        "null",
+        "int32",
+        "int64",
+        "bool",
+        "text",
+        "blob",
+        "float32",
+        "float64",
+      ],
     },
     methods: [
       {
@@ -138,6 +154,13 @@ function smokeIr(): HostLibraryIr {
               scalarType: "int32",
               optional: true,
             },
+            {
+              propertyName: "weight",
+              sqlName: "weight",
+              column: "in_weight",
+              scalarType: "float32",
+              optional: true,
+            },
           ],
           listFields: [
             {
@@ -167,6 +190,13 @@ function smokeIr(): HostLibraryIr {
               scalarType: "int64",
               optional: false,
             },
+            {
+              propertyName: "hitRatio",
+              sqlName: "hit_ratio",
+              column: "out_hit_ratio",
+              scalarType: "float64",
+              optional: false,
+            },
           ],
           listFields: [],
         },
@@ -188,9 +218,11 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   assert.equal(input.path, "acme/cache/generated/StoreEntryInput.java");
   assert.match(input.contents, /^package acme\.cache\.generated;$/m);
   assert.match(input.contents, /String cacheKey/);
-  // Optional bytes stays byte[]; optional int32 boxes to Integer.
+  // Optional bytes stays byte[]; optional int32 boxes to Integer;
+  // optional float32 boxes to Float.
   assert.match(input.contents, /byte\[\] payload/);
   assert.match(input.contents, /Integer ttlSeconds/);
+  assert.match(input.contents, /Float weight/);
   assert.match(input.contents, /List<TagItem> tags/);
   assert.match(input.contents, /call table \{@code hostcall_store_entry\}/);
 
@@ -199,7 +231,11 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   assert.match(item.contents, /child table \{@code hostcall_store_entry__in_tags\}/);
 
   const result = fileByName(files, "StoreEntryResult.java");
-  assert.match(result.contents, /public record StoreEntryResult\(long generation\) \{/);
+  // Required float64 stays an unboxed double.
+  assert.match(
+    result.contents,
+    /public record StoreEntryResult\(long generation, double hitRatio\) \{/,
+  );
   assert.match(result.contents, /result table \{@code hostresult_store_entry\}/);
 
   const descriptors = fileByName(files, "MethodDescriptors.java");
@@ -209,16 +245,24 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   assert.match(descriptors.contents, /"trg_hostcall_store_entry_queue"/);
   assert.match(
     descriptors.contents,
-    /List\.of\("in_cache_key", "in_payload", "in_ttl_seconds"\)/,
+    /List\.of\("in_cache_key", "in_payload", "in_ttl_seconds", "in_weight"\)/,
   );
   assert.match(descriptors.contents, /List\.of\("hostcall_store_entry__in_tags"\)/);
-  assert.match(descriptors.contents, /List\.of\("out_generation"\)/);
+  assert.match(descriptors.contents, /List\.of\("out_generation", "out_hit_ratio"\)/);
   assert.match(descriptors.contents, /public static final int API_LEVEL = 3;/);
 
   // Envelope files are protocol-shaped and unaffected by library naming.
   const script = fileByName(files, "Script.java");
   assert.equal(script.path, `${envelopeDir}/Script.java`);
   assert.match(script.contents, /ENGINE_V1 = "sqlite-host-v1";/);
+
+  // Float binding types produce enum members, factories, and accessors.
+  const binding = fileByName(files, "BindingValue.java");
+  assert.match(binding.contents, /FLOAT32\("float32"\),\n        FLOAT64\("float64"\);/);
+  assert.match(binding.contents, /public static BindingValue float32\(float value\)/);
+  assert.match(binding.contents, /public static BindingValue float64\(double value\)/);
+  assert.match(binding.contents, /public float asFloat32\(\)/);
+  assert.match(binding.contents, /public double asFloat64\(\)/);
 });
 
 test("smoke IR: emitted DTO list has no duplicates and reuses shared items", () => {

@@ -59,4 +59,16 @@ namespace Example.Game.Generated
     {
         public bool Stored { get; set; }
     }
+
+    public class RecordScoreInput
+    {
+        public string Key { get; set; }
+        public double Score { get; set; }
+        public float? Weight { get; set; }
+    }
+
+    public class RecordScoreResult
+    {
+        public double Average { get; set; }
+    }
 }

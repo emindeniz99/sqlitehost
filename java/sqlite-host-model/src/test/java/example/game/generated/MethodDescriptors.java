@@ -91,12 +91,26 @@ public final class MethodDescriptors {
             List.of("result_stored"),
             List.of());
 
+    /** Metadata for host method {@code recordScore}. */
+    public static final Method RECORD_SCORE = new Method(
+            "recordScore",
+            "RecordScore",
+            1,
+            "call_record_score",
+            "result_record_score",
+            "trg_call_record_score_queue",
+            List.of("input_key", "input_score", "input_weight"),
+            List.of(),
+            List.of("result_average"),
+            List.of());
+
     /** All host methods in manifest order. */
     public static final List<Method> ALL = List.of(
             GET_VALUE,
             SET_VALUE,
             GET_VALUES,
-            PUT_BLOB);
+            PUT_BLOB,
+            RECORD_SCORE);
 
     private MethodDescriptors() {
     }

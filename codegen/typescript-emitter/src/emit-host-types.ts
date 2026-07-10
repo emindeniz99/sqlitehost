@@ -30,6 +30,8 @@ const SCALAR_TS_TYPES: Record<ScalarTypeIr, string> = {
   boolean: "boolean",
   string: "string",
   bytes: "string",
+  float32: "number",
+  float64: "number",
 };
 
 /** Scalar types whose TS type is imported from @sqlite-host/runtime-types. */

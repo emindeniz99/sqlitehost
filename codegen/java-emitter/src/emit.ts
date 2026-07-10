@@ -66,6 +66,10 @@ function javaScalarType(type: ScalarTypeIr, optional: boolean): string {
       return "String";
     case "bytes":
       return "byte[]";
+    case "float32":
+      return optional ? "Float" : "float";
+    case "float64":
+      return optional ? "Double" : "double";
   }
 }
 
@@ -222,7 +226,7 @@ function bindingTypeParts(wire: string): BindingTypeParts {
       return {
         factory: `    /** An {@code ${wire}} binding value. */
     public static BindingValue ${wire}(${wire === "int32" ? "int" : "long"} value) {
-        return new BindingValue(Type.${constName}, value, null, null);
+        return new BindingValue(Type.${constName}, value, 0.0, null, null);
     }`,
         accessor: `    /** @throws IllegalStateException when {@link #type()} is not {@code ${constName}} */
     public ${wire === "int32" ? "int" : "long"} as${constName.charAt(0)}${wire.slice(1)}() {
@@ -235,7 +239,7 @@ function bindingTypeParts(wire: string): BindingTypeParts {
       return {
         factory: `    /** A {@code bool} binding value. */
     public static BindingValue bool(boolean value) {
-        return new BindingValue(Type.BOOL, value ? 1L : 0L, null, null);
+        return new BindingValue(Type.BOOL, value ? 1L : 0L, 0.0, null, null);
     }`,
         accessor: `    /** @throws IllegalStateException when {@link #type()} is not {@code BOOL} */
     public boolean asBool() {
@@ -249,7 +253,7 @@ function bindingTypeParts(wire: string): BindingTypeParts {
         factory: `    /** A {@code text} binding value. */
     public static BindingValue text(String value) {
         Objects.requireNonNull(value, "value");
-        return new BindingValue(Type.TEXT, 0L, value, null);
+        return new BindingValue(Type.TEXT, 0L, 0.0, value, null);
     }`,
         accessor: `    /** @throws IllegalStateException when {@link #type()} is not {@code TEXT} */
     public String asText() {
@@ -263,7 +267,7 @@ function bindingTypeParts(wire: string): BindingTypeParts {
         factory: `    /** A {@code blob} binding value (the byte array is copied). */
     public static BindingValue blob(byte[] value) {
         Objects.requireNonNull(value, "value");
-        return new BindingValue(Type.BLOB, 0L, null, value.clone());
+        return new BindingValue(Type.BLOB, 0L, 0.0, null, value.clone());
     }`,
         accessor: `    /**
      * A copy of the blob bytes.
@@ -275,6 +279,20 @@ function bindingTypeParts(wire: string): BindingTypeParts {
         return blobValue.clone();
     }`,
         toStringBody: `return "BindingValue[blob " + blobValue.length + " bytes]";`,
+      };
+    case "float32":
+    case "float64":
+      return {
+        factory: `    /** A {@code ${wire}} binding value. */
+    public static BindingValue ${wire}(${wire === "float32" ? "float" : "double"} value) {
+        return new BindingValue(Type.${constName}, 0L, value, null, null);
+    }`,
+        accessor: `    /** @throws IllegalStateException when {@link #type()} is not {@code ${constName}} */
+    public ${wire === "float32" ? "float" : "double"} as${constName.charAt(0)}${wire.slice(1)}() {
+        requireType(Type.${constName});
+        return ${wire === "float32" ? "(float) realValue" : "realValue"};
+    }`,
+        toStringBody: `return "BindingValue[" + type.jsonName() + " " + realValue + "]";`,
       };
     default:
       throw new Error(`unsupported envelope binding type: ${wire}`);
@@ -289,7 +307,7 @@ function bindingValueSource(header: string, bindingTypes: string[]): string {
     .join(",\n");
 
   const nullField = bindingTypes.includes("null")
-    ? `    private static final BindingValue NULL_VALUE = new BindingValue(Type.NULL, 0L, null, null);\n\n`
+    ? `    private static final BindingValue NULL_VALUE = new BindingValue(Type.NULL, 0L, 0.0, null, null);\n\n`
     : "";
 
   const factories = parts.map((p) => p.factory).join("\n\n");
@@ -351,12 +369,15 @@ ${enumEntries};
 
 ${nullField}    private final Type type;
     private final long integerValue;
+    private final double realValue;
     private final String textValue;
     private final byte[] blobValue;
 
-    private BindingValue(Type type, long integerValue, String textValue, byte[] blobValue) {
+    private BindingValue(
+            Type type, long integerValue, double realValue, String textValue, byte[] blobValue) {
         this.type = type;
         this.integerValue = integerValue;
+        this.realValue = realValue;
         this.textValue = textValue;
         this.blobValue = blobValue;
     }
@@ -388,13 +409,15 @@ ${accessors}
         }
         return type == that.type
                 && integerValue == that.integerValue
+                && Double.compare(realValue, that.realValue) == 0
                 && Objects.equals(textValue, that.textValue)
                 && Arrays.equals(blobValue, that.blobValue);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, integerValue, textValue, Arrays.hashCode(blobValue));
+        return Objects.hash(
+                type, integerValue, realValue, textValue, Arrays.hashCode(blobValue));
     }
 
     @Override

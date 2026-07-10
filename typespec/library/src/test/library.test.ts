@@ -9,6 +9,7 @@ import {
   type Interface,
   type Model,
   type Program,
+  type Scalar,
   type Union,
 } from "@typespec/compiler";
 import {
@@ -197,6 +198,17 @@ test("script envelope models are defined under SqliteHost.Protocol", async () =>
     assert.ok(model, `${name} model missing`);
   }
 
+  // Float bindings carry a finite JSON number typed as the matching
+  // TypeSpec float scalar (docs/script-envelope.md: no string form).
+  for (const scalar of ["float32", "float64"]) {
+    const name = `Float${scalar.slice(5)}Binding`;
+    const [model] = program.resolveTypeReference(`SqliteHost.Protocol.${name}`);
+    assert.ok(model, `${name} model missing`);
+    const value = (model as Model).properties.get("value")!;
+    assert.equal(value.type.kind, "Scalar");
+    assert.equal((value.type as Scalar).name, scalar);
+  }
+
   const [binding] = program.resolveTypeReference(
     "SqliteHost.Protocol.BindingValue",
   );
@@ -211,6 +223,8 @@ test("script envelope models are defined under SqliteHost.Protocol", async () =>
       "boolValue",
       "textValue",
       "blobValue",
+      "float32Value",
+      "float64Value",
     ],
   );
 });

@@ -38,6 +38,8 @@ union BindingValue {
   boolValue: BoolBinding,
   textValue: TextBinding,
   blobValue: BlobBinding,
+  float32Value: Float32Binding,
+  float64Value: Float64Binding,
 }
 
 model NullBinding {
@@ -67,4 +69,14 @@ model TextBinding {
 model BlobBinding {
   type: "blob";
   value: bytes;
+}
+
+model Float32Binding {
+  type: "float32";
+  value: float32;
+}
+
+model Float64Binding {
+  type: "float64";
+  value: float64;
 }

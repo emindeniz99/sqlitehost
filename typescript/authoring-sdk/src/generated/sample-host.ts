@@ -56,6 +56,16 @@ export interface PutBlobResult {
   stored: boolean;
 }
 
+export interface RecordScoreInput {
+  key: string;
+  score: number;
+  weight?: number;
+}
+
+export interface RecordScoreResult {
+  average: number;
+}
+
 // -- Host metadata ----------------------------------------------------------
 
 /**
@@ -74,7 +84,14 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
   },
   inputsTable: {
     name: "script_inputs",
-    columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+    columns: [
+      "name",
+      "value_type",
+      "int_value",
+      "real_value",
+      "text_value",
+      "blob_value",
+    ],
   },
   methods: [
     {
@@ -149,6 +166,23 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       inputListFields: [],
       resultListFields: [],
     },
+    {
+      methodName: "recordScore",
+      operationName: "RecordScore",
+      handlerName: "RecordScore",
+      apiLevel: 1,
+      callTable: "call_record_score",
+      resultTable: "result_record_score",
+      queueTrigger: "trg_call_record_score_queue",
+      inputColumns: {
+        key: "input_key",
+        score: "input_score",
+        weight: "input_weight",
+      },
+      resultColumns: { average: "result_average" },
+      inputListFields: [],
+      resultListFields: [],
+    },
   ],
   tables: [
     {
@@ -157,7 +191,14 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     },
     {
       name: "script_inputs",
-      columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
     },
     { name: "call_get_value", columns: ["call_id", "input_key"] },
     {
@@ -195,6 +236,14 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     {
       name: "result_put_blob",
       columns: ["call_id", "status", "result_stored"],
+    },
+    {
+      name: "call_record_score",
+      columns: ["call_id", "input_key", "input_score", "input_weight"],
+    },
+    {
+      name: "result_record_score",
+      columns: ["call_id", "status", "result_average"],
     },
   ],
 };

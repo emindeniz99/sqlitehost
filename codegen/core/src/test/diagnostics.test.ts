@@ -111,7 +111,22 @@ test("rejects unsupported scalars", async () => {
         @hostMethod({ name: "getValue", handler: "GetValue" })
         op GetValue(input: In): Out;
       }
-      model In { ratio: float64; }
+      model In { ratio: float; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "unsupported-scalar");
+});
+
+test("rejects decimal scalars (floats are float32/float64 only)", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { amount: decimal; }
       model Out { value: int64; }
     `),
   );

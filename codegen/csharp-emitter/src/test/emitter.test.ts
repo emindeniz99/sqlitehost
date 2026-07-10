@@ -126,11 +126,27 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_inputs",
-      columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
     },
     scriptEnvelope: {
       engine: "sqlite-host-v1",
-      bindingTypes: ["null", "int32", "int64", "bool", "text", "blob"],
+      bindingTypes: [
+        "null",
+        "int32",
+        "int64",
+        "bool",
+        "text",
+        "blob",
+        "float32",
+        "float64",
+      ],
     },
     methods: [
       {
@@ -165,6 +181,20 @@ function smokeIr(): HostLibraryIr {
               scalarType: "int32",
               optional: true,
             },
+            {
+              propertyName: "score",
+              sqlName: "score",
+              column: deriveInputColumn(naming, "score"),
+              scalarType: "float64",
+              optional: false,
+            },
+            {
+              propertyName: "weight",
+              sqlName: "weight",
+              column: deriveInputColumn(naming, "weight"),
+              scalarType: "float32",
+              optional: true,
+            },
           ],
           listFields: [],
         },
@@ -176,6 +206,13 @@ function smokeIr(): HostLibraryIr {
               sqlName: "archived",
               column: deriveResultColumn(naming, "archived"),
               scalarType: "boolean",
+              optional: false,
+            },
+            {
+              propertyName: "ratio",
+              sqlName: "ratio",
+              column: deriveResultColumn(naming, "ratio"),
+              scalarType: "float32",
               optional: false,
             },
           ],
@@ -216,6 +253,10 @@ test("smoke IR: DTOs use the library namespace and IR-driven types", () => {
   assert.match(dtos, /public byte\[\] Payload \{ get; set; \}/);
   assert.match(dtos, /public int\? RetryCount \{ get; set; \}/);
   assert.match(dtos, /public string ReportId \{ get; set; \}/);
+  // float64 maps to double; optional float32 becomes float?.
+  assert.match(dtos, /public double Score \{ get; set; \}/);
+  assert.match(dtos, /public float\? Weight \{ get; set; \}/);
+  assert.match(dtos, /public float Ratio \{ get; set; \}/);
   assert.match(
     dtos,
     /public List<TagItem> Tags \{ get; set; \} = new List<TagItem>\(\);/,
@@ -240,6 +281,9 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
   assert.match(specs, /\.Text\("report_id", \(x, v\) => x\.ReportId = v\)/);
   assert.match(specs, /\.OptionalBlob\("payload", \(x, v\) => x\.Payload = v\)/);
   assert.match(specs, /\.OptionalInt\("retry_count", \(x, v\) => x\.RetryCount = v\)/);
+  assert.match(specs, /\.Double\("score", \(x, v\) => x\.Score = v\)/);
+  assert.match(specs, /\.OptionalFloat\("weight", \(x, v\) => x\.Weight = v\)/);
+  assert.match(specs, /\.Float\("ratio", x => x\.Ratio\)/);
   assert.match(specs, /\.List<TagItem>\("tags", x => x\.Tags, item => item/);
   assert.match(specs, /\.Text\("label", x => x\.Label\)\)\)/);
   assert.match(specs, /handlers\.ArchiveReport\(input\)/);
@@ -263,6 +307,11 @@ test("smoke IR: schema constant embeds the IR-derived DDL", () => {
   // Optional bytes column: BLOB without NOT NULL.
   assert.match(schema, /in_payload BLOB,\\n/);
   assert.doesNotMatch(schema, /in_payload BLOB NOT NULL/);
+  // Float columns map to REAL; optional float32 drops NOT NULL.
+  assert.match(schema, /in_score REAL NOT NULL/);
+  assert.match(schema, /in_weight REAL\\n/);
+  assert.doesNotMatch(schema, /in_weight REAL NOT NULL/);
+  assert.match(schema, /out_ratio REAL NOT NULL/);
   assert.match(schema, /CREATE TRIGGER trg_hc_archive_report_queue/);
 });
 

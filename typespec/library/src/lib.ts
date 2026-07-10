@@ -61,7 +61,7 @@ export const $lib = createTypeSpecLibrary({
     "unsupported-scalar": {
       severity: "error",
       messages: {
-        default: paramMessage`Type "${"type"}" of field "${"field"}" is not a supported scalar (int32, int64, boolean, string, bytes).`,
+        default: paramMessage`Type "${"type"}" of field "${"field"}" is not a supported scalar (int32, int64, boolean, string, bytes, float32, float64).`,
       },
     },
     "nested-model": {

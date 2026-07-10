@@ -40,6 +40,8 @@ const SUPPORTED_SCALARS: Record<string, ScalarTypeIr> = {
   boolean: "boolean",
   string: "string",
   bytes: "bytes",
+  float32: "float32",
+  float64: "float64",
 };
 
 /** Map a std scalar to the IR scalar type; undefined when unsupported. */

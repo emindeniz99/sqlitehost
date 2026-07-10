@@ -84,6 +84,10 @@ function propertyType(field: ScalarFieldIr): string {
       return "string";
     case "bytes":
       return "byte[]";
+    case "float32":
+      return field.optional ? "float?" : "float";
+    case "float64":
+      return field.optional ? "double?" : "double";
   }
 }
 
@@ -105,6 +109,12 @@ function builderMethod(field: ScalarFieldIr): string {
       break;
     case "bytes":
       base = "Blob";
+      break;
+    case "float32":
+      base = "Float";
+      break;
+    case "float64":
+      base = "Double";
       break;
   }
   return field.optional ? `Optional${base}` : base;

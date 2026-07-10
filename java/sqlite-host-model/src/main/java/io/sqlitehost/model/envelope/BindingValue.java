@@ -23,7 +23,9 @@ public final class BindingValue {
         INT64("int64"),
         BOOL("bool"),
         TEXT("text"),
-        BLOB("blob");
+        BLOB("blob"),
+        FLOAT32("float32"),
+        FLOAT64("float64");
 
         private final String jsonName;
 
@@ -47,16 +49,19 @@ public final class BindingValue {
         }
     }
 
-    private static final BindingValue NULL_VALUE = new BindingValue(Type.NULL, 0L, null, null);
+    private static final BindingValue NULL_VALUE = new BindingValue(Type.NULL, 0L, 0.0, null, null);
 
     private final Type type;
     private final long integerValue;
+    private final double realValue;
     private final String textValue;
     private final byte[] blobValue;
 
-    private BindingValue(Type type, long integerValue, String textValue, byte[] blobValue) {
+    private BindingValue(
+            Type type, long integerValue, double realValue, String textValue, byte[] blobValue) {
         this.type = type;
         this.integerValue = integerValue;
+        this.realValue = realValue;
         this.textValue = textValue;
         this.blobValue = blobValue;
     }
@@ -68,29 +73,39 @@ public final class BindingValue {
 
     /** An {@code int32} binding value. */
     public static BindingValue int32(int value) {
-        return new BindingValue(Type.INT32, value, null, null);
+        return new BindingValue(Type.INT32, value, 0.0, null, null);
     }
 
     /** An {@code int64} binding value. */
     public static BindingValue int64(long value) {
-        return new BindingValue(Type.INT64, value, null, null);
+        return new BindingValue(Type.INT64, value, 0.0, null, null);
     }
 
     /** A {@code bool} binding value. */
     public static BindingValue bool(boolean value) {
-        return new BindingValue(Type.BOOL, value ? 1L : 0L, null, null);
+        return new BindingValue(Type.BOOL, value ? 1L : 0L, 0.0, null, null);
     }
 
     /** A {@code text} binding value. */
     public static BindingValue text(String value) {
         Objects.requireNonNull(value, "value");
-        return new BindingValue(Type.TEXT, 0L, value, null);
+        return new BindingValue(Type.TEXT, 0L, 0.0, value, null);
     }
 
     /** A {@code blob} binding value (the byte array is copied). */
     public static BindingValue blob(byte[] value) {
         Objects.requireNonNull(value, "value");
-        return new BindingValue(Type.BLOB, 0L, null, value.clone());
+        return new BindingValue(Type.BLOB, 0L, 0.0, null, value.clone());
+    }
+
+    /** A {@code float32} binding value. */
+    public static BindingValue float32(float value) {
+        return new BindingValue(Type.FLOAT32, 0L, value, null, null);
+    }
+
+    /** A {@code float64} binding value. */
+    public static BindingValue float64(double value) {
+        return new BindingValue(Type.FLOAT64, 0L, value, null, null);
     }
 
     /** The discriminator. */
@@ -132,6 +147,18 @@ public final class BindingValue {
         return blobValue.clone();
     }
 
+    /** @throws IllegalStateException when {@link #type()} is not {@code FLOAT32} */
+    public float asFloat32() {
+        requireType(Type.FLOAT32);
+        return (float) realValue;
+    }
+
+    /** @throws IllegalStateException when {@link #type()} is not {@code FLOAT64} */
+    public double asFloat64() {
+        requireType(Type.FLOAT64);
+        return realValue;
+    }
+
     private void requireType(Type expected) {
         if (type != expected) {
             throw new IllegalStateException(
@@ -150,13 +177,15 @@ public final class BindingValue {
         }
         return type == that.type
                 && integerValue == that.integerValue
+                && Double.compare(realValue, that.realValue) == 0
                 && Objects.equals(textValue, that.textValue)
                 && Arrays.equals(blobValue, that.blobValue);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, integerValue, textValue, Arrays.hashCode(blobValue));
+        return Objects.hash(
+                type, integerValue, realValue, textValue, Arrays.hashCode(blobValue));
     }
 
     @Override
@@ -173,6 +202,9 @@ public final class BindingValue {
                 return "BindingValue[text " + textValue + "]";
             case BLOB:
                 return "BindingValue[blob " + blobValue.length + " bytes]";
+            case FLOAT32:
+            case FLOAT64:
+                return "BindingValue[" + type.jsonName() + " " + realValue + "]";
             default:
                 return "BindingValue[" + type + "]";
         }

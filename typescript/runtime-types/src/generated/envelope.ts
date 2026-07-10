@@ -15,6 +15,8 @@ export const BINDING_TYPES = [
   "bool",
   "text",
   "blob",
+  "float32",
+  "float64",
 ] as const;
 
 export type BindingType = (typeof BINDING_TYPES)[number];
@@ -69,6 +71,25 @@ export interface BlobBindingValue {
   value: string;
 }
 
+/**
+ * SQLite REAL from a float32. The JSON `value` is a finite number
+ * representable as an IEEE-754 single (round-to-nearest); the string
+ * form is not accepted.
+ */
+export interface Float32BindingValue {
+  type: "float32";
+  value: number;
+}
+
+/**
+ * SQLite REAL from a float64. The JSON `value` is a finite number; the
+ * string form is not accepted.
+ */
+export interface Float64BindingValue {
+  type: "float64";
+  value: number;
+}
+
 /** A typed binding value, discriminated by `type`. */
 export type BindingValue =
   | NullBindingValue
@@ -76,7 +97,9 @@ export type BindingValue =
   | Int64BindingValue
   | BoolBindingValue
   | TextBindingValue
-  | BlobBindingValue;
+  | BlobBindingValue
+  | Float32BindingValue
+  | Float64BindingValue;
 
 /**
  * A runtime input inserted into the `script_inputs` table before the

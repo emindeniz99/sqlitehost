@@ -62,6 +62,42 @@ test("sqlName defaults to snake_case of the property name when @sqlName is absen
   );
 });
 
+test("float32/float64 scalars map to the IR float scalar types", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "recordScore", handler: "RecordScore" })
+      op RecordScore(input: RecordScoreInput): RecordScoreResult;
+    }
+
+    model RecordScoreInput {
+      score: float64;
+      weight?: float32;
+    }
+
+    model RecordScoreResult {
+      average: float64;
+    }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const [method] = result.ir.methods;
+  assert.deepEqual(
+    method.input.fields.map((f) => [f.propertyName, f.scalarType, f.optional]),
+    [
+      ["score", "float64", false],
+      ["weight", "float32", true],
+    ],
+  );
+  assert.deepEqual(
+    method.result.fields.map((f) => [f.propertyName, f.scalarType, f.optional]),
+    [["average", "float64", false]],
+  );
+});
+
 test("@sqlName override is respected over the snake_case default", async () => {
   const result = await compileSource(`
     import "@sqlite-host/typespec";

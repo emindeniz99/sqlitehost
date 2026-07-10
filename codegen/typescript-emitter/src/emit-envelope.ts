@@ -28,6 +28,19 @@ const BINDING_TYPE_SPECS: Record<string, BindingTypeSpec> = {
       "alphabet, padding, no line breaks).",
     valueType: "string",
   },
+  float32: {
+    doc:
+      "SQLite REAL from a float32. The JSON `value` is a finite number " +
+      "representable as an IEEE-754 single (round-to-nearest); the " +
+      "string form is not accepted.",
+    valueType: "number",
+  },
+  float64: {
+    doc:
+      "SQLite REAL from a float64. The JSON `value` is a finite number; " +
+      "the string form is not accepted.",
+    valueType: "number",
+  },
 };
 
 function bindingInterfaceName(bindingType: string): string {

@@ -70,11 +70,27 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_params",
-      columns: ["name", "value_type", "int_value", "text_value", "blob_value"],
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
     },
     scriptEnvelope: {
       engine: "acme-host-v1",
-      bindingTypes: ["null", "int32", "int64", "bool", "text", "blob"],
+      bindingTypes: [
+        "null",
+        "int32",
+        "int64",
+        "bool",
+        "text",
+        "blob",
+        "float32",
+        "float64",
+      ],
     },
     methods: [
       {
@@ -100,6 +116,13 @@ function smokeIr(): HostLibraryIr {
               sqlName: "thumbnail",
               column: "arg_thumbnail",
               scalarType: "bytes",
+              optional: true,
+            },
+            {
+              propertyName: "weight",
+              sqlName: "weight",
+              column: "arg_weight",
+              scalarType: "float32",
               optional: true,
             },
           ],
@@ -129,6 +152,13 @@ function smokeIr(): HostLibraryIr {
               sqlName: "revision",
               column: "out_revision",
               scalarType: "int64",
+              optional: false,
+            },
+            {
+              propertyName: "confidence",
+              sqlName: "confidence",
+              column: "out_confidence",
+              scalarType: "float64",
               optional: false,
             },
           ],
@@ -178,6 +208,26 @@ test("smoke IR: envelope derives engine and inputs table from the IR", () => {
   assert.ok(!envelope.includes("script_inputs"));
 });
 
+test("smoke IR: envelope union gains float members in binding-type order", () => {
+  const envelope = emitEnvelope(smokeIr());
+  assert.ok(
+    envelope.includes(
+      'export interface Float32BindingValue {\n  type: "float32";\n  value: number;\n}',
+    ),
+  );
+  assert.ok(
+    envelope.includes(
+      'export interface Float64BindingValue {\n  type: "float64";\n  value: number;\n}',
+    ),
+  );
+  assert.ok(
+    envelope.includes(
+      "  | BlobBindingValue\n  | Float32BindingValue\n  | Float64BindingValue;",
+    ),
+    "float union members follow blob in binding-type order",
+  );
+});
+
 test("smoke IR: host types derive names, optionality, and scalar types", () => {
   const output = emitHostTypes(smokeIr(), "acme-warehouse");
   // Interfaces with resolved model names and scalar mappings.
@@ -187,11 +237,19 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
     output.includes("  /** base64-encoded bytes */\n  thumbnail?: string;"),
     "optional bytes field maps to `thumbnail?: string` with base64 doc",
   );
+  assert.ok(
+    output.includes("  weight?: number;"),
+    "optional float32 field maps to `weight?: number`",
+  );
   assert.ok(output.includes("  tags: AssetTagItem[];"));
   assert.ok(output.includes("export interface AssetTagItem {"));
   assert.ok(output.includes("  label: string;"));
   assert.ok(output.includes("export interface StoreAssetResult {"));
   assert.ok(output.includes("  revision: Int64Value;"));
+  assert.ok(
+    output.includes("  confidence: number;"),
+    "float64 field maps to `confidence: number`",
+  );
   // Imports follow field usage (int32 + int64 both present).
   assert.ok(
     output.includes(
@@ -206,21 +264,31 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
   assert.ok(output.includes('resultTable: "resp_store_asset"'));
   assert.ok(output.includes('queueTrigger: "trg_req_store_asset_queue"'));
   assert.ok(output.includes('childTable: "req_store_asset__arg_tags"'));
-  assert.ok(output.includes('inputColumns: { assetId: "arg_asset_id", thumbnail: "arg_thumbnail" }'));
-  assert.ok(output.includes('resultColumns: { revision: "out_revision" }'));
+  assert.ok(
+    output.includes(
+      'inputColumns: {\n        assetId: "arg_asset_id",\n        thumbnail: "arg_thumbnail",\n        weight: "arg_weight",\n      }',
+    ),
+  );
+  assert.ok(
+    output.includes(
+      'resultColumns: { revision: "out_revision", confidence: "out_confidence" }',
+    ),
+  );
   assert.ok(output.includes('name: "script_params"'));
   // Child/result tables get the fixed structural columns.
   assert.ok(
     output.includes('columns: ["call_id", "item_index", "arg_label"]'),
     "list child table columns include call_id + item_index",
   );
-  assert.ok(output.includes('columns: ["call_id", "status", "out_revision"]'));
+  assert.ok(
+    output.includes('columns: ["call_id", "status", "out_revision", "out_confidence"]'),
+  );
 });
 
 test("emitEnvelope fails loud on an unknown binding type", () => {
   const ir = smokeIr();
-  ir.scriptEnvelope.bindingTypes = ["null", "float64"];
-  assert.throws(() => emitEnvelope(ir), /unknown binding type "float64"/);
+  ir.scriptEnvelope.bindingTypes = ["null", "float16"];
+  assert.throws(() => emitEnvelope(ir), /unknown binding type "float16"/);
 });
 
 test("CLI writes golden-identical files from a manifest", () => {
