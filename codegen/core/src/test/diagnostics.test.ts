@@ -387,6 +387,172 @@ test("rejects a shared table name colliding with a derived list child table", as
   assertDiagnostic(result, "shared-table-name-collision");
 });
 
+test("rejects an empty control table name", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, controlTable: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-shared-table-name");
+});
+
+test("rejects a control table name duplicating another shared table", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, controlTable: "script_vars" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-shared-table-name");
+});
+
+test("rejects a control table name colliding with a derived call table", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, controlTable: "call_get_value" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "shared-table-name-collision");
+});
+
+test("rejects an empty column name", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, callIdColumn: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-column-name");
+});
+
+test("rejects an empty doneStatusValue", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, doneStatusValue: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-done-status-value");
+});
+
+test("rejects duplicate column names within the queue table set", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, methodColumn: "status" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-column-name");
+});
+
+test("rejects duplicate column names within the named-value table set", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, intValueColumn: "name" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-column-name");
+});
+
+test("rejects duplicate column names within the control table set", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, actionColumn: "message" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-column-name");
+});
+
+test("rejects itemIndex duplicating callId (list child row identity)", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, itemIndexColumn: "call_id" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-column-name");
+});
+
+test("rejects a callId column colliding with a derived input field column", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, callIdColumn: "input_key" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "column-name-collision");
+});
+
+test("rejects a status column colliding with a derived list item result column", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, statusColumn: "result_key" })
+      interface Methods {
+        @hostMethod({ name: "getValues", handler: "GetValues" })
+        op GetValues(input: In): Out;
+      }
+      model In { key: string; }
+      model Item { key: string; }
+      model Out { entries: Item[]; }
+    `),
+  );
+  assertDiagnostic(result, "column-name-collision");
+});
+
 test("rejects duplicate @hostLibrary interface names across libraries", async () => {
   const result = await compileSourceAll(`
     import "@sqlite-host/typespec";

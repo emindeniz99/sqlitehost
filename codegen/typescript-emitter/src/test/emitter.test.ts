@@ -43,9 +43,9 @@ function sampleIr(): HostLibraryIr {
 
 /**
  * Hand-built non-sample IR: non-default naming prefixes (req_/resp_,
- * arg_/out_), non-default queue/inputs/vars table names, an optional
- * bytes field, int32 + int64 fields, and a list field on each side of
- * the method.
+ * arg_/out_), non-default queue/inputs/vars/control table names, fully
+ * renamed shared columns, an optional bytes field, int32 + int64
+ * fields, and a list field on each side of the method.
  */
 function smokeIr(): HostLibraryIr {
   return {
@@ -66,31 +66,37 @@ function smokeIr(): HostLibraryIr {
       inputListTableInfix: "__arg_",
       resultListTableInfix: "__out_",
     },
+    columns: {
+      callId: "cid",
+      itemIndex: "idx",
+      status: "state",
+      doneValue: "ok",
+      queueId: "qid",
+      method: "verb",
+      name: "param",
+      valueType: "kind",
+      intValue: "ival",
+      realValue: "rval",
+      textValue: "tval",
+      blobValue: "bval",
+      action: "cmd",
+      message: "note",
+    },
     queueTable: {
       name: "host_queue",
-      columns: ["queue_id", "call_id", "method", "status"],
+      columns: ["qid", "cid", "verb", "state"],
     },
     inputsTable: {
       name: "script_params",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
     },
     varsTable: {
       name: "script_scratch",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
+    },
+    controlTable: {
+      name: "script_ctl",
+      columns: ["cmd", "note"],
     },
     scriptEnvelope: {
       engine: "acme-host-v1",
@@ -297,22 +303,46 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
     output.includes('name: "script_scratch"'),
     "vars table name comes from the IR",
   );
-  // Child/result tables get the fixed structural columns.
+  // The control table mirrors varsTable, name and columns from the IR.
   assert.ok(
-    output.includes('columns: ["call_id", "item_index", "arg_label"]'),
-    "list child table columns include call_id + item_index",
+    output.includes('controlTable: { name: "script_ctl", columns: ["cmd", "note"] }'),
+    "control table metadata comes from the IR",
+  );
+  // The columns block mirrors the manifest's columns block exactly.
+  assert.ok(output.includes('callId: "cid"'));
+  assert.ok(output.includes('itemIndex: "idx"'));
+  assert.ok(output.includes('doneValue: "ok"'));
+  assert.ok(output.includes('action: "cmd"'));
+  // Child/result tables get the renamed structural columns.
+  assert.ok(
+    output.includes('columns: ["cid", "idx", "arg_label"]'),
+    "list child table columns include the renamed callId + itemIndex",
   );
   assert.ok(
-    output.includes('columns: ["call_id", "status", "out_revision", "out_confidence"]'),
+    output.includes('columns: ["cid", "state", "out_revision", "out_confidence"]'),
   );
 });
 
-test("smoke IR: no emitted file mentions the default shared table names", () => {
+test("smoke IR: no emitted file mentions the default shared table or column names", () => {
+  const defaults = [
+    "pending_host_calls",
+    "script_inputs",
+    "script_vars",
+    "script_control",
+    "call_id",
+    "item_index",
+    "queue_id",
+    "value_type",
+    "int_value",
+    "real_value",
+    "text_value",
+    "blob_value",
+  ];
   for (const file of emitTypeScript(smokeIr(), { baseName: "acme-warehouse" })) {
-    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+    for (const name of defaults) {
       assert.ok(
         !file.contents.includes(name),
-        `${file.path} still mentions default table name ${name}`,
+        `${file.path} still mentions default name ${name}`,
       );
     }
   }

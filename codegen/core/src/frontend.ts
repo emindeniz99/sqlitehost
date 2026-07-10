@@ -37,12 +37,18 @@ import {
 } from "@sqlite-host/typespec";
 import {
   BINDING_TYPES_V1,
+  COLUMNS_V1,
+  CONTROL_TABLE_V1,
+  controlTableColumns,
   DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   ENGINE_V1,
   FEATURES_V1,
   INPUTS_TABLE_V1,
+  namedValueTableColumns,
   QUEUE_TABLE_V1,
+  queueTableColumns,
   VARS_TABLE_V1,
+  type ColumnsIr,
   type HostLibraryIr,
   type HostMethodIr,
   type ListFieldIr,
@@ -201,15 +207,33 @@ function buildLibraryIr(
     resultListTableInfix:
       options.resultListTableInfix ?? DEFAULT_NAMING.resultListTableInfix,
   };
-  // Shared workspace table names are host-level naming; the column
-  // shapes stay the fixed protocol constants (docs/naming.md).
+  // Shared workspace table names and column names are host-level naming
+  // too: names resolve here (defaults from the protocol v1 constants)
+  // and flow into every table's column list (docs/naming.md).
   const sharedTables: SharedTableNames = {
     queueTable: options.queueTable ?? QUEUE_TABLE_V1.name,
     inputsTable: options.inputsTable ?? INPUTS_TABLE_V1.name,
     varsTable: options.varsTable ?? VARS_TABLE_V1.name,
+    controlTable: options.controlTable ?? CONTROL_TABLE_V1.name,
+  };
+  const columns: ColumnsIr = {
+    callId: options.callIdColumn ?? COLUMNS_V1.callId,
+    itemIndex: options.itemIndexColumn ?? COLUMNS_V1.itemIndex,
+    status: options.statusColumn ?? COLUMNS_V1.status,
+    doneValue: options.doneStatusValue ?? COLUMNS_V1.doneValue,
+    queueId: options.queueIdColumn ?? COLUMNS_V1.queueId,
+    method: options.methodColumn ?? COLUMNS_V1.method,
+    name: options.nameColumn ?? COLUMNS_V1.name,
+    valueType: options.valueTypeColumn ?? COLUMNS_V1.valueType,
+    intValue: options.intValueColumn ?? COLUMNS_V1.intValue,
+    realValue: options.realValueColumn ?? COLUMNS_V1.realValue,
+    textValue: options.textValueColumn ?? COLUMNS_V1.textValue,
+    blobValue: options.blobValueColumn ?? COLUMNS_V1.blobValue,
+    action: options.actionColumn ?? COLUMNS_V1.action,
+    message: options.messageColumn ?? COLUMNS_V1.message,
   };
 
-  if (!validateHostLibraryInterface(program, iface, naming, sharedTables)) {
+  if (!validateHostLibraryInterface(program, iface, naming, sharedTables, columns)) {
     return undefined;
   }
 
@@ -238,17 +262,22 @@ function buildLibraryIr(
       features: [...FEATURES_V1],
     },
     naming,
+    columns,
     queueTable: {
       name: sharedTables.queueTable,
-      columns: [...QUEUE_TABLE_V1.columns],
+      columns: queueTableColumns(columns),
     },
     inputsTable: {
       name: sharedTables.inputsTable,
-      columns: [...INPUTS_TABLE_V1.columns],
+      columns: namedValueTableColumns(columns),
     },
     varsTable: {
       name: sharedTables.varsTable,
-      columns: [...VARS_TABLE_V1.columns],
+      columns: namedValueTableColumns(columns),
+    },
+    controlTable: {
+      name: sharedTables.controlTable,
+      columns: controlTableColumns(columns),
     },
     scriptEnvelope: {
       engine: ENGINE_V1,

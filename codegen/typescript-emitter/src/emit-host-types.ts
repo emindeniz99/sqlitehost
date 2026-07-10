@@ -4,12 +4,13 @@
  * the IR, int64/int32 as the runtime-types value aliases, bytes as a
  * base64 string) plus the precomputed HostMetadata const. The metadata
  * literal mirrors typescript/authoring-sdk `loadHostMetadata` exactly:
- * physical names are read from the IR as-is and only the fixed
- * structural columns (call_id, status, item_index —
- * docs/workspace-schema.md) are added to the table column lists.
+ * physical names are read from the IR as-is and only the shared
+ * structural columns (callId, status, itemIndex — the IR's `columns`
+ * block, docs/naming.md) are added to the table column lists.
  */
 
 import type {
+  ColumnsIr,
   HostLibraryIr,
   HostMethodIr,
   ListFieldIr,
@@ -112,12 +113,12 @@ function listFieldMetadata(field: ListFieldIr): Literal {
   };
 }
 
-function childTableMetadata(field: ListFieldIr): Literal {
+function childTableMetadata(field: ListFieldIr, columns: ColumnsIr): Literal {
   return {
     name: field.childTable,
     columns: [
-      "call_id",
-      "item_index",
+      columns.callId,
+      columns.itemIndex,
       ...field.itemFields.map((item) => item.column),
     ],
   };
@@ -140,29 +141,31 @@ function methodMetadata(method: HostMethodIr): Literal {
 }
 
 function hostMetadata(ir: HostLibraryIr): Literal {
+  const c = ir.columns;
   const tables: Literal[] = [
     { name: ir.queueTable.name, columns: [...ir.queueTable.columns] },
     { name: ir.inputsTable.name, columns: [...ir.inputsTable.columns] },
     { name: ir.varsTable.name, columns: [...ir.varsTable.columns] },
+    { name: ir.controlTable.name, columns: [...ir.controlTable.columns] },
   ];
   for (const method of ir.methods) {
     tables.push({
       name: method.callTable,
-      columns: ["call_id", ...method.input.fields.map((field) => field.column)],
+      columns: [c.callId, ...method.input.fields.map((field) => field.column)],
     });
     for (const listField of method.input.listFields) {
-      tables.push(childTableMetadata(listField));
+      tables.push(childTableMetadata(listField, c));
     }
     tables.push({
       name: method.resultTable,
       columns: [
-        "call_id",
-        "status",
+        c.callId,
+        c.status,
         ...method.result.fields.map((field) => field.column),
       ],
     });
     for (const listField of method.result.listFields) {
-      tables.push(childTableMetadata(listField));
+      tables.push(childTableMetadata(listField, c));
     }
   }
   return {
@@ -172,6 +175,23 @@ function hostMetadata(ir: HostLibraryIr): Literal {
     apiLevel: ir.library.apiLevel,
     minSqliteVersionNumber: ir.library.minSqliteVersionNumber,
     features: [...ir.library.features],
+    // The manifest columns block, mirrored exactly (key order included).
+    columns: {
+      callId: c.callId,
+      itemIndex: c.itemIndex,
+      status: c.status,
+      doneValue: c.doneValue,
+      queueId: c.queueId,
+      method: c.method,
+      name: c.name,
+      valueType: c.valueType,
+      intValue: c.intValue,
+      realValue: c.realValue,
+      textValue: c.textValue,
+      blobValue: c.blobValue,
+      action: c.action,
+      message: c.message,
+    },
     queueTable: { name: ir.queueTable.name, columns: [...ir.queueTable.columns] },
     inputsTable: {
       name: ir.inputsTable.name,
@@ -180,6 +200,10 @@ function hostMetadata(ir: HostLibraryIr): Literal {
     varsTable: {
       name: ir.varsTable.name,
       columns: [...ir.varsTable.columns],
+    },
+    controlTable: {
+      name: ir.controlTable.name,
+      columns: [...ir.controlTable.columns],
     },
     methods: ir.methods.map(methodMetadata),
     tables,

@@ -98,7 +98,7 @@ test("CLI exits non-zero on bad usage", () => {
 
 // ---------------------------------------------------------------------------
 // Non-sample smoke IR: different naming prefixes, custom shared workspace
-// table names, + optional bytes field.
+// table names, fully renamed shared columns, + optional bytes field.
 // ---------------------------------------------------------------------------
 
 function smokeIr(): HostLibraryIr {
@@ -122,31 +122,37 @@ function smokeIr(): HostLibraryIr {
       features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
     },
     naming,
+    columns: {
+      callId: "cid",
+      itemIndex: "idx",
+      status: "state",
+      doneValue: "ok",
+      queueId: "qid",
+      method: "verb",
+      name: "param",
+      valueType: "kind",
+      intValue: "ival",
+      realValue: "rval",
+      textValue: "tval",
+      blobValue: "bval",
+      action: "cmd",
+      message: "note",
+    },
     queueTable: {
       name: "host_queue",
-      columns: ["queue_id", "call_id", "method", "status"],
+      columns: ["qid", "cid", "verb", "state"],
     },
     inputsTable: {
       name: "script_params",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
     },
     varsTable: {
       name: "script_scratch",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
+    },
+    controlTable: {
+      name: "script_ctl",
+      columns: ["cmd", "note"],
     },
     scriptEnvelope: {
       engine: "sqlite-host-v1",
@@ -317,10 +323,40 @@ test("smoke IR: host definition reproduces the IR naming prefixes and table name
   assert.match(definition, /\.InputListTableInfix\("__in_"\)/);
   assert.match(definition, /\.ResultListTableInfix\("__out_"\)/);
   // The shared workspace table names always follow the six prefixes,
-  // in queue/inputs/vars order, closing the Naming block.
+  // in queue/inputs/vars/control order, closing the Naming block.
   assert.match(
     definition,
-    /\.ResultListTableInfix\("__out_"\)\n\s+\.QueueTable\("host_queue"\)\n\s+\.InputsTable\("script_params"\)\n\s+\.VarsTable\("script_scratch"\)\)/,
+    /\.ResultListTableInfix\("__out_"\)\n\s+\.QueueTable\("host_queue"\)\n\s+\.InputsTable\("script_params"\)\n\s+\.VarsTable\("script_scratch"\)\n\s+\.ControlTable\("script_ctl"\)\)/,
+  );
+});
+
+test("smoke IR: host definition emits all fourteen column values explicitly", () => {
+  const definition = smokeFile("GeneratedHostDefinition.g.cs");
+  // The .Columns block sits between .Naming and .Methods and lists all
+  // fourteen setters in SqliteHostColumns property order.
+  assert.match(
+    definition,
+    new RegExp(
+      [
+        /\.ControlTable\("script_ctl"\)\)\n\s+\.Columns\(c => c/,
+        /\.CallId\("cid"\)/,
+        /\.ItemIndex\("idx"\)/,
+        /\.Status\("state"\)/,
+        /\.DoneValue\("ok"\)/,
+        /\.QueueId\("qid"\)/,
+        /\.Method\("verb"\)/,
+        /\.Name\("param"\)/,
+        /\.ValueType\("kind"\)/,
+        /\.IntValue\("ival"\)/,
+        /\.RealValue\("rval"\)/,
+        /\.TextValue\("tval"\)/,
+        /\.BlobValue\("bval"\)/,
+        /\.Action\("cmd"\)/,
+        /\.Message\("note"\)\)\n\s+\.Methods\(/,
+      ]
+        .map((r) => r.source)
+        .join("\\n\\s+"),
+    ),
   );
 });
 
@@ -329,11 +365,27 @@ test("smoke IR: schema constant embeds the IR-derived DDL", () => {
   assert.match(schema, /CREATE TABLE hc_archive_report \(/);
   assert.match(schema, /CREATE TABLE hr_archive_report__out_tags \(/);
   // Custom shared workspace table names flow into the DDL and the
-  // queue-trigger body.
+  // queue-trigger body — with the renamed columns.
   assert.match(schema, /CREATE TABLE host_queue \(/);
   assert.match(schema, /CREATE TABLE script_params \(/);
   assert.match(schema, /CREATE TABLE script_scratch \(/);
-  assert.match(schema, /INSERT INTO host_queue \(call_id, method\)/);
+  assert.match(schema, /CREATE TABLE script_ctl \(/);
+  assert.match(schema, /qid INTEGER PRIMARY KEY AUTOINCREMENT/);
+  assert.match(schema, /cid TEXT NOT NULL UNIQUE/);
+  assert.match(schema, /verb TEXT NOT NULL/);
+  assert.match(schema, /state TEXT NOT NULL DEFAULT 'pending'/);
+  assert.match(schema, /param TEXT NOT NULL PRIMARY KEY/);
+  assert.match(schema, /kind TEXT NOT NULL/);
+  assert.match(schema, /ival INTEGER/);
+  assert.match(schema, /cmd TEXT NOT NULL/);
+  assert.match(schema, /note TEXT\\n/);
+  assert.match(schema, /INSERT INTO host_queue \(cid, verb\)/);
+  assert.match(schema, /VALUES \(NEW\.cid, 'archiveReport'\)/);
+  // Parent/child row-identity columns and the done literal are renamed.
+  assert.match(schema, /cid TEXT NOT NULL PRIMARY KEY/);
+  assert.match(schema, /state TEXT NOT NULL DEFAULT 'ok'/);
+  assert.match(schema, /idx INTEGER NOT NULL/);
+  assert.match(schema, /PRIMARY KEY \(cid, idx\)/);
   // Optional bytes column: BLOB without NOT NULL.
   assert.match(schema, /in_payload BLOB,\\n/);
   assert.doesNotMatch(schema, /in_payload BLOB NOT NULL/);
@@ -345,12 +397,26 @@ test("smoke IR: schema constant embeds the IR-derived DDL", () => {
   assert.match(schema, /CREATE TRIGGER trg_hc_archive_report_queue/);
 });
 
-test("smoke IR: no emitted file mentions the default shared table names", () => {
+test("smoke IR: no emitted file mentions the default shared table or column names", () => {
+  const defaults = [
+    "pending_host_calls",
+    "script_inputs",
+    "script_vars",
+    "script_control",
+    "call_id",
+    "item_index",
+    "queue_id",
+    "value_type",
+    "int_value",
+    "real_value",
+    "text_value",
+    "blob_value",
+  ];
   for (const file of emitCSharp(smokeIr())) {
-    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+    for (const name of defaults) {
       assert.ok(
         !file.contents.includes(name),
-        `${file.path} still mentions default table name ${name}`,
+        `${file.path} still mentions default name ${name}`,
       );
     }
   }

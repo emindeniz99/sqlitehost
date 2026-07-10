@@ -20,6 +20,21 @@ export interface HostLibraryOptions {
   queueTable?: string;
   inputsTable?: string;
   varsTable?: string;
+  controlTable?: string;
+  callIdColumn?: string;
+  itemIndexColumn?: string;
+  statusColumn?: string;
+  doneStatusValue?: string;
+  queueIdColumn?: string;
+  methodColumn?: string;
+  nameColumn?: string;
+  valueTypeColumn?: string;
+  intValueColumn?: string;
+  realValueColumn?: string;
+  textValueColumn?: string;
+  blobValueColumn?: string;
+  actionColumn?: string;
+  messageColumn?: string;
 }
 
 /** Resolved `@hostMethod` options. `apiLevel` defaults to the library api level in the frontend. */

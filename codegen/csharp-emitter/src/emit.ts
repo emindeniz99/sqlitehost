@@ -319,6 +319,7 @@ export function emitMethodSpecs(ir: HostLibraryIr): string {
 
 export function emitHostDefinition(ir: HostLibraryIr): string {
   const naming = ir.naming;
+  const columns = ir.columns;
   return [
     HEADER,
     "",
@@ -343,7 +344,25 @@ export function emitHostDefinition(ir: HostLibraryIr): string {
     `                    .ResultListTableInfix(${csharpString(naming.resultListTableInfix)})`,
     `                    .QueueTable(${csharpString(ir.queueTable.name)})`,
     `                    .InputsTable(${csharpString(ir.inputsTable.name)})`,
-    `                    .VarsTable(${csharpString(ir.varsTable.name)}))`,
+    `                    .VarsTable(${csharpString(ir.varsTable.name)})`,
+    `                    .ControlTable(${csharpString(ir.controlTable.name)}))`,
+    // All fourteen column values are always emitted explicitly, in
+    // SqliteHostColumns property order (docs/csharp-api.md).
+    "                .Columns(c => c",
+    `                    .CallId(${csharpString(columns.callId)})`,
+    `                    .ItemIndex(${csharpString(columns.itemIndex)})`,
+    `                    .Status(${csharpString(columns.status)})`,
+    `                    .DoneValue(${csharpString(columns.doneValue)})`,
+    `                    .QueueId(${csharpString(columns.queueId)})`,
+    `                    .Method(${csharpString(columns.method)})`,
+    `                    .Name(${csharpString(columns.name)})`,
+    `                    .ValueType(${csharpString(columns.valueType)})`,
+    `                    .IntValue(${csharpString(columns.intValue)})`,
+    `                    .RealValue(${csharpString(columns.realValue)})`,
+    `                    .TextValue(${csharpString(columns.textValue)})`,
+    `                    .BlobValue(${csharpString(columns.blobValue)})`,
+    `                    .Action(${csharpString(columns.action)})`,
+    `                    .Message(${csharpString(columns.message)}))`,
     "                .Methods(GeneratedHostMethodSpecs.BuildAll());",
     "        }",
     "    }",

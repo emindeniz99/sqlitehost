@@ -4,7 +4,8 @@
  * frontend builds the IR: non-model top-level input/output, unsupported
  * scalars, nested models, nested lists, optional list fields, unions and
  * maps, duplicate method names, duplicate SQL names per shape, duplicate
- * derived table names, and missing @hostMethod. Diagnostics are reported
+ * derived table names, missing @hostMethod, and invalid shared table /
+ * column name configuration (docs/naming.md). Diagnostics are reported
  * with the codes declared by @sqlite-host/typespec.
  */
 
@@ -25,10 +26,17 @@ import {
   getSqlName,
   reportDiagnostic,
 } from "@sqlite-host/typespec";
-import type { NamingIr, ScalarTypeIr } from "./ir.js";
+import type { ColumnsIr, NamingIr, ScalarTypeIr } from "./ir.js";
+import {
+  controlTableColumns,
+  namedValueTableColumns,
+  queueTableColumns,
+} from "./ir.js";
 import {
   deriveCallTable,
+  deriveInputColumn,
   deriveInputListTable,
+  deriveResultColumn,
   deriveResultListTable,
   deriveResultTable,
   toSnakeCase,
@@ -77,6 +85,66 @@ export interface SharedTableNames {
   queueTable: string;
   inputsTable: string;
   varsTable: string;
+  controlTable: string;
+}
+
+/**
+ * Configurable column names: non-empty, and mutually distinct within
+ * each runtime-managed table's column set (docs/naming.md). The
+ * doneValue literal is only checked for non-emptiness — it is data,
+ * not an identifier. Row-identity columns are checked against derived
+ * field columns by the caller (validateHostLibraryInterface), once
+ * every field column is known.
+ */
+function validateColumns(
+  ctx: ValidationContext,
+  columns: ColumnsIr,
+  target: DiagnosticTarget,
+): void {
+  const options: Array<[string, string]> = [
+    ["callIdColumn", columns.callId],
+    ["itemIndexColumn", columns.itemIndex],
+    ["statusColumn", columns.status],
+    ["queueIdColumn", columns.queueId],
+    ["methodColumn", columns.method],
+    ["nameColumn", columns.name],
+    ["valueTypeColumn", columns.valueType],
+    ["intValueColumn", columns.intValue],
+    ["realValueColumn", columns.realValue],
+    ["textValueColumn", columns.textValue],
+    ["blobValueColumn", columns.blobValue],
+    ["actionColumn", columns.action],
+    ["messageColumn", columns.message],
+  ];
+  for (const [option, column] of options) {
+    if (column.length === 0) {
+      error(ctx, "invalid-column-name", { option }, target);
+    }
+  }
+  if (columns.doneValue.length === 0) {
+    error(ctx, "invalid-done-status-value", {}, target);
+  }
+
+  const checkDistinct = (table: string, set: string[]) => {
+    const seen = new Set<string>();
+    for (const column of set) {
+      if (column.length === 0) {
+        continue; // already reported as invalid-column-name
+      }
+      if (seen.has(column)) {
+        error(ctx, "duplicate-column-name", { column, table }, target);
+      } else {
+        seen.add(column);
+      }
+    }
+  };
+  checkDistinct("queue", queueTableColumns(columns));
+  checkDistinct("named-value", namedValueTableColumns(columns));
+  checkDistinct("control", controlTableColumns(columns));
+  // Method parent tables carry callId (+ status on the result side) —
+  // callId/status distinctness is already covered by the queue set.
+  // List child tables carry callId + itemIndex.
+  checkDistinct("list child", [columns.callId, columns.itemIndex]);
 }
 
 /**
@@ -89,10 +157,12 @@ export function validateHostLibraryInterface(
   iface: Interface,
   naming: NamingIr,
   sharedTables: SharedTableNames,
+  columns: ColumnsIr,
 ): boolean {
   const ctx: ValidationContext = { program, ok: true };
   const methodNames = new Set<string>();
   const tableNames = new Set<string>();
+  const fieldColumns = new Set<string>();
 
   // Shared workspace table names: non-empty and mutually distinct
   // (docs/naming.md). Collisions with derived tables are checked after
@@ -101,6 +171,7 @@ export function validateHostLibraryInterface(
     ["queueTable", sharedTables.queueTable],
     ["inputsTable", sharedTables.inputsTable],
     ["varsTable", sharedTables.varsTable],
+    ["controlTable", sharedTables.controlTable],
   ];
   const seenShared = new Set<string>();
   for (const [option, table] of shared) {
@@ -114,6 +185,8 @@ export function validateHostLibraryInterface(
       seenShared.add(table);
     }
   }
+
+  validateColumns(ctx, columns, iface);
 
   const claimTable = (table: string, target: DiagnosticTarget) => {
     if (tableNames.has(table)) {
@@ -148,7 +221,12 @@ export function validateHostLibraryInterface(
 
     const inputModel = checkInputModel(ctx, op);
     if (inputModel !== undefined) {
-      const listSqlNames = validateShape(ctx, inputModel);
+      const listSqlNames = validateShape(
+        ctx,
+        inputModel,
+        (sqlName) => deriveInputColumn(naming, sqlName),
+        fieldColumns,
+      );
       if (claimTables) {
         for (const [sqlName, target] of listSqlNames) {
           claimTable(deriveInputListTable(naming, methodName, sqlName), target);
@@ -158,7 +236,12 @@ export function validateHostLibraryInterface(
 
     const resultModel = checkResultModel(ctx, op);
     if (resultModel !== undefined) {
-      const listSqlNames = validateShape(ctx, resultModel);
+      const listSqlNames = validateShape(
+        ctx,
+        resultModel,
+        (sqlName) => deriveResultColumn(naming, sqlName),
+        fieldColumns,
+      );
       if (claimTables) {
         for (const [sqlName, target] of listSqlNames) {
           claimTable(deriveResultListTable(naming, methodName, sqlName), target);
@@ -170,6 +253,19 @@ export function validateHostLibraryInterface(
   for (const [option, table] of shared) {
     if (tableNames.has(table)) {
       error(ctx, "shared-table-name-collision", { option, table }, iface);
+    }
+  }
+
+  // Row-identity columns (docs/naming.md) must not collide with any
+  // derived input/result field column across all methods.
+  const rowIdentity: Array<[string, string]> = [
+    ["callIdColumn", columns.callId],
+    ["itemIndexColumn", columns.itemIndex],
+    ["statusColumn", columns.status],
+  ];
+  for (const [option, column] of rowIdentity) {
+    if (column.length > 0 && fieldColumns.has(column)) {
+      error(ctx, "column-name-collision", { option, column }, iface);
     }
   }
 
@@ -243,10 +339,14 @@ function checkResultModel(
 /**
  * Validate one input/result shape. Returns the list-field SQL names (with
  * their diagnostic targets) so the caller can claim derived child tables.
+ * Every scalar field's derived physical column (parent and list item)
+ * is added to `fieldColumns` for the row-identity collision check.
  */
 function validateShape(
   ctx: ValidationContext,
   model: Model,
+  deriveColumn: (sqlName: string) => string,
+  fieldColumns: Set<string>,
 ): Array<[string, ModelProperty]> {
   const sqlNames = new Set<string>();
   const listFields: Array<[string, ModelProperty]> = [];
@@ -258,7 +358,10 @@ function validateShape(
     } else {
       sqlNames.add(sqlName);
     }
-    if (validateField(ctx, prop)) {
+    if (prop.type.kind === "Scalar") {
+      fieldColumns.add(deriveColumn(sqlName));
+    }
+    if (validateField(ctx, prop, deriveColumn, fieldColumns)) {
       listFields.push([sqlName, prop]);
     }
   }
@@ -266,7 +369,12 @@ function validateShape(
 }
 
 /** Validate one field. Returns true when the field is a (valid) list field. */
-function validateField(ctx: ValidationContext, prop: ModelProperty): boolean {
+function validateField(
+  ctx: ValidationContext,
+  prop: ModelProperty,
+  deriveColumn: (sqlName: string) => string,
+  fieldColumns: Set<string>,
+): boolean {
   const program = ctx.program;
   const type = prop.type;
 
@@ -296,7 +404,7 @@ function validateField(ctx: ValidationContext, prop: ModelProperty): boolean {
         error(ctx, "invalid-list-item", { field: prop.name }, prop);
         return false;
       }
-      validateItemModel(ctx, element, prop);
+      validateItemModel(ctx, element, prop, deriveColumn, fieldColumns);
       return true;
     }
     if (isRecordModelType(program, type)) {
@@ -321,6 +429,8 @@ function validateItemModel(
   ctx: ValidationContext,
   model: Model,
   listProp: ModelProperty,
+  deriveColumn: (sqlName: string) => string,
+  fieldColumns: Set<string>,
 ): void {
   const sqlNames = new Set<string>();
   for (const prop of model.properties.values()) {
@@ -332,6 +442,7 @@ function validateItemModel(
     }
     const type = prop.type;
     if (type.kind === "Scalar") {
+      fieldColumns.add(deriveColumn(sqlName));
       if (mapSupportedScalar(ctx.program, type) === undefined) {
         error(
           ctx,

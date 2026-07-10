@@ -1,8 +1,11 @@
 import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { generateSchemaScript } from "../ddl.js";
 import { compileHostLibrary } from "../frontend.js";
 import {
+  COLUMNS_V1,
+  CONTROL_TABLE_V1,
   DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   INPUTS_TABLE_V1,
   QUEUE_TABLE_V1,
@@ -383,6 +386,81 @@ test("shared table names default to the protocol v1 names when absent", async ()
   assert.deepEqual(result.ir.queueTable, QUEUE_TABLE_V1);
   assert.deepEqual(result.ir.inputsTable, INPUTS_TABLE_V1);
   assert.deepEqual(result.ir.varsTable, VARS_TABLE_V1);
+  assert.deepEqual(result.ir.controlTable, CONTROL_TABLE_V1);
+  assert.deepEqual(result.ir.columns, COLUMNS_V1);
+});
+
+test("controlTable override renames the control table only", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, controlTable: "script_ctl" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.controlTable.name, "script_ctl");
+  // The column list stays derived from the (default) columns config.
+  assert.deepEqual(result.ir.controlTable.columns, CONTROL_TABLE_V1.columns);
+  assert.deepEqual(result.ir.queueTable, QUEUE_TABLE_V1);
+  assert.match(generateSchemaScript(result.ir), /CREATE TABLE script_ctl \(/);
+});
+
+test("column options resolve into ir.columns and every table's column list", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({
+      apiLevel: 1,
+      callIdColumn: "cid",
+      itemIndexColumn: "idx",
+      doneStatusValue: "ok",
+      actionColumn: "cmd"
+    })
+    interface Methods {
+      @hostMethod({ name: "getValues", handler: "GetValues" })
+      op GetValues(input: In): Out;
+    }
+
+    model Item { key: string; }
+    model In { keys: Item[]; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const ir = result.ir;
+  assert.deepEqual(ir.columns, {
+    ...COLUMNS_V1,
+    callId: "cid",
+    itemIndex: "idx",
+    doneValue: "ok",
+    action: "cmd",
+  });
+  // Renamed columns flow into every runtime-managed table's column list.
+  assert.deepEqual(ir.queueTable.columns, ["queue_id", "cid", "method", "status"]);
+  assert.deepEqual(ir.inputsTable.columns, INPUTS_TABLE_V1.columns);
+  assert.deepEqual(ir.controlTable.columns, ["cmd", "message"]);
+  // ... and into the DDL: table bodies, trigger body, done literal.
+  const ddl = generateSchemaScript(ir);
+  assert.match(ddl, /cid TEXT NOT NULL UNIQUE/);
+  assert.match(ddl, /cmd TEXT NOT NULL/);
+  assert.match(ddl, /cid TEXT NOT NULL PRIMARY KEY/);
+  assert.match(ddl, /status TEXT NOT NULL DEFAULT 'ok'/);
+  assert.match(ddl, /idx INTEGER NOT NULL/);
+  assert.match(ddl, /PRIMARY KEY \(cid, idx\)/);
+  assert.match(ddl, /INSERT INTO pending_host_calls \(cid, method\)/);
+  assert.match(ddl, /VALUES \(NEW\.cid, 'getValues'\)/);
+  assert.doesNotMatch(ddl, /call_id/);
+  assert.doesNotMatch(ddl, /item_index/);
+  assert.doesNotMatch(ddl, /DEFAULT 'done'/);
 });
 
 // Two @hostLibrary interfaces in one compilation. Both declare a

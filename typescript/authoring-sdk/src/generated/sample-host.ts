@@ -83,7 +83,24 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     "splitResultTables",
     "scriptInputs",
     "scriptVars",
+    "scriptControl",
   ],
+  columns: {
+    callId: "call_id",
+    itemIndex: "item_index",
+    status: "status",
+    doneValue: "done",
+    queueId: "queue_id",
+    method: "method",
+    name: "name",
+    valueType: "value_type",
+    intValue: "int_value",
+    realValue: "real_value",
+    textValue: "text_value",
+    blobValue: "blob_value",
+    action: "action",
+    message: "message",
+  },
   queueTable: {
     name: "pending_host_calls",
     columns: ["queue_id", "call_id", "method", "status"],
@@ -110,6 +127,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       "blob_value",
     ],
   },
+  controlTable: { name: "script_control", columns: ["action", "message"] },
   methods: [
     {
       methodName: "getValue",
@@ -228,6 +246,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
         "blob_value",
       ],
     },
+    { name: "script_control", columns: ["action", "message"] },
     { name: "call_get_value", columns: ["call_id", "input_key"] },
     {
       name: "result_get_value",

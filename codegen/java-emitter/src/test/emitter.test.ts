@@ -95,31 +95,37 @@ function smokeIr(): HostLibraryIr {
       inputListTableInfix: "__in_",
       resultListTableInfix: "__out_",
     },
+    columns: {
+      callId: "cid",
+      itemIndex: "idx",
+      status: "state",
+      doneValue: "ok",
+      queueId: "qid",
+      method: "verb",
+      name: "param",
+      valueType: "kind",
+      intValue: "ival",
+      realValue: "rval",
+      textValue: "tval",
+      blobValue: "bval",
+      action: "cmd",
+      message: "note",
+    },
     queueTable: {
       name: "host_queue",
-      columns: ["queue_id", "call_id", "method", "status"],
+      columns: ["qid", "cid", "verb", "state"],
     },
     inputsTable: {
       name: "script_params",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
     },
     varsTable: {
       name: "script_scratch",
-      columns: [
-        "name",
-        "value_type",
-        "int_value",
-        "real_value",
-        "text_value",
-        "blob_value",
-      ],
+      columns: ["param", "kind", "ival", "rval", "tval", "bval"],
+    },
+    controlTable: {
+      name: "script_ctl",
+      columns: ["cmd", "note"],
     },
     scriptEnvelope: {
       engine: "sqlite-host-v1",
@@ -293,12 +299,21 @@ test("smoke IR: emitted DTO list has no duplicates and reuses shared items", () 
   assert.equal(new Set(paths).size, paths.length);
 });
 
-test("smoke IR: no emitted file mentions the default shared table names", () => {
+test("smoke IR: no emitted file mentions the default shared table or column names", () => {
+  const defaults = [
+    "pending_host_calls",
+    "script_inputs",
+    "script_vars",
+    "script_control",
+    "call_id",
+    "item_index",
+    "queue_id",
+  ];
   for (const file of emitJava(smokeIr())) {
-    for (const name of ["pending_host_calls", "script_inputs", "script_vars"]) {
+    for (const name of defaults) {
       assert.ok(
         !file.contents.includes(name),
-        `${file.path} still mentions default table name ${name}`,
+        `${file.path} still mentions default name ${name}`,
       );
     }
   }

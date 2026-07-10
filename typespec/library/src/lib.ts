@@ -133,13 +133,37 @@ export const $lib = createTypeSpecLibrary({
     "duplicate-shared-table-name": {
       severity: "error",
       messages: {
-        default: paramMessage`Shared workspace table name "${"table"}" is used by more than one of queueTable/inputsTable/varsTable; the three names must be distinct.`,
+        default: paramMessage`Shared workspace table name "${"table"}" is used by more than one of queueTable/inputsTable/varsTable/controlTable; the four names must be distinct.`,
       },
     },
     "shared-table-name-collision": {
       severity: "error",
       messages: {
         default: paramMessage`${"option"} "${"table"}" collides with a derived call/result/child table name; pick a name no host method derives.`,
+      },
+    },
+    "invalid-column-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"option"} must be a non-empty column name.`,
+      },
+    },
+    "invalid-done-status-value": {
+      severity: "error",
+      messages: {
+        default: "doneStatusValue must be a non-empty status literal.",
+      },
+    },
+    "duplicate-column-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Column name "${"column"}" is configured for more than one ${"table"} table column; column names must be mutually distinct within each table.`,
+      },
+    },
+    "column-name-collision": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"option"} "${"column"}" collides with a derived input/result field column; pick a name no host method field derives.`,
       },
     },
   },

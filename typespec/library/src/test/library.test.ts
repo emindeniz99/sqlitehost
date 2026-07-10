@@ -144,6 +144,40 @@ test("@hostLibrary records the shared workspace table name options", async () =>
   });
 });
 
+test("@hostLibrary records the control table and column name options", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({
+      apiLevel: 1,
+      controlTable: "script_ctl",
+      callIdColumn: "cid",
+      itemIndexColumn: "idx",
+      doneStatusValue: "ok",
+      actionColumn: "cmd"
+    })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.deepEqual(diagnosticCodes(program), []);
+  const [iface] = getHostLibraryInterfaces(program);
+  const options = getHostLibraryOptions(program, iface);
+  assert.deepEqual(options, {
+    apiLevel: 1,
+    controlTable: "script_ctl",
+    callIdColumn: "cid",
+    itemIndexColumn: "idx",
+    doneStatusValue: "ok",
+    actionColumn: "cmd",
+  });
+});
+
 test("@hostLibrary records minSqliteVersion when provided", async () => {
   const program = await compileSource(`
     import "@sqlite-host/typespec";
