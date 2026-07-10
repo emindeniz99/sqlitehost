@@ -5,6 +5,7 @@ import {
   lintScript,
   parseHostManifest,
   scanNamedParameters,
+  tokenizeSql,
   type LintFinding,
 } from "../index.js";
 import { readFixture } from "./helpers.js";
@@ -161,6 +162,81 @@ test("invalid-envelope payloads short-circuit semantic checks", () => {
   const findings = lintScript({ engine: "sqlite-host-v1" }, manifest);
   assert.ok(codes(findings).includes("invalid-envelope"));
   assert.ok(findings.every((f) => f.severity === "error"));
+});
+
+function singleStatementScript(sql: string): Record<string, unknown> {
+  return {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    steps: [
+      {
+        id: "s1",
+        statements: [{ sql, bindings: { v: { type: "int64", value: 1 } } }],
+      },
+    ],
+  };
+}
+
+test("mixed-prefix-binding: :v and $v in one statement warns once", () => {
+  const findings = lintScript(
+    singleStatementScript("UPDATE t SET a = :v WHERE b = $v"),
+    manifest,
+  );
+  const mixed = findings.filter((f) => f.code === "mixed-prefix-binding");
+  assert.equal(mixed.length, 1);
+  assert.equal(mixed[0].severity, "warning");
+  assert.equal(mixed[0].stepId, "s1");
+  assert.equal(mixed[0].statementIndex, 0);
+  // The binding still feeds both forms by bare name: no binding errors.
+  assert.deepStrictEqual(
+    findings.filter((f) => f.severity === "error"),
+    [],
+    `expected zero errors, got ${JSON.stringify(findings)}`,
+  );
+});
+
+test("mixed-prefix-binding: the same prefix twice is silent", () => {
+  const findings = lintScript(
+    singleStatementScript("UPDATE t SET a = :v WHERE b = :v"),
+    manifest,
+  );
+  assert.ok(!codes(findings).includes("mixed-prefix-binding"));
+});
+
+test("mixed-prefix-binding: @v and $v in one statement warns", () => {
+  const findings = lintScript(
+    singleStatementScript("UPDATE t SET a = @v WHERE b = $v"),
+    manifest,
+  );
+  assert.equal(codes(findings).filter((c) => c === "mixed-prefix-binding").length, 1);
+});
+
+test("scanner retains the prefix of each parameter occurrence", () => {
+  // Regression: prefix info is additive — bare-name matching for
+  // missing-binding/unused-binding and lineage must be unchanged.
+  const tokens = tokenizeSql("SELECT :v, $v, @w").filter((t) => t.kind === "parameter");
+  assert.deepStrictEqual(
+    tokens.map((t) => [t.prefix, t.value]),
+    [
+      [":", "v"],
+      ["$", "v"],
+      ["@", "w"],
+    ],
+  );
+  assert.deepStrictEqual(scanNamedParameters("SELECT :v, $v, @w"), ["v", "w"]);
+});
+
+test("duplicate-input-name: two inputs sharing a name is an error", () => {
+  const payload = JSON.parse(readFixture("payloads/invalid/duplicate-input-name.json"));
+  const findings = lintScript(payload, manifest);
+  const duplicate = findings.find((f) => f.code === "duplicate-input-name");
+  assert.equal(duplicate?.severity, "error");
+});
+
+test("unique input names produce no duplicate-input-name finding", () => {
+  const payload = JSON.parse(readFixture("payloads/valid/example-003-runtime-inputs.json"));
+  const findings = lintScript(payload, manifest);
+  assert.ok(!codes(findings).includes("duplicate-input-name"));
 });
 
 test("findings carry step and statement locations", () => {

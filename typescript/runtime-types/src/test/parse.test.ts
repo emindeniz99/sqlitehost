@@ -167,3 +167,18 @@ test("isScript matches validateScript", () => {
   assert.ok(isScript(baseScript()));
   assert.ok(!isScript({}));
 });
+
+test("parseScript accepts duplicate input names (validator-only error)", () => {
+  // docs/validation.md pins duplicate-input-name as a lint error; the
+  // envelope is structurally well-formed, so parseScript must accept it
+  // (the C# runtime rejects at Run-time as its own precheck).
+  const script = parseScript(readFixture("payloads/invalid/duplicate-input-name.json"));
+  assert.equal(script.inputs?.length, 2);
+  assert.equal(script.inputs?.[0].name, script.inputs?.[1].name);
+});
+
+test("parseScript accepts mixed-prefix parameters (validator-only warning)", () => {
+  // mixed-prefix-binding is a lint warning, not an envelope defect.
+  const script = parseScript(readFixture("payloads/valid/example-007-mixed-prefix.json"));
+  assert.equal(script.scriptId, "example-007");
+});

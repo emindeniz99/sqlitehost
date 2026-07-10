@@ -22,6 +22,8 @@ export type SqlTokenKind =
   | "parameter"
   | "punct";
 
+export type ParameterPrefix = ":" | "@" | "$";
+
 export interface SqlToken {
   kind: SqlTokenKind;
   /**
@@ -29,6 +31,8 @@ export interface SqlToken {
    * parameters: the bare name (prefix stripped). Otherwise the raw text.
    */
   value: string;
+  /** For parameters only: the prefix character this occurrence used. */
+  prefix?: ParameterPrefix;
 }
 
 function isIdentStart(ch: string): boolean {
@@ -97,7 +101,11 @@ export function tokenizeSql(sql: string): SqlToken[] {
       let j = i + 1;
       while (j < n && isParamPart(sql[j])) j++;
       if (j > i + 1) {
-        tokens.push({ kind: "parameter", value: sql.slice(i + 1, j) });
+        tokens.push({
+          kind: "parameter",
+          value: sql.slice(i + 1, j),
+          prefix: ch as ParameterPrefix,
+        });
         i = j;
         continue;
       }

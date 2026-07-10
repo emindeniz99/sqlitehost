@@ -20,8 +20,10 @@ export type LintCode =
   | "required-api-level-too-high"
   | "unknown-required-feature"
   | "unknown-required-method"
+  | "duplicate-input-name"
   | "missing-binding"
   | "unused-binding"
+  | "mixed-prefix-binding"
   | "implicit-column-list"
   | "undeclared-method-use"
   | "unused-required-method"
@@ -114,6 +116,17 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       });
     }
   }
+  const seenInputNames = new Set<string>();
+  for (const input of script.inputs ?? []) {
+    if (seenInputNames.has(input.name)) {
+      findings.push({
+        code: "duplicate-input-name",
+        severity: "error",
+        message: `input name "${input.name}" is declared more than once`,
+      });
+    }
+    seenInputNames.add(input.name);
+  }
 
   // -- manifest table index -------------------------------------------------
   const callTables = new Map<string, string>(); // call table -> method name
@@ -165,6 +178,32 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
 
       const tokens = tokenizeSql(statement.sql);
+
+      // Same bare name through more than one prefix form in one
+      // statement: supported by the runtime, but usually an accident.
+      const prefixesByName = new Map<string, Set<string>>();
+      for (const token of tokens) {
+        if (token.kind !== "parameter" || token.prefix === undefined) continue;
+        let prefixes = prefixesByName.get(token.value);
+        if (prefixes === undefined) {
+          prefixes = new Set();
+          prefixesByName.set(token.value, prefixes);
+        }
+        prefixes.add(token.prefix);
+      }
+      for (const [name, prefixes] of prefixesByName) {
+        if (prefixes.size > 1) {
+          findings.push({
+            code: "mixed-prefix-binding",
+            severity: "warning",
+            message: `parameter "${name}" is referenced through multiple prefix forms (${[...prefixes]
+              .map((prefix) => `${prefix}${name}`)
+              .join(", ")}) in one statement — use :${name} consistently`,
+            ...at,
+          });
+        }
+      }
+
       const insert = analyzeInsert(tokens, bindings);
       if (insert !== null) {
         inserts.push({
