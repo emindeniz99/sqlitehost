@@ -38,7 +38,15 @@ script terminating by construction). Deliberately absent and proposed:
   scalar functions through the adapter (SQLite `create_function`) so
   hosts can offer e.g. domain math to scripts. Needs an adapter
   capability interface + validator awareness (unknown-function
-  whitelist).
+  whitelist). **Version/capability caveat (owner note)**: the
+  originating consumer environment — a SQLite-3.19-era wrapper — could
+  not register custom functions at all; that limitation is part of why
+  this toolkit exists (orchestrate with plain SQL + typed host calls
+  instead of custom UDFs). If ever implemented, this must be an
+  optional adapter capability gated behind a feature flag and an
+  explicit min-version/capability check — never a floor requirement,
+  and scripts relying on it must declare it in requiredFeatures so
+  hosts without the capability clean-skip.
 - **Determinism lint**: warn when payload SQL calls nondeterministic
   builtins (`random()`, `date('now')` etc.) since script replays would
   diverge.
