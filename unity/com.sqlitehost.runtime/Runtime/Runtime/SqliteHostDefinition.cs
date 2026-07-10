@@ -16,6 +16,7 @@ namespace SqliteHost
     public interface ISqliteHostDefinitionBuilder<THandlers>
     {
         ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel);
+        ISqliteHostDefinitionBuilder<THandlers> MinSqliteVersion(int versionNumber);
         ISqliteHostDefinitionBuilder<THandlers> Naming(Action<SqliteHostNamingBuilder> configure);
         SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods);
     }
@@ -24,10 +25,17 @@ namespace SqliteHost
     {
         private readonly SqliteHostNamingBuilder _naming = new SqliteHostNamingBuilder();
         private int _apiLevel = 1;
+        private int _minSqliteVersionNumber = SqliteHostDefinition<THandlers>.DefaultMinSqliteVersionNumber;
 
         public ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel)
         {
             _apiLevel = apiLevel;
+            return this;
+        }
+
+        public ISqliteHostDefinitionBuilder<THandlers> MinSqliteVersion(int versionNumber)
+        {
+            _minSqliteVersionNumber = versionNumber;
             return this;
         }
 
@@ -39,7 +47,7 @@ namespace SqliteHost
 
         public SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods)
         {
-            return new SqliteHostDefinition<THandlers>(_apiLevel, _naming.Build(), methods);
+            return new SqliteHostDefinition<THandlers>(_apiLevel, _minSqliteVersionNumber, _naming.Build(), methods);
         }
     }
 
@@ -49,11 +57,15 @@ namespace SqliteHost
     /// </summary>
     public sealed class SqliteHostDefinition<THandlers>
     {
+        /// <summary>Applied when the builder's MinSqliteVersion is not called: SQLite 3.19.3.</summary>
+        internal const int DefaultMinSqliteVersionNumber = 3019003;
+
         private static readonly IReadOnlyList<string> FeaturesV1 = new List<string>
         {
             "typedNamedBindings",
             "splitResultTables",
-            "scriptInputs"
+            "scriptInputs",
+            "scriptVars"
         };
 
         private readonly List<IRuntimeHostMethodSpec<THandlers>> _runtimeSpecs;
@@ -62,6 +74,7 @@ namespace SqliteHost
 
         internal SqliteHostDefinition(
             int apiLevel,
+            int minSqliteVersionNumber,
             SqliteHostNaming naming,
             IReadOnlyList<IHostMethodSpec<THandlers>> methods)
         {
@@ -74,6 +87,7 @@ namespace SqliteHost
                 throw new ArgumentNullException(nameof(methods));
             }
             ApiLevel = apiLevel;
+            MinSqliteVersionNumber = minSqliteVersionNumber;
             Naming = naming;
             _runtimeSpecs = new List<IRuntimeHostMethodSpec<THandlers>>();
             _specsByMethod = new Dictionary<string, IRuntimeHostMethodSpec<THandlers>>(StringComparer.Ordinal);
@@ -101,6 +115,14 @@ namespace SqliteHost
 
         public int ApiLevel { get; }
 
+        /// <summary>
+        /// Minimum accepted SQLite version in the SQLITE_VERSION_NUMBER
+        /// encoding (major*1000000 + minor*1000 + patch), e.g. 3019003;
+        /// defaults to 3019003 when the builder's MinSqliteVersion is not
+        /// called. Enforced by the runtime's workspace version gate.
+        /// </summary>
+        public int MinSqliteVersionNumber { get; }
+
         public SqliteHostNaming Naming { get; }
 
         public IReadOnlyList<IHostMethodSpec<THandlers>> Methods
@@ -108,7 +130,7 @@ namespace SqliteHost
             get { return _methods; }
         }
 
-        /// <summary>Protocol v1 features: typedNamedBindings, splitResultTables, scriptInputs.</summary>
+        /// <summary>Protocol v1 features: typedNamedBindings, splitResultTables, scriptInputs, scriptVars.</summary>
         public IReadOnlyList<string> SupportedFeatures
         {
             get { return FeaturesV1; }

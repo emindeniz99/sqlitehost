@@ -18,6 +18,13 @@ namespace SqliteHost
         private readonly THandlers _handlers;
         private readonly SqliteHostRuntimeOptions _options;
 
+        /// <summary>
+        /// True once a workspace of this runtime instance passed the
+        /// sqlite_version() gate; the native library cannot change under a
+        /// live instance, so the check is not repeated on later runs.
+        /// </summary>
+        private bool _sqliteVersionChecked;
+
         public SqliteHostRuntime(
             ISqliteHostConnectionFactory connectionFactory,
             SqliteHostDefinition<THandlers> hostDefinition,
@@ -63,11 +70,57 @@ namespace SqliteHost
             }
         }
 
+        /// <summary>
+        /// Opens a workspace, checks the actual sqlite_version() against the
+        /// definition's MinSqliteVersionNumber, disposes, and returns the
+        /// outcome — lets hosts fail fast at init time instead of at the
+        /// first Run (docs/csharp-api.md). No schema is created.
+        /// </summary>
+        public SqliteHostRunResult ValidateEnvironment()
+        {
+            var state = new RunState(_options.EnableDiagnostics);
+            ISqliteHostConnection connection = _connectionFactory.OpenWorkspace();
+            try
+            {
+                SqliteHostRunResult versionFailure = CheckSqliteVersion(connection, state);
+                if (versionFailure != null)
+                {
+                    return versionFailure;
+                }
+                _sqliteVersionChecked = true;
+                return new SqliteHostRunResult
+                {
+                    Status = SqliteHostRunStatus.Completed,
+                    ErrorCode = null,
+                    ErrorMessage = null,
+                    StepId = null,
+                    StatementIndex = -1,
+                    Method = null,
+                    ExecutedCallCount = state.ExecutedCallCount,
+                    Calls = state.Calls
+                };
+            }
+            finally
+            {
+                connection.Dispose();
+            }
+        }
+
         private SqliteHostRunResult Execute(
             ISqliteHostConnection connection,
             SqliteHostScript script,
             RunState state)
         {
+            if (!_sqliteVersionChecked)
+            {
+                SqliteHostRunResult versionFailure = CheckSqliteVersion(connection, state);
+                if (versionFailure != null)
+                {
+                    return versionFailure;
+                }
+                _sqliteVersionChecked = true;
+            }
+
             try
             {
                 foreach (string statement in _hostDefinition.GenerateSchemaStatements())
@@ -238,6 +291,52 @@ namespace SqliteHost
                 return Failure(state, SqliteHostRunStatus.FailedValidation, "max-statements-exceeded",
                     "Script has " + statementCount + " statements; MaxStatementsPerRun is "
                     + _options.MaxStatementsPerRun + ".", null, null);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Version gate (docs/errors.md sqlite-version-too-low): queries the
+        /// workspace's sqlite_version() and compares it against the host
+        /// definition's MinSqliteVersionNumber. Returns null when the
+        /// workspace passes; a FailedSchema result otherwise.
+        /// </summary>
+        private SqliteHostRunResult CheckSqliteVersion(ISqliteHostConnection connection, RunState state)
+        {
+            string versionString;
+            try
+            {
+                IReadOnlyList<string> rows = connection.Query(
+                    "SELECT sqlite_version()",
+                    RuntimeSql.NoBindings,
+                    delegate(ISqliteHostRow row)
+                    {
+                        return row.GetText(0);
+                    });
+                versionString = rows.Count > 0 ? rows[0] : null;
+            }
+            catch (Exception ex)
+            {
+                return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSchema, "sqlite-version-too-low",
+                    "Could not determine sqlite_version(): " + ex.Message
+                    + " The host requires at least " + _hostDefinition.MinSqliteVersionNumber + ".",
+                    null, null), ex);
+            }
+
+            int versionNumber;
+            if (!SqliteVersionParser.TryParse(versionString, out versionNumber))
+            {
+                return Failure(state, SqliteHostRunStatus.FailedSchema, "sqlite-version-too-low",
+                    "Could not parse sqlite_version() result '" + (versionString ?? "<null>")
+                    + "'. The host requires at least " + _hostDefinition.MinSqliteVersionNumber + ".",
+                    null, null);
+            }
+            if (versionNumber < _hostDefinition.MinSqliteVersionNumber)
+            {
+                return Failure(state, SqliteHostRunStatus.FailedSchema, "sqlite-version-too-low",
+                    "SQLite version " + versionString + " (" + versionNumber
+                    + ") is below the host definition's minimum " + _hostDefinition.MinSqliteVersionNumber + ".",
+                    null, null);
             }
             return null;
         }

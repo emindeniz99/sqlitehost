@@ -206,6 +206,32 @@ namespace SqliteHost.Tests
         }
 
         [SkippableFact]
+        public void Example008_ScriptVars_ComputedVariableFeedsTheHostCall()
+        {
+            var handlers = new FakeGameHandlers();
+            using var factory = CreateFactory(retainWorkspace: true);
+
+            SqliteHostRunResult result = RunFixture(
+                "valid/example-008-variables.json", handlers, factory: factory);
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.Equal(1, result.ExecutedCallCount);
+            // The script declared aa=55 and kh=4 in script_vars, reassigned
+            // total = aa * kh with INSERT OR REPLACE, and fed it into the
+            // write step: setValue must receive input_value 220.
+            Assert.Equal(new[] { "setValue:computed-key:220" }, handlers.Log);
+            Assert.Equal(220, handlers.Storage["computed-key"]);
+
+            // script_vars is script-owned scratch space: exactly the three
+            // variables the script wrote, untouched by the runtime.
+            var vars = factory.LastWorkspace.Query(
+                "SELECT name, int_value FROM script_vars ORDER BY name",
+                null,
+                row => row.GetText(0) + "=" + row.GetInt64(1));
+            Assert.Equal(new[] { "aa=55", "kh=4", "total=220" }, vars);
+        }
+
+        [SkippableFact]
         public void Diagnostics_PopulateCallsWhenEnabled()
         {
             var handlers = new FakeGameHandlers();

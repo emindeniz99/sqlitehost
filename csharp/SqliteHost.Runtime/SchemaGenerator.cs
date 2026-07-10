@@ -13,6 +13,7 @@ namespace SqliteHost
     {
         public const string QueueTableName = "pending_host_calls";
         public const string InputsTableName = "script_inputs";
+        public const string VarsTableName = "script_vars";
 
         public static string SqlColumnType(HostScalarType scalarType)
         {
@@ -39,6 +40,7 @@ namespace SqliteHost
             var statements = new List<string>();
             statements.Add(QueueTableDdl());
             statements.Add(InputsTableDdl());
+            statements.Add(VarsTableDdl());
             foreach (SchemaMethodModel method in methods)
             {
                 statements.Add(ParentTableDdl(
@@ -127,6 +129,22 @@ namespace SqliteHost
         private static string InputsTableDdl()
         {
             return "CREATE TABLE " + InputsTableName + " (\n"
+                + "    name TEXT NOT NULL PRIMARY KEY,\n"
+                + "    value_type TEXT NOT NULL,\n"
+                + "    int_value INTEGER,\n"
+                + "    real_value REAL,\n"
+                + "    text_value TEXT,\n"
+                + "    blob_value BLOB\n"
+                + ");";
+        }
+
+        /// <summary>
+        /// Script scratch variable space (feature scriptVars): the runtime
+        /// creates it empty and never reads or writes it.
+        /// </summary>
+        private static string VarsTableDdl()
+        {
+            return "CREATE TABLE " + VarsTableName + " (\n"
                 + "    name TEXT NOT NULL PRIMARY KEY,\n"
                 + "    value_type TEXT NOT NULL,\n"
                 + "    int_value INTEGER,\n"
