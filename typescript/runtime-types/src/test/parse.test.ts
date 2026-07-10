@@ -137,6 +137,32 @@ test("type guards accept and reject binding values", () => {
   assert.ok(!isBindingValue({ type: "null", value: null }));
 });
 
+test("float bindings accept finite numbers only", () => {
+  assert.ok(isBindingValue({ type: "float64", value: 98.5 }));
+  assert.ok(isBindingValue({ type: "float32", value: 0.75 }));
+  // Any finite double is fine for float32 — parsing rounds to nearest.
+  assert.ok(isBindingValue({ type: "float32", value: 0.1 }));
+  // Unlike int64, floats never take the string form (docs/script-envelope.md).
+  assert.ok(!isBindingValue({ type: "float64", value: "98.5" }));
+  assert.ok(!isBindingValue({ type: "float32", value: "0.75" }));
+  assert.ok(!isBindingValue({ type: "float64", value: Number.NaN }));
+  assert.ok(!isBindingValue({ type: "float64", value: Number.POSITIVE_INFINITY }));
+  // Finite as a double but rounds to Infinity as an IEEE-754 single.
+  assert.ok(!isBindingValue({ type: "float32", value: 3.5e38 }));
+  assert.ok(isBindingValue({ type: "float64", value: 3.5e38 }));
+});
+
+test("malformed float bindings are invalid-envelope", () => {
+  const s = baseScript();
+  const statements = (s["steps"] as Array<Record<string, unknown>>)[0][
+    "statements"
+  ] as Array<Record<string, unknown>>;
+  statements[0]["bindings"] = { callId: { type: "float64", value: "98.5" } };
+  expectFindings(s, "invalid-envelope", "bindings.callId.value");
+  statements[0]["bindings"] = { callId: { type: "float32", value: 3.5e38 } };
+  expectFindings(s, "invalid-envelope", "bindings.callId.value");
+});
+
 test("isScript matches validateScript", () => {
   assert.ok(isScript(baseScript()));
   assert.ok(!isScript({}));

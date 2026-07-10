@@ -16,6 +16,13 @@ for (const name of listValidPayloads()) {
   });
 }
 
+test("float payload example-006 round-trips byte-for-byte", () => {
+  // Pinned float contract: the dyadic-exact fixture values (98.5, 0.75)
+  // must reproduce the golden bytes through parse + canonical serialize.
+  const original = readFixture("payloads/valid/example-006-floats.json");
+  assert.equal(serializeScript(parseScript(original)), original);
+});
+
 test("round-trip preserves an empty bindings object", () => {
   const json = readFixture("payloads/invalid/unknown-required-method.json");
   // Structurally fine (the problem is semantic); bindings: {} must survive.

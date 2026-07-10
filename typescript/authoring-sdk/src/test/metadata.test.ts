@@ -13,7 +13,7 @@ test("metadata exposes autocomplete tables, columns, and methods", () => {
   const metadata = loadHostMetadata(readFixture("manifests/sample-host.manifest.json"));
   assert.deepStrictEqual(
     metadata.methods.map((m) => m.methodName),
-    ["getValue", "setValue", "getValues", "putBlob"],
+    ["getValue", "setValue", "getValues", "putBlob", "recordScore"],
   );
   const tableNames = metadata.tables.map((t) => t.name);
   assert.ok(tableNames.includes("pending_host_calls"));
@@ -21,6 +21,13 @@ test("metadata exposes autocomplete tables, columns, and methods", () => {
   assert.ok(tableNames.includes("result_get_values__result_entries"));
   const resultGetValue = metadata.tables.find((t) => t.name === "result_get_value");
   assert.deepStrictEqual(resultGetValue?.columns, ["call_id", "status", "result_value"]);
+  const callRecordScore = metadata.tables.find((t) => t.name === "call_record_score");
+  assert.deepStrictEqual(callRecordScore?.columns, [
+    "call_id",
+    "input_key",
+    "input_score",
+    "input_weight",
+  ]);
 });
 
 test("loadHostMetadata accepts parsed JSON and rejects non-manifests", () => {

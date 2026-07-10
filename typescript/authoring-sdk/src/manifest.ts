@@ -5,7 +5,14 @@
  * manifest produced by the manifest emitter.
  */
 
-export type ManifestScalarType = "int32" | "int64" | "boolean" | "string" | "bytes";
+export type ManifestScalarType =
+  | "int32"
+  | "int64"
+  | "boolean"
+  | "string"
+  | "bytes"
+  | "float32"
+  | "float64";
 
 export interface ManifestScalarField {
   propertyName: string;

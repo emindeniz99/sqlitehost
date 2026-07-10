@@ -189,6 +189,53 @@ function resolveExpression(
   return null;
 }
 
+function isPunctAt(token: SqlToken | undefined, value: string): boolean {
+  return token !== undefined && token.kind === "punct" && token.value === value;
+}
+
+function isAtom(token: SqlToken | undefined): token is SqlToken {
+  return token !== undefined && (token.kind === "string" || token.kind === "parameter");
+}
+
+/**
+ * Statically-resolved `call_id = <atom>` (and `<atom> = call_id`)
+ * comparison values, where the atom is a single string literal or a
+ * parameter with a text binding. Concatenations and other computed
+ * expressions are not atoms — they are skipped by static call_id
+ * resolution (mirrors the Java validator's SqlAnalyzer).
+ */
+export function callIdFilters(
+  tokens: SqlToken[],
+  bindings: Record<string, BindingValue>,
+): string[] {
+  const filters: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (
+      (token.kind !== "identifier" && token.kind !== "quoted-identifier") ||
+      token.value.toLowerCase() !== "call_id"
+    ) {
+      continue;
+    }
+    // forward form: call_id = <atom> (not continued by || or .)
+    if (
+      isPunctAt(tokens[i + 1], "=") &&
+      isAtom(tokens[i + 2]) &&
+      !isPunctAt(tokens[i + 3], "|") &&
+      !isPunctAt(tokens[i + 3], ".")
+    ) {
+      const value = resolveExpression([tokens[i + 2]], bindings);
+      if (value !== null) filters.push(value);
+    }
+    // reverse form: <atom> = call_id (atom not the tail of a concatenation)
+    if (isPunctAt(tokens[i - 1], "=") && isAtom(tokens[i - 2]) && !isPunctAt(tokens[i - 3], "|")) {
+      const value = resolveExpression([tokens[i - 2]], bindings);
+      if (value !== null) filters.push(value);
+    }
+  }
+  return filters;
+}
+
 const SELECT_TERMINATORS = new Set([
   "from",
   "where",

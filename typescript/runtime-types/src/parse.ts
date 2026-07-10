@@ -102,6 +102,26 @@ export function validateBindingValue(value: unknown, path: string): EnvelopeFind
         ];
       }
       return [];
+    case "float32":
+      // Floats have no string form (docs/script-envelope.md); the number
+      // must survive round-to-nearest-single without overflowing.
+      if (typeof v !== "number" || !Number.isFinite(v)) {
+        return [invalid(`${path}.value`, "float32 value must be a finite JSON number")];
+      }
+      if (!Number.isFinite(Math.fround(v))) {
+        return [
+          invalid(
+            `${path}.value`,
+            "float32 value must remain finite after rounding to an IEEE-754 single",
+          ),
+        ];
+      }
+      return [];
+    case "float64":
+      if (typeof v !== "number" || !Number.isFinite(v)) {
+        return [invalid(`${path}.value`, "float64 value must be a finite JSON number")];
+      }
+      return [];
   }
 }
 

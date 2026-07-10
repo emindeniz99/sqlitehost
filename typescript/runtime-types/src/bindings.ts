@@ -7,6 +7,8 @@
 import type {
   BlobBindingValue,
   BoolBindingValue,
+  Float32BindingValue,
+  Float64BindingValue,
   Int32BindingValue,
   Int64BindingValue,
   NullBindingValue,
@@ -142,6 +144,32 @@ export function bool(value: boolean): BoolBindingValue {
 /** Typed text binding. */
 export function text(value: string): TextBindingValue {
   return { type: "text", value };
+}
+
+/**
+ * Typed float32 binding. Rounds to the nearest IEEE-754 single
+ * (Math.fround) per docs/script-envelope.md; throws RangeError when the
+ * value is not finite after rounding (NaN, ±Infinity, or overflow).
+ */
+export function float32(value: number): Float32BindingValue {
+  const single = Math.fround(value);
+  if (!Number.isFinite(single)) {
+    throw new RangeError(
+      `float32 values must be finite after round-to-nearest-single, got ${value}`,
+    );
+  }
+  return { type: "float32", value: single };
+}
+
+/**
+ * Typed float64 binding; throws RangeError when the value is not a
+ * finite number (floats have no string form, docs/script-envelope.md).
+ */
+export function float64(value: number): Float64BindingValue {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`float64 values must be finite, got ${value}`);
+  }
+  return { type: "float64", value };
 }
 
 /**

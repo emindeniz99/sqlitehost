@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SqliteHost admin demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1.5rem auto;
+        max-width: 60rem;
+        padding: 0 1rem;
+        color: #1f2430;
+      }
+      h1 { font-size: 1.4rem; }
+      .inputs { display: flex; gap: 1rem; flex-wrap: wrap; }
+      .inputs > div { flex: 1 1 24rem; }
+      textarea {
+        width: 100%;
+        min-height: 14rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        box-sizing: border-box;
+      }
+      label { display: block; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+      button {
+        margin: 1rem 0;
+        padding: 0.5rem 1.25rem;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      #input-error { color: #b00020; font-family: ui-monospace, monospace; }
+      .method-card {
+        border: 1px solid #d5d9e2;
+        border-radius: 6px;
+        padding: 0.25rem 0.75rem;
+        margin: 0.5rem 0;
+      }
+      .method-rows, .tables { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+      .finding { font-family: ui-monospace, monospace; font-size: 0.85rem; margin: 0.2rem 0; }
+      .severity {
+        display: inline-block;
+        border-radius: 4px;
+        padding: 0 0.4rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      .severity.error { background: #b00020; }
+      .severity.warning { background: #a05a00; }
+      .verdict.ok { color: #0a6b32; font-weight: 600; }
+      .verdict.blocked { color: #b00020; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>SqliteHost admin demo</h1>
+    <p>
+      Paste (or load from a file) a host manifest and a script payload, then
+      lint. The method/table reference and lint findings render below —
+      everything runs locally in this page, no network access.
+    </p>
+    <div class="inputs">
+      <div>
+        <label for="manifest-text">Host manifest JSON</label>
+        <input id="manifest-file" type="file" accept=".json,application/json" />
+        <textarea id="manifest-text" spellcheck="false" placeholder='{"library": ...}'></textarea>
+      </div>
+      <div>
+        <label for="payload-text">Script payload JSON</label>
+        <input id="payload-file" type="file" accept=".json,application/json" />
+        <textarea id="payload-text" spellcheck="false" placeholder='{"engine": "sqlite-host-v1", ...}'></textarea>
+      </div>
+    </div>
+    <button id="lint-button" type="button">Lint payload</button>
+    <p id="input-error"></p>
+    <h2>Method / table reference</h2>
+    <div id="reference"></div>
+    <h2>Lint findings</h2>
+    <div id="findings"></div>
+    <script type="module" src="./bundle.js"></script>
+  </body>
+</html>

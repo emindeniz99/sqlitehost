@@ -5,6 +5,8 @@ import {
   blob,
   bool,
   encodeBase64,
+  float32,
+  float64,
   int32,
   int64,
   int64FromBigInt,
@@ -69,4 +71,28 @@ test("binding constructors emit canonical BindingValue shapes", () => {
   });
   assert.throws(() => blob("not base64!"), RangeError);
   assert.throws(() => int32(2147483648), RangeError);
+});
+
+test("float constructors emit canonical BindingValue shapes", () => {
+  // Dyadic-exact values are representable in both widths and serialize
+  // identically across languages (docs/script-envelope.md).
+  assert.deepEqual(float64(98.5), { type: "float64", value: 98.5 });
+  assert.deepEqual(float32(0.75), { type: "float32", value: 0.75 });
+});
+
+test("float32 rounds to the nearest IEEE-754 single", () => {
+  // 0.1 is not single-representable: the constructor pins the value the
+  // contract's round-to-nearest parse would produce.
+  assert.deepEqual(float32(0.1), { type: "float32", value: Math.fround(0.1) });
+});
+
+test("float constructors reject non-finite values", () => {
+  // JSON has no literal for NaN/Infinity, so these can never serialize.
+  assert.throws(() => float64(Number.NaN), RangeError);
+  assert.throws(() => float64(Number.POSITIVE_INFINITY), RangeError);
+  assert.throws(() => float32(Number.NaN), RangeError);
+  assert.throws(() => float32(Number.NEGATIVE_INFINITY), RangeError);
+  // Finite as a double but overflows a single after round-to-nearest.
+  assert.throws(() => float32(3.5e38), RangeError);
+  assert.doesNotThrow(() => float64(3.5e38));
 });
