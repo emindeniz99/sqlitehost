@@ -1,29 +1,32 @@
 # sqlitehost — Roadmap / deferred follow-ups
 
-Deferred from plan v2.1 (out of scope or impossible in this
-environment). Delete entries when shipped.
+Items that still require action outside this environment. Delete
+entries when shipped.
 
-- **Unity 2021 compile spike** (plan Phase 0/§29.6): compile
-  Abstractions + Runtime + Generated.Sample inside a real Unity 2021
-  LTS project; confirm the exact C# profile floor. No Unity available
-  in this Linux container — code is written to the documented safe
-  subset instead.
-- **Real SQLite 3.19.3 binary test run**: execute the C#/Java suites
-  against an actual 3.19.3 build (test adapters currently bundle newer
-  SQLite; compatibility is by banned-feature policy).
-- **Publishing (plan Phase 6)**: name/trademark + package availability
-  check, license selection, NuGet/Maven/npm publishing, UPM package
-  (`com.sqlitehost.runtime`), publish TypeSpec library, migration/
-  versioning docs for consumers.
-- **SqliteHost.Json** optional C# JSON parse/serialize helpers package.
-- **SQLite-net / SQLite4Unity3d adapter** as a shippable package
-  (current official adapter is Microsoft.Data.Sqlite in the test
-  project).
-- **Spring Boot starter** (`sqlite-host-spring-boot-starter`).
-- **float32/float64 scalars** — only after SQLite REAL mapping and
-  cross-language semantics are defined.
-- **TS lineage lints**: `result-read-unknown-call` /
-  `result-read-not-after-call` in the TypeScript authoring lint (Java
-  validator covers them today; see expectations.json `validators`).
-- **Sample Unity project + Java validator CLI/service + browser admin
-  demo polish** (starter-kit deliverables of plan Phase 6).
+- **Unity 2021 in-editor spike (manual)**: everything is scaffolded —
+  open `unity/SampleProject` in Unity Hub with a 2021.3 editor and
+  follow [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md)
+  (set .NET Standard 2.0 API level, zero-compile-error gate, Play-mode
+  smoke, record results in docs/compatibility.md). IL2CPP build is the
+  stretch goal.
+- **Execute the publishing checklist (manual/legal)**: accounts, 2FA,
+  GPG key, `io.sqlitehost` namespace verification, `@sqlite-host` npm
+  scope, license decision, and name/trademark signoff (note the SQLite
+  trademark caveat) — everything else is prepared; follow
+  [docs/guides/publishing.md](./docs/guides/publishing.md).
+- **Shippable Unity SQLite adapter package**: the sqlite-net adapter
+  pattern is implemented and tested in `csharp/SqliteHost.Tests/Adapter/
+  SqliteNetAdapter.cs`; packaging it into the UPM package (with a
+  native SQLite plugin story per platform) remains.
+
+## Dropped (decided against, not deferred)
+
+- **SqliteHost.Json** — optional C# JSON parse helpers. The core
+  contract is that the runtime consumes a parsed `SqliteHostScript`
+  object; Unity consumers have their own JSON stacks and the Java/TS
+  packages already ship JSON tooling for the backend/authoring sides.
+  A C# JSON helper would just bless one serializer without adding
+  capability.
+- **sqlite-host-spring-boot-starter** — nothing in the validator needs
+  Spring; the plain library + shaded CLI cover backend integration.
+  Revisit only if a real Spring consumer materializes.

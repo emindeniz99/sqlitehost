@@ -27,4 +27,8 @@ echo "==> npm workspace (pnpm -r test)"
 echo "==> Cross-language goldens"
 node "$ROOT/tests/cross-language-golden/run.mjs"
 
+echo "==> Unity package sync check"
+node "$ROOT/unity/sync.mjs" --check
+
 echo "ALL SUITES GREEN"
+echo "(real-SQLite version matrix runs separately: tests/compatibility-sqlite/run-matrix.sh)"
