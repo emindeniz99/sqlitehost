@@ -193,10 +193,15 @@ namespace SqliteHost
             int statementCount = 0;
             foreach (SqliteHostStep step in script.Steps)
             {
-                if (step == null || string.IsNullOrEmpty(step.Id) || step.Statements == null)
+                if (step == null || string.IsNullOrEmpty(step.Id))
                 {
                     return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                        "A step is null, has an empty id, or has no statement list.", null, null);
+                        "A step is null or has an empty id.", null, null);
+                }
+                if (step.Statements == null || step.Statements.Count == 0)
+                {
+                    return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
+                        "Step '" + step.Id + "' has an empty or missing statements list.", step.Id, null);
                 }
                 if (!stepIds.Add(step.Id))
                 {

@@ -127,6 +127,36 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void EmptyStatementsList_FailsValidation_WorkspaceNeverOpened()
+        {
+            var (runtime, factory, _) = CreateRuntime();
+            var script = Scripts.New(Scripts.Step("does-nothing"));
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+            Assert.Equal("invalid-script", result.ErrorCode);
+            Assert.Equal("does-nothing", result.StepId);
+            Assert.Equal(-1, result.StatementIndex);
+            Assert.Equal(0, factory.OpenCount);
+        }
+
+        [Fact]
+        public void NullStatementsList_FailsValidation()
+        {
+            var (runtime, factory, _) = CreateRuntime();
+            SqliteHostScript script = ValidSingleCallScript();
+            script.Steps[0].Statements = null;
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+            Assert.Equal("invalid-script", result.ErrorCode);
+            Assert.Equal("only", result.StepId);
+            Assert.Equal(0, factory.OpenCount);
+        }
+
+        [Fact]
         public void NullStatementSql_FailsValidation()
         {
             var (runtime, _, _) = CreateRuntime();
@@ -218,6 +248,22 @@ namespace SqliteHost.Tests
                         "INSERT INTO call_get_value (call_id, input_key) -- :ghost\n"
                         + "VALUES (:callId, ':ghost2' /* @ghost3 */)",
                         ("callId", SqliteHostBindingValue.Text("c-1")))));
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+        }
+
+        [Fact]
+        public void DollarInsideIdentifier_IsNotAParameter_RunCompletes()
+        {
+            // Pinned rule (docs/errors.md): a '$' immediately preceded by an
+            // identifier character continues the identifier, so a$b needs no
+            // binding and the run completes with default options.
+            var (runtime, _, _) = CreateRuntime();
+            var script = Scripts.New(
+                Scripts.Step("only",
+                    Scripts.Statement("CREATE TABLE t_x (a$b INTEGER)")));
 
             SqliteHostRunResult result = runtime.Run(script);
 

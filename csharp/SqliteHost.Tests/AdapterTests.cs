@@ -49,5 +49,25 @@ namespace SqliteHost.Tests
                 row => row.GetInt64(0) + "," + row.GetInt64(1) + "," + row.GetInt64(2));
             Assert.Equal(new[] { "1,2,3" }, rows);
         }
+
+        [Fact]
+        public void SameBareName_BindsAllPrefixedOccurrences()
+        {
+            var factory = new TestWorkspaceFactory();
+            using var connection = (MicrosoftDataSqliteConnection)factory.OpenWorkspace();
+            connection.Execute("CREATE TABLE scratch (a INTEGER, b INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (a, b) VALUES (:v, $v)",
+                new[]
+                {
+                    new SqliteHostBinding("v", SqliteHostBindingValue.Int32(21))
+                });
+
+            var rows = connection.Query(
+                "SELECT a, b FROM scratch",
+                null,
+                row => row.GetInt64(0) + "," + row.GetInt64(1));
+            Assert.Equal(new[] { "21,21" }, rows);
+        }
     }
 }

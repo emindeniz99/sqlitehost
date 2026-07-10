@@ -70,9 +70,16 @@ namespace SqliteHost.Tests.Adapter
             {
                 foreach (SqliteHostBinding binding in bindings)
                 {
-                    // Bare names: Microsoft.Data.Sqlite matches them against
-                    // :name / @name / $name parameters in the SQL.
-                    command.Parameters.AddWithValue(binding.Name, ToParameterValue(binding.Value));
+                    // Bare names must bind every prefixed occurrence in the
+                    // SQL (:name / @name / $name). Adding a bare name is
+                    // ambiguous to Microsoft.Data.Sqlite when one statement
+                    // mixes prefixes for the same name, so add the binding
+                    // under all three prefixed names; collection parameters
+                    // not present in the SQL are ignored.
+                    object value = ToParameterValue(binding.Value);
+                    command.Parameters.AddWithValue(":" + binding.Name, value);
+                    command.Parameters.AddWithValue("@" + binding.Name, value);
+                    command.Parameters.AddWithValue("$" + binding.Name, value);
                 }
             }
             return command;

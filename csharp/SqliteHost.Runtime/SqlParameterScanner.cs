@@ -7,8 +7,12 @@ namespace SqliteHost
     /// validation"). Finds :name / @name / $name references while skipping
     /// string literals ('…' with '' escapes), double-quoted identifiers
     /// ("…" with "" escapes), line comments (--) and block comments
-    /// (/* */). The same algorithm is used by the Java validator and the
-    /// TypeScript authoring lint.
+    /// (/* */). Per the pinned rule, '$' is also an identifier character
+    /// in SQLite, so a '$' immediately preceded by an identifier character
+    /// continues that identifier instead of starting a parameter; ':' and
+    /// '@' always start parameters outside quoted regions. The same
+    /// algorithm is used by the Java validator and the TypeScript
+    /// authoring lint.
     /// </summary>
     internal static class SqlParameterScanner
     {
@@ -18,26 +22,31 @@ namespace SqliteHost
             var names = new List<string>();
             int i = 0;
             int length = sql.Length;
+            bool previousIsIdentifierChar = false;
             while (i < length)
             {
                 char ch = sql[i];
                 if (ch == '\'')
                 {
                     i = SkipQuoted(sql, i, '\'');
+                    previousIsIdentifierChar = false;
                 }
                 else if (ch == '"')
                 {
                     i = SkipQuoted(sql, i, '"');
+                    previousIsIdentifierChar = false;
                 }
                 else if (ch == '-' && i + 1 < length && sql[i + 1] == '-')
                 {
                     i = SkipLineComment(sql, i);
+                    previousIsIdentifierChar = false;
                 }
                 else if (ch == '/' && i + 1 < length && sql[i + 1] == '*')
                 {
                     i = SkipBlockComment(sql, i);
+                    previousIsIdentifierChar = false;
                 }
-                else if (ch == ':' || ch == '@' || ch == '$')
+                else if (ch == ':' || ch == '@' || (ch == '$' && !previousIsIdentifierChar))
                 {
                     int start = i + 1;
                     int end = start;
@@ -53,14 +62,20 @@ namespace SqliteHost
                             names.Add(name);
                         }
                         i = end;
+                        previousIsIdentifierChar = true;
                     }
                     else
                     {
                         i++;
+                        previousIsIdentifierChar = IsSqlIdentifierChar(ch);
                     }
                 }
                 else
                 {
+                    // '$' preceded by an identifier character falls through
+                    // here: it continues the identifier run instead of
+                    // starting a parameter.
+                    previousIsIdentifierChar = IsSqlIdentifierChar(ch);
                     i++;
                 }
             }
@@ -116,6 +131,15 @@ namespace SqliteHost
                 || (ch >= 'A' && ch <= 'Z')
                 || (ch >= '0' && ch <= '9')
                 || ch == '_';
+        }
+
+        /// <summary>
+        /// SQLite's IdChar (docs/errors.md pinned rule): letters, digits,
+        /// '_', '$', and any character above 0x7f.
+        /// </summary>
+        private static bool IsSqlIdentifierChar(char ch)
+        {
+            return IsIdentifierChar(ch) || ch == '$' || ch > '\u007f';
         }
     }
 }

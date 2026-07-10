@@ -75,5 +75,32 @@ namespace SqliteHost.Tests
                 "SELECT :v0, :snake_name_2 FROM t");
             Assert.Equal(new[] { "v0", "snake_name_2" }, names);
         }
+
+        [Fact]
+        public void DollarPrecededByIdentifierChar_ContinuesIdentifier()
+        {
+            Assert.Empty(SqlParameterScanner.ScanParameterNames(
+                "CREATE TABLE t_x (a$b INTEGER)"));
+        }
+
+        [Fact]
+        public void DollarInsideIdentifier_DoesNotHideRealParameters()
+        {
+            var names = SqlParameterScanner.ScanParameterNames(
+                "SELECT foo$bar, :real FROM t");
+            Assert.Equal(new[] { "real" }, names);
+        }
+
+        [Fact]
+        public void DollarAtTokenBoundary_IsAParameter()
+        {
+            Assert.Equal(new[] { "v" }, SqlParameterScanner.ScanParameterNames("$v"));
+        }
+
+        [Fact]
+        public void DollarIdentifierThenDollarParameter_FindsOnlyTheParameter()
+        {
+            Assert.Equal(new[] { "c" }, SqlParameterScanner.ScanParameterNames("a$b then $c"));
+        }
     }
 }
