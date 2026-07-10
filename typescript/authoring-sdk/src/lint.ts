@@ -2,8 +2,10 @@
  * Static authoring lint — the `typescript` validator subset of
  * docs/validation.md, pinned by fixtures/payloads/expectations.json.
  * No SQLite: structural checks, binding checks via the shared lexical
- * scanner, and best-effort host-call usage checks with static call_id
+ * scanner, and best-effort host-call usage checks with static call-id
  * resolution (literals and text bindings; computed ids are skipped).
+ * SQL-visible column names (e.g. the call-id column) come from the
+ * manifest's `columns` block, never hardcoded (docs/naming.md).
  */
 
 import {
@@ -129,6 +131,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   }
 
   // -- manifest table index -------------------------------------------------
+  const callIdColumn = manifest.columns.callId;
   const callTables = new Map<string, string>(); // call table -> method name
   const inputChildTables = new Map<string, { methodName: string; callTable: string }>();
   const resultTables = new Map<string, string>(); // result table -> method name
@@ -204,7 +207,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         }
       }
 
-      const insert = analyzeInsert(tokens, bindings);
+      const insert = analyzeInsert(tokens, bindings, callIdColumn);
       if (insert !== null) {
         inserts.push({
           table: insert.table,
@@ -217,7 +220,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
 
       // Result-read lineage collection: result tables referenced +
-      // statically resolvable call_id filters (mirrors the Java engine).
+      // statically resolvable call-id filters (mirrors the Java engine).
       const readMethods: string[] = [];
       for (const token of tokens) {
         if (token.kind !== "identifier" && token.kind !== "quoted-identifier") continue;
@@ -228,7 +231,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         }
       }
       if (readMethods.length > 0) {
-        for (const callId of callIdFilters(tokens, bindings)) {
+        for (const callId of callIdFilters(tokens, bindings, callIdColumn)) {
           resultReads.push({
             methods: readMethods,
             callId,
@@ -275,7 +278,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
           findings.push({
             code: "duplicate-call-id",
             severity: "error",
-            message: `call_id "${callId}" is emitted more than once for ${insert.table}`,
+            message: `${callIdColumn} "${callId}" is emitted more than once for ${insert.table}`,
             ...at,
           });
         } else {
@@ -303,14 +306,14 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
           findings.push({
             code: "list-child-later-step",
             severity: "error",
-            message: `child rows in ${insert.table} for call_id "${callId}" must be emitted in the same step as the parent call row in ${child.callTable}`,
+            message: `child rows in ${insert.table} for ${callIdColumn} "${callId}" must be emitted in the same step as the parent call row in ${child.callTable}`,
             ...at,
           });
         }
         continue;
       }
       // Best-effort guard (mirrors the Java engine): a parent insert
-      // with a computed (unresolvable) call_id could produce this id.
+      // with a computed (unresolvable) call-id could produce this id.
       const methodHasComputedEmit = inserts.some(
         (candidate) =>
           candidate.table === child.callTable && candidate.callIds.includes(null),
@@ -319,7 +322,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         findings.push({
           code: "list-child-without-parent",
           severity: "error",
-          message: `child rows in ${insert.table} reference call_id "${callId}" but no statement inserts that call into ${child.callTable}`,
+          message: `child rows in ${insert.table} reference ${callIdColumn} "${callId}" but no statement inserts that call into ${child.callTable}`,
           ...at,
         });
       }
@@ -340,7 +343,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   }
 
   // -- result-read lineage --------------------------------------------------
-  // method -> statically emitted call_id -> earliest emitting step.
+  // method -> statically emitted call-id -> earliest emitting step.
   const staticEmits = new Map<string, Map<string, number>>();
   // method -> earliest step with a computed (unresolvable) emit.
   const computedEmits = new Map<string, number>();
@@ -369,7 +372,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
     }
   }
   // A statement can join result tables of several methods (set M) while
-  // each resolved call_id belongs to only one of them, so a finding is
+  // each resolved call-id belongs to only one of them, so a finding is
   // reported only when NO method in M can satisfy the read: unknown-call
   // when no method emits the id (computed emits count as possible
   // matches — skip), not-after-call when every emitting method violates
@@ -405,7 +408,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         findings.push({
           code: "result-read-not-after-call",
           severity: "error",
-          message: `statement reads results of method "${method}" for call_id "${read.callId}" in the same or an earlier step than the emitting insert — results only exist after the emitting step's drain`,
+          message: `statement reads results of method "${method}" for ${callIdColumn} "${read.callId}" in the same or an earlier step than the emitting insert — results only exist after the emitting step's drain`,
           ...at,
         });
       }
@@ -414,7 +417,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         findings.push({
           code: "result-read-unknown-call",
           severity: "error",
-          message: `statement reads results of method "${method}" for call_id "${read.callId}" but no statement emits that call`,
+          message: `statement reads results of method "${method}" for ${callIdColumn} "${read.callId}" but no statement emits that call`,
           ...at,
         });
       }

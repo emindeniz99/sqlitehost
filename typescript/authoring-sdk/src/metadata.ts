@@ -6,11 +6,16 @@
  * loadHostMetadata(manifestJson).
  *
  * Physical names are read from the manifest as-is (never re-derived);
- * only the fixed structural columns from docs/workspace-schema.md
- * (call_id, status, item_index) are added to the table column lists.
+ * only the shared structural columns (callId, status, itemIndex — the
+ * manifest's `columns` block, docs/workspace-schema.md) are added to
+ * the table column lists.
  */
 
-import type { HostManifest, ManifestListField } from "./manifest.js";
+import type {
+  HostManifest,
+  ManifestColumns,
+  ManifestListField,
+} from "./manifest.js";
 import { parseHostManifest } from "./manifest.js";
 
 export interface TableMetadata {
@@ -48,9 +53,12 @@ export interface HostMetadata {
   apiLevel: number;
   minSqliteVersionNumber: number;
   features: string[];
+  /** Shared SQL-visible column names + done literal (manifest columns block). */
+  columns: ManifestColumns;
   queueTable: TableMetadata;
   inputsTable: TableMetadata;
   varsTable: TableMetadata;
+  controlTable: TableMetadata;
   methods: MethodMetadata[];
   /** Every workspace table with its columns, in canonical DDL order. */
   tables: TableMetadata[];
@@ -72,10 +80,10 @@ function listFieldMetadata(field: ManifestListField): ListFieldMetadata {
   };
 }
 
-function childTableMetadata(field: ManifestListField): TableMetadata {
+function childTableMetadata(field: ManifestListField, columns: ManifestColumns): TableMetadata {
   return {
     name: field.childTable,
-    columns: ["call_id", "item_index", ...field.itemFields.map((f) => f.column)],
+    columns: [columns.callId, columns.itemIndex, ...field.itemFields.map((f) => f.column)],
   };
 }
 
@@ -87,23 +95,24 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
     { name: m.queueTable.name, columns: [...m.queueTable.columns] },
     { name: m.inputsTable.name, columns: [...m.inputsTable.columns] },
     { name: m.varsTable.name, columns: [...m.varsTable.columns] },
+    { name: m.controlTable.name, columns: [...m.controlTable.columns] },
   ];
   const methods: MethodMetadata[] = [];
 
   for (const method of m.methods) {
     tables.push({
       name: method.callTable,
-      columns: ["call_id", ...method.input.fields.map((f) => f.column)],
+      columns: [m.columns.callId, ...method.input.fields.map((f) => f.column)],
     });
     for (const listField of method.input.listFields) {
-      tables.push(childTableMetadata(listField));
+      tables.push(childTableMetadata(listField, m.columns));
     }
     tables.push({
       name: method.resultTable,
-      columns: ["call_id", "status", ...method.result.fields.map((f) => f.column)],
+      columns: [m.columns.callId, m.columns.status, ...method.result.fields.map((f) => f.column)],
     });
     for (const listField of method.result.listFields) {
-      tables.push(childTableMetadata(listField));
+      tables.push(childTableMetadata(listField, m.columns));
     }
 
     methods.push({
@@ -128,9 +137,11 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
     apiLevel: m.library.apiLevel,
     minSqliteVersionNumber: m.library.minSqliteVersionNumber,
     features: [...m.library.features],
+    columns: { ...m.columns },
     queueTable: { name: m.queueTable.name, columns: [...m.queueTable.columns] },
     inputsTable: { name: m.inputsTable.name, columns: [...m.inputsTable.columns] },
     varsTable: { name: m.varsTable.name, columns: [...m.varsTable.columns] },
+    controlTable: { name: m.controlTable.name, columns: [...m.controlTable.columns] },
     methods,
     tables,
   };

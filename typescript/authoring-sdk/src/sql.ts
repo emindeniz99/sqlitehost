@@ -8,8 +8,10 @@
  *
  * The INSERT analysis on top of the token stream is deliberately
  * best-effort (docs/validation.md): it resolves statically-known
- * `call_id` values from literals and text bindings; computed
- * expressions are skipped.
+ * call-id values from literals and text bindings; computed
+ * expressions are skipped. The call-id column name is host-configurable
+ * (the manifest's `columns.callId`, docs/naming.md), so callers pass it
+ * in — nothing here hardcodes `call_id`.
  */
 
 import type { BindingValue } from "@sqlite-host/runtime-types";
@@ -146,7 +148,7 @@ export function scanNamedParameters(sql: string): string[] {
 
 /** One row emitted by an INSERT (a VALUES group or the SELECT list). */
 export interface InsertRowInfo {
-  /** Statically-resolved call_id, or null when unresolvable. */
+  /** Statically-resolved call-id, or null when unresolvable. */
   callId: string | null;
 }
 
@@ -206,26 +208,30 @@ function isAtom(token: SqlToken | undefined): token is SqlToken {
 }
 
 /**
- * Statically-resolved `call_id = <atom>` (and `<atom> = call_id`)
- * comparison values, where the atom is a single string literal or a
- * parameter with a text binding. Concatenations and other computed
- * expressions are not atoms — they are skipped by static call_id
- * resolution (mirrors the Java validator's SqlAnalyzer).
+ * Statically-resolved `<callIdColumn> = <atom>` (and
+ * `<atom> = <callIdColumn>`) comparison values, where the atom is a
+ * single string literal or a parameter with a text binding.
+ * Concatenations and other computed expressions are not atoms — they
+ * are skipped by static call-id resolution (mirrors the Java
+ * validator's SqlAnalyzer). `callIdColumn` is the manifest's
+ * `columns.callId` (e.g. `call_id`).
  */
 export function callIdFilters(
   tokens: SqlToken[],
   bindings: Record<string, BindingValue>,
+  callIdColumn: string,
 ): string[] {
+  const column = callIdColumn.toLowerCase();
   const filters: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (
       (token.kind !== "identifier" && token.kind !== "quoted-identifier") ||
-      token.value.toLowerCase() !== "call_id"
+      token.value.toLowerCase() !== column
     ) {
       continue;
     }
-    // forward form: call_id = <atom> (not continued by || or .)
+    // forward form: <callIdColumn> = <atom> (not continued by || or .)
     if (
       isPunctAt(tokens[i + 1], "=") &&
       isAtom(tokens[i + 2]) &&
@@ -235,7 +241,7 @@ export function callIdFilters(
       const value = resolveExpression([tokens[i + 2]], bindings);
       if (value !== null) filters.push(value);
     }
-    // reverse form: <atom> = call_id (atom not the tail of a concatenation)
+    // reverse form: <atom> = <callIdColumn> (atom not the tail of a concatenation)
     if (isPunctAt(tokens[i - 1], "=") && isAtom(tokens[i - 2]) && !isPunctAt(tokens[i - 3], "|")) {
       const value = resolveExpression([tokens[i - 2]], bindings);
       if (value !== null) filters.push(value);
@@ -258,12 +264,14 @@ const SELECT_TERMINATORS = new Set([
 
 /**
  * Analyze an INSERT statement: target table, explicit column list, and
- * the statically-resolvable call_id of each emitted row. Returns null
- * for non-INSERT statements or unrecognized shapes.
+ * the statically-resolvable call-id of each emitted row (`callIdColumn`
+ * is the manifest's `columns.callId`). Returns null for non-INSERT
+ * statements or unrecognized shapes.
  */
 export function analyzeInsert(
   tokens: SqlToken[],
   bindings: Record<string, BindingValue>,
+  callIdColumn: string,
 ): InsertInfo | null {
   // The INSERT keyword may be preceded by a WITH … CTE prefix: find the
   // first `insert` identifier, like the Java analyzer's indexOfIdent.
@@ -309,8 +317,8 @@ export function analyzeInsert(
     i++; // past ")"
   }
 
-  // call_id position: explicit list, else first column per canonical DDL.
-  const callIdIndex = columns === null ? 0 : columns.indexOf("call_id");
+  // call-id position: explicit list, else first column per canonical DDL.
+  const callIdIndex = columns === null ? 0 : columns.indexOf(callIdColumn.toLowerCase());
 
   const rows: InsertRowInfo[] = [];
   if (keywordAt(tokens, i, "values")) {

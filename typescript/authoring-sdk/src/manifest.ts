@@ -53,6 +53,28 @@ export interface ManifestTable {
   columns: string[];
 }
 
+/**
+ * Shared SQL-visible column names plus the done-status literal
+ * (`doneValue`), resolved from `@hostLibrary` overrides — the
+ * manifest's `columns` block (docs/naming.md), in manifest key order.
+ */
+export interface ManifestColumns {
+  callId: string;
+  itemIndex: string;
+  status: string;
+  doneValue: string;
+  queueId: string;
+  method: string;
+  name: string;
+  valueType: string;
+  intValue: string;
+  realValue: string;
+  textValue: string;
+  blobValue: string;
+  action: string;
+  message: string;
+}
+
 export interface HostManifest {
   manifestVersion: number;
   engine: string;
@@ -71,9 +93,11 @@ export interface HostManifest {
     inputListTableInfix: string;
     resultListTableInfix: string;
   };
+  columns: ManifestColumns;
   queueTable: ManifestTable;
   inputsTable: ManifestTable;
   varsTable: ManifestTable;
+  controlTable: ManifestTable;
   scriptEnvelope: {
     engine: string;
     bindingTypes: string[];

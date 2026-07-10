@@ -257,6 +257,116 @@ test("scanner retains the prefix of each parameter occurrence", () => {
   assert.deepStrictEqual(scanNamedParameters("SELECT :v, $v, @w"), ["v", "w"]);
 });
 
+// -- custom column names -----------------------------------------------------
+// The call-id column is host-configurable (manifest columns block,
+// docs/naming.md): the lint must resolve call ids through the
+// manifest's name, so renaming it re-targets every call-id check.
+
+function cidManifest() {
+  const base = JSON.parse(readFixture("manifests/sample-host.manifest.json"));
+  return parseHostManifest({
+    ...base,
+    columns: { ...base.columns, callId: "cid" },
+  });
+}
+
+test("custom call-id column: lineage resolves via cid comparisons", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "emit",
+        statements: [
+          { sql: "INSERT INTO call_get_value (cid, input_key) VALUES ('r-1', 'k')" },
+        ],
+      },
+      {
+        id: "read",
+        statements: [
+          { sql: "SELECT result_value FROM result_get_value WHERE cid = 'r-1' AND status = 'done'" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, cidManifest());
+  assert.deepStrictEqual(findings, [], `expected no findings, got ${JSON.stringify(findings)}`);
+});
+
+test("custom call-id column: call_id comparisons are no longer call-id filters", () => {
+  // Under the cid manifest, `cid = …` is a call-id filter (the same-step
+  // read errors) while `call_id = …` is an ordinary column comparison
+  // (unresolvable — skipped, no finding).
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (cid, input_key) VALUES ('r-1', 'k')" },
+          { sql: "SELECT result_value FROM result_get_value WHERE cid = 'r-1'" },
+          { sql: "SELECT result_value FROM result_get_value WHERE call_id = 'r-1'" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, cidManifest());
+  const lineage = findings.filter((f) => f.code === "result-read-not-after-call");
+  assert.equal(lineage.length, 1, JSON.stringify(findings));
+  assert.equal(lineage[0].statementIndex, 1);
+});
+
+test("custom call-id column: duplicate-call-id resolves via cid, not call_id", () => {
+  const statements = (column: string) => [
+    {
+      sql: `INSERT INTO call_get_value (${column}, input_key) VALUES ('r-1', 'a'), ('r-1', 'b')`,
+    },
+  ];
+  const script = (column: string) => ({
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [{ id: "s1", statements: statements(column) }],
+  });
+  // cid is the call-id column: the repeated id is caught…
+  const viaCid = lintScript(script("cid"), cidManifest());
+  assert.ok(codes(viaCid).includes("duplicate-call-id"), JSON.stringify(viaCid));
+  // …while a column literally named call_id resolves nothing.
+  const viaCallId = lintScript(script("call_id"), cidManifest());
+  assert.ok(!codes(viaCallId).includes("duplicate-call-id"), JSON.stringify(viaCallId));
+});
+
+test("custom call-id column: list child/parent matching uses cid", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_values (cid, input_default_value) VALUES ('q-1', 0)" },
+        ],
+      },
+      {
+        id: "s2",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values__input_keys (cid, item_index, input_key) VALUES ('q-1', 0, 'k')",
+          },
+        ],
+      },
+    ],
+  };
+  // Parent and child ids only match through the cid column — the
+  // colocation rule must still see them and flag the later step.
+  const findings = lintScript(payload, cidManifest());
+  assert.ok(codes(findings).includes("list-child-later-step"), JSON.stringify(findings));
+});
+
 test("duplicate-input-name: two inputs sharing a name is an error", () => {
   const payload = JSON.parse(readFixture("payloads/invalid/duplicate-input-name.json"));
   const findings = lintScript(payload, manifest);
