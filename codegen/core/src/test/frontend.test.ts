@@ -2,8 +2,10 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { compileHostLibrary } from "../frontend.js";
+import { DEFAULT_MIN_SQLITE_VERSION_NUMBER } from "../ir.js";
 import { DEFAULT_NAMING } from "../naming.js";
 import {
+  assertDiagnostic,
   compileSource,
   manifestFixturePath,
   samplePath,
@@ -240,6 +242,85 @@ test("method apiLevel defaults to the library apiLevel and can be overridden", a
       ["first", 3],
       ["second", 5],
     ],
+  );
+});
+
+test("minSqliteVersion parses to the SQLITE_VERSION_NUMBER form", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, minSqliteVersion: "3.9.0" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.library.minSqliteVersionNumber, 3009000);
+});
+
+test("a fourth minSqliteVersion component is ignored per SQLITE_VERSION_NUMBER", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, minSqliteVersion: "3.8.11.1" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.library.minSqliteVersionNumber, 3008011);
+});
+
+test("an unparseable minSqliteVersion reports a diagnostic", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, minSqliteVersion: "abc" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "invalid-min-sqlite-version");
+});
+
+test("minSqliteVersionNumber defaults to 3019003 when minSqliteVersion is absent", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.library.minSqliteVersionNumber, 3019003);
+  assert.equal(
+    result.ir.library.minSqliteVersionNumber,
+    DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   );
 });
 

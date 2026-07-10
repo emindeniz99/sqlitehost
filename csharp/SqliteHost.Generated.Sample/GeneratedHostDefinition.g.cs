@@ -11,6 +11,7 @@ namespace Example.Game.Generated
             return SqliteHostDefinition
                 .ForHandlers<IGeneratedHostHandlers>()
                 .ApiLevel(1)
+                .MinSqliteVersion(3019003)
                 .Naming(n => n
                     .CallTablePrefix("call_")
                     .ResultTablePrefix("result_")

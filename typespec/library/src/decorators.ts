@@ -10,6 +10,7 @@ import { reportDiagnostic, stateKeys } from "./lib.js";
 /** Resolved `@hostLibrary` options (naming keys stay optional here; the frontend applies defaults). */
 export interface HostLibraryOptions {
   apiLevel: number;
+  minSqliteVersion?: string;
   callTablePrefix?: string;
   resultTablePrefix?: string;
   inputColumnPrefix?: string;
@@ -28,6 +29,22 @@ export interface HostMethodOptions {
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const METHOD_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 const SQL_NAME = /^[a-z][a-z0-9_]*$/;
+const SQLITE_VERSION = /^\d+(\.\d+){0,3}$/;
+
+/**
+ * Parse a dotted SQLite version string ("3.19.3", "3.8.11.1") into the
+ * SQLITE_VERSION_NUMBER form: major*1000000 + minor*1000 + patch. Up to
+ * four dot-separated numbers are accepted; the fourth (branch) component
+ * is ignored per the SQLITE_VERSION_NUMBER convention. Returns undefined
+ * when the string is not a version.
+ */
+export function parseSqliteVersionNumber(value: string): number | undefined {
+  if (!SQLITE_VERSION.test(value)) {
+    return undefined;
+  }
+  const [major = 0, minor = 0, patch = 0] = value.split(".").map(Number);
+  return major * 1000000 + minor * 1000 + patch;
+}
 
 /**
  * Normalize a decorator argument to a plain JS value. The options
@@ -85,6 +102,16 @@ export function $hostLibrary(
 ): void {
   const opts = unwrap(options) as HostLibraryOptions;
   checkApiLevel(context, opts.apiLevel);
+  if (
+    opts.minSqliteVersion !== undefined &&
+    parseSqliteVersionNumber(opts.minSqliteVersion) === undefined
+  ) {
+    reportDiagnostic(context.program, {
+      code: "invalid-min-sqlite-version",
+      format: { value: opts.minSqliteVersion },
+      target: context.decoratorTarget,
+    });
+  }
   context.program.stateMap(stateKeys.hostLibrary).set(target, opts);
 }
 

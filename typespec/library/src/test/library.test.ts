@@ -114,6 +114,43 @@ test("rejects a non-integer or non-positive api level", async () => {
   assertDiagnostic(program, "invalid-api-level");
 });
 
+test("@hostLibrary records minSqliteVersion when provided", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, minSqliteVersion: "3.19.3" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.deepEqual(diagnosticCodes(program), []);
+  const [iface] = getHostLibraryInterfaces(program);
+  const options = getHostLibraryOptions(program, iface);
+  assert.deepEqual(options, { apiLevel: 1, minSqliteVersion: "3.19.3" });
+});
+
+test("rejects a minSqliteVersion that is not a dotted version string", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, minSqliteVersion: "abc" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(program, "invalid-min-sqlite-version");
+});
+
 test("rejects an invalid protocol method name", async () => {
   const program = await compileSource(`
     import "@sqlite-host/typespec";

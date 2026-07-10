@@ -7,6 +7,7 @@ export {
   getHostLibraryInterfaces,
   getHostMethodOptions,
   getSqlName,
+  parseSqliteVersionNumber,
 } from "./decorators.js";
 export type { HostLibraryOptions, HostMethodOptions } from "./decorators.js";
 

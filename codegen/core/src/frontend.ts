@@ -25,14 +25,17 @@ import {
   getHostLibraryOptions,
   getHostMethodOptions,
   getSqlName,
+  parseSqliteVersionNumber,
   reportDiagnostic,
 } from "@sqlite-host/typespec";
 import {
   BINDING_TYPES_V1,
+  DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   ENGINE_V1,
   FEATURES_V1,
   INPUTS_TABLE_V1,
   QUEUE_TABLE_V1,
+  VARS_TABLE_V1,
   type HostLibraryIr,
   type HostMethodIr,
   type ListFieldIr,
@@ -122,6 +125,15 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
     methods.push(buildMethod(program, naming, options.apiLevel, op));
   }
 
+  // An invalid minSqliteVersion string was already rejected by the
+  // decorator (invalid-min-sqlite-version); the program has errors and
+  // callers never emit from it, so the default stands in here.
+  const minSqliteVersionNumber =
+    options.minSqliteVersion !== undefined
+      ? parseSqliteVersionNumber(options.minSqliteVersion) ??
+        DEFAULT_MIN_SQLITE_VERSION_NUMBER
+      : DEFAULT_MIN_SQLITE_VERSION_NUMBER;
+
   return {
     manifestVersion: 1,
     engine: ENGINE_V1,
@@ -129,6 +141,7 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
       namespace: buildNamespaceName(iface),
       interfaceName: iface.name,
       apiLevel: options.apiLevel,
+      minSqliteVersionNumber,
       features: [...FEATURES_V1],
     },
     naming,
@@ -139,6 +152,10 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
     inputsTable: {
       name: INPUTS_TABLE_V1.name,
       columns: [...INPUTS_TABLE_V1.columns],
+    },
+    varsTable: {
+      name: VARS_TABLE_V1.name,
+      columns: [...VARS_TABLE_V1.columns],
     },
     scriptEnvelope: {
       engine: ENGINE_V1,

@@ -5,10 +5,13 @@ namespace SqliteHost;
 /**
  * Options for `@hostLibrary`. `apiLevel` is required; the six naming
  * keys are optional and default to the protocol v1 naming conventions
- * (see docs/naming.md).
+ * (see docs/naming.md). `minSqliteVersion` is the minimum SQLite
+ * version required by the host library, as a dotted version string
+ * (e.g. "3.19.3" or "3.8.11.1"); it defaults to 3.19.3 when absent.
  */
 model HostLibraryOptions {
   apiLevel: int32;
+  minSqliteVersion?: string;
   callTablePrefix?: string;
   resultTablePrefix?: string;
   inputColumnPrefix?: string;

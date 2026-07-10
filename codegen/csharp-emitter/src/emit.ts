@@ -333,6 +333,7 @@ export function emitHostDefinition(ir: HostLibraryIr): string {
     "            return SqliteHostDefinition",
     "                .ForHandlers<IGeneratedHostHandlers>()",
     `                .ApiLevel(${ir.library.apiLevel})`,
+    `                .MinSqliteVersion(${ir.library.minSqliteVersionNumber})`,
     "                .Naming(n => n",
     `                    .CallTablePrefix(${csharpString(naming.callTablePrefix)})`,
     `                    .ResultTablePrefix(${csharpString(naming.resultTablePrefix)})`,

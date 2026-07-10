@@ -77,13 +77,30 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
   namespace: "Example.Game",
   interfaceName: "GameHostMethods",
   apiLevel: 1,
-  features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
+  minSqliteVersionNumber: 3019003,
+  features: [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptInputs",
+    "scriptVars",
+  ],
   queueTable: {
     name: "pending_host_calls",
     columns: ["queue_id", "call_id", "method", "status"],
   },
   inputsTable: {
     name: "script_inputs",
+    columns: [
+      "name",
+      "value_type",
+      "int_value",
+      "real_value",
+      "text_value",
+      "blob_value",
+    ],
+  },
+  varsTable: {
+    name: "script_vars",
     columns: [
       "name",
       "value_type",
@@ -191,6 +208,17 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     },
     {
       name: "script_inputs",
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
+    },
+    {
+      name: "script_vars",
       columns: [
         "name",
         "value_type",

@@ -143,6 +143,7 @@ function hostMetadata(ir: HostLibraryIr): Literal {
   const tables: Literal[] = [
     { name: ir.queueTable.name, columns: [...ir.queueTable.columns] },
     { name: ir.inputsTable.name, columns: [...ir.inputsTable.columns] },
+    { name: ir.varsTable.name, columns: [...ir.varsTable.columns] },
   ];
   for (const method of ir.methods) {
     tables.push({
@@ -169,11 +170,16 @@ function hostMetadata(ir: HostLibraryIr): Literal {
     namespace: ir.library.namespace,
     interfaceName: ir.library.interfaceName,
     apiLevel: ir.library.apiLevel,
+    minSqliteVersionNumber: ir.library.minSqliteVersionNumber,
     features: [...ir.library.features],
     queueTable: { name: ir.queueTable.name, columns: [...ir.queueTable.columns] },
     inputsTable: {
       name: ir.inputsTable.name,
       columns: [...ir.inputsTable.columns],
+    },
+    varsTable: {
+      name: ir.varsTable.name,
+      columns: [...ir.varsTable.columns],
     },
     methods: ir.methods.map(methodMetadata),
     tables,

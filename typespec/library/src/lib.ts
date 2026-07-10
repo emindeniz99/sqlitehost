@@ -16,6 +16,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`apiLevel must be a positive integer, got ${"value"}.`,
       },
     },
+    "invalid-min-sqlite-version": {
+      severity: "error",
+      messages: {
+        default: paramMessage`minSqliteVersion "${"value"}" is not a dotted SQLite version string of up to four numbers (e.g. "3.19.3" or "3.8.11.1").`,
+      },
+    },
     "invalid-method-name": {
       severity: "error",
       messages: {

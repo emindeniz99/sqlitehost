@@ -43,8 +43,9 @@ function sampleIr(): HostLibraryIr {
 
 /**
  * Hand-built non-sample IR: non-default naming prefixes (req_/resp_,
- * arg_/out_), a non-default inputs table name, an optional bytes field,
- * int32 + int64 fields, and a list field on each side of the method.
+ * arg_/out_), non-default inputs/vars table names, an optional bytes
+ * field, int32 + int64 fields, and a list field on each side of the
+ * method.
  */
 function smokeIr(): HostLibraryIr {
   return {
@@ -54,6 +55,7 @@ function smokeIr(): HostLibraryIr {
       namespace: "Acme.Warehouse",
       interfaceName: "WarehouseHostMethods",
       apiLevel: 3,
+      minSqliteVersionNumber: 3008011,
       features: ["typedNamedBindings"],
     },
     naming: {
@@ -70,6 +72,17 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_params",
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
+    },
+    varsTable: {
+      name: "script_scratch",
       columns: [
         "name",
         "value_type",
@@ -260,6 +273,7 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
   assert.ok(output.includes("export const ACME_WAREHOUSE_METADATA: HostMetadata ="));
   assert.ok(output.includes('namespace: "Acme.Warehouse"'));
   assert.ok(output.includes("apiLevel: 3"));
+  assert.ok(output.includes("minSqliteVersionNumber: 3008011"));
   assert.ok(output.includes('callTable: "req_store_asset"'));
   assert.ok(output.includes('resultTable: "resp_store_asset"'));
   assert.ok(output.includes('queueTrigger: "trg_req_store_asset_queue"'));
@@ -275,6 +289,10 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
     ),
   );
   assert.ok(output.includes('name: "script_params"'));
+  assert.ok(
+    output.includes('name: "script_scratch"'),
+    "vars table name comes from the IR",
+  );
   // Child/result tables get the fixed structural columns.
   assert.ok(
     output.includes('columns: ["call_id", "item_index", "arg_label"]'),

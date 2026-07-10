@@ -25,6 +25,9 @@ public final class MethodDescriptors {
     /** Api level of the host library. */
     public static final int API_LEVEL = 1;
 
+    /** Minimum SQLite version required, in SQLITE_VERSION_NUMBER form. */
+    public static final int MIN_SQLITE_VERSION_NUMBER = 3019003;
+
     /** One host method's resolved manifest metadata. */
     public record Method(
             String methodName,

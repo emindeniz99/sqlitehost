@@ -117,6 +117,7 @@ function smokeIr(): HostLibraryIr {
       namespace: "Acme.Tools",
       interfaceName: "ToolHostMethods",
       apiLevel: 2,
+      minSqliteVersionNumber: 3008011,
       features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
     },
     naming,
@@ -126,6 +127,17 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_inputs",
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
+    },
+    varsTable: {
+      name: "script_vars",
       columns: [
         "name",
         "value_type",
@@ -292,6 +304,11 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
 test("smoke IR: host definition reproduces the IR naming prefixes", () => {
   const definition = smokeFile("GeneratedHostDefinition.g.cs");
   assert.match(definition, /\.ApiLevel\(2\)/);
+  // MinSqliteVersion is always emitted, between ApiLevel and Naming.
+  assert.match(
+    definition,
+    /\.ApiLevel\(2\)\n\s+\.MinSqliteVersion\(3008011\)\n\s+\.Naming\(/,
+  );
   assert.match(definition, /\.CallTablePrefix\("hc_"\)/);
   assert.match(definition, /\.ResultTablePrefix\("hr_"\)/);
   assert.match(definition, /\.InputColumnPrefix\("in_"\)/);

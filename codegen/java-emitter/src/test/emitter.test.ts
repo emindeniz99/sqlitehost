@@ -83,6 +83,7 @@ function smokeIr(): HostLibraryIr {
       namespace: "Acme.Cache",
       interfaceName: "CacheHostMethods",
       apiLevel: 3,
+      minSqliteVersionNumber: 3008011,
       features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
     },
     naming: {
@@ -99,6 +100,17 @@ function smokeIr(): HostLibraryIr {
     },
     inputsTable: {
       name: "script_inputs",
+      columns: [
+        "name",
+        "value_type",
+        "int_value",
+        "real_value",
+        "text_value",
+        "blob_value",
+      ],
+    },
+    varsTable: {
+      name: "script_vars",
       columns: [
         "name",
         "value_type",
@@ -250,6 +262,10 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   assert.match(descriptors.contents, /List\.of\("hostcall_store_entry__in_tags"\)/);
   assert.match(descriptors.contents, /List\.of\("out_generation", "out_hit_ratio"\)/);
   assert.match(descriptors.contents, /public static final int API_LEVEL = 3;/);
+  assert.match(
+    descriptors.contents,
+    /public static final int MIN_SQLITE_VERSION_NUMBER = 3008011;/,
+  );
 
   // Envelope files are protocol-shaped and unaffected by library naming.
   const script = fileByName(files, "Script.java");
