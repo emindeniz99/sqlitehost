@@ -13,11 +13,13 @@ public final class ValidationCodes {
     public static final String REQUIRED_API_LEVEL_TOO_HIGH = "required-api-level-too-high";
     public static final String UNKNOWN_REQUIRED_FEATURE = "unknown-required-feature";
     public static final String UNKNOWN_REQUIRED_METHOD = "unknown-required-method";
+    public static final String DUPLICATE_INPUT_NAME = "duplicate-input-name";
 
     // Bindings
     public static final String MISSING_BINDING = "missing-binding";
     public static final String UNUSED_BINDING = "unused-binding";
     public static final String BINDING_TYPE_MISMATCH = "binding-type-mismatch";
+    public static final String MIXED_PREFIX_BINDING = "mixed-prefix-binding";
 
     // Host-call usage
     public static final String IMPLICIT_COLUMN_LIST = "implicit-column-list";

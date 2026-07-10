@@ -102,7 +102,7 @@ public final class SqlTokenizer {
                     end++;
                 }
                 if (end > start) {
-                    tokens.add(new SqlToken(SqlToken.Kind.PARAM, sql.substring(start, end)));
+                    tokens.add(new SqlToken(SqlToken.Kind.PARAM, sql.substring(start, end), c));
                     i = end;
                 } else {
                     tokens.add(new SqlToken(SqlToken.Kind.PUNCT, String.valueOf(c)));

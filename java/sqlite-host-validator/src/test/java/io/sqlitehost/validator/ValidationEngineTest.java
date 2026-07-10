@@ -330,6 +330,98 @@ class ValidationEngineTest {
     }
 
     @Test
+    void duplicateInputNamesAreAnError() throws IOException {
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"
+                + "\"inputs\":["
+                + "{\"name\":\"targetValue\",\"value\":{\"type\":\"int64\",\"value\":1}},"
+                + "{\"name\":\"targetValue\",\"value\":{\"type\":\"int64\",\"value\":2}}],"
+                + "\"steps\":[{\"id\":\"read\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key) VALUES (:c, 'k')\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}");
+        assertFalse(report.isValid());
+        ValidationFinding finding = report.errors().get(0);
+        assertEquals(ValidationCodes.DUPLICATE_INPUT_NAME, finding.code());
+        assertEquals(null, finding.stepId());
+        assertEquals(-1, finding.statementIndex());
+        assertTrue(finding.message().contains("targetValue"), finding.message());
+    }
+
+    @Test
+    void uniqueInputNamesAreAccepted() throws IOException {
+        ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"
+                + "\"inputs\":["
+                + "{\"name\":\"targetValue\",\"value\":{\"type\":\"int64\",\"value\":1}},"
+                + "{\"name\":\"otherValue\",\"value\":{\"type\":\"int64\",\"value\":2}}],"
+                + "\"steps\":[{\"id\":\"read\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key) VALUES (:c, 'k')\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}");
+        assertTrue(report.isValid(), report.findings().toString());
+    }
+
+    /** getValue insert whose call_id cell is the given SQL expression. */
+    private static String prefixScript(String callIdExpr) {
+        return "{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"
+                + "\"steps\":[{\"id\":\"read\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key)"
+                + " SELECT :c, 'k' WHERE " + callIdExpr + "\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}";
+    }
+
+    @Test
+    void mixedPrefixFormsWarnOncePerStatement() throws IOException {
+        // :c and $c in one statement — supported (one binding feeds
+        // both) but flagged once as a likely authoring accident.
+        ValidationReport report = validate(prefixScript("$c = :c"));
+        assertTrue(report.isValid(), report.findings().toString());
+        assertEquals(1, report.warnings().size(), report.warnings().toString());
+        ValidationFinding warning = report.warnings().get(0);
+        assertEquals(ValidationCodes.MIXED_PREFIX_BINDING, warning.code());
+        assertEquals("read", warning.stepId());
+        assertEquals(0, warning.statementIndex());
+    }
+
+    @Test
+    void repeatedSamePrefixDoesNotWarn() throws IOException {
+        ValidationReport report = validate(prefixScript(":c = :c"));
+        assertTrue(report.isValid(), report.findings().toString());
+        assertEquals(0, report.warnings().size(), report.warnings().toString());
+    }
+
+    @Test
+    void atAndDollarPrefixesAlsoWarn() throws IOException {
+        ValidationReport report = validate(prefixScript("@c = $c"));
+        assertTrue(report.isValid(), report.findings().toString());
+        assertEquals(List.of(ValidationCodes.MIXED_PREFIX_BINDING),
+                report.warnings().stream().map(ValidationFinding::code).toList());
+    }
+
+    @Test
+    void prefixRetentionDoesNotDisturbBindingChecks() throws IOException {
+        // Regression: mixed prefix forms still match bindings by bare
+        // name (no missing/unused-binding), and a genuinely missing or
+        // unused binding is still reported alongside the warning.
+        ValidationReport mixed = validate(prefixScript("$c = :c"));
+        List<String> mixedCodes = errorCodes(mixed);
+        assertFalse(mixedCodes.contains(ValidationCodes.MISSING_BINDING), mixedCodes.toString());
+        assertFalse(mixedCodes.contains(ValidationCodes.UNUSED_BINDING), mixedCodes.toString());
+
+        ValidationReport broken = validate("{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"
+                + "\"steps\":[{\"id\":\"read\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key)"
+                + " SELECT :c, 'k' WHERE $c = :absent\","
+                + "\"bindings\":{"
+                + "\"c\":{\"type\":\"text\",\"value\":\"r-1\"},"
+                + "\"orphan\":{\"type\":\"text\",\"value\":\"x\"}}}]}]}");
+        List<String> brokenCodes = errorCodes(broken);
+        assertTrue(brokenCodes.contains(ValidationCodes.MISSING_BINDING), brokenCodes.toString());
+        assertTrue(brokenCodes.contains(ValidationCodes.UNUSED_BINDING), brokenCodes.toString());
+    }
+
+    @Test
     void findingsCarryStatementContext() throws IOException {
         ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
                 + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValue\"],"

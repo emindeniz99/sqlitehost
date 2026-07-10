@@ -40,6 +40,7 @@ public final class ValidationEngine {
         List<ValidationFinding> findings = new ArrayList<>();
         checkEnvelope(manifest, script, findings);
         checkDuplicateStepIds(script, findings);
+        checkDuplicateInputNames(script, findings);
         checkCompatibility(manifest, script, findings);
 
         SchemaIndex schema = new SchemaIndex(manifest);
@@ -112,6 +113,19 @@ public final class ValidationEngine {
         }
     }
 
+    private static void checkDuplicateInputNames(Script script, List<ValidationFinding> findings) {
+        Set<String> seen = new HashSet<>();
+        for (RuntimeInput input : script.inputs()) {
+            if (isBlank(input.name())) {
+                continue; // already invalid-envelope
+            }
+            if (!seen.add(input.name())) {
+                findings.add(ValidationFinding.error(ValidationCodes.DUPLICATE_INPUT_NAME,
+                        "input name '" + input.name() + "' is used more than once"));
+            }
+        }
+    }
+
     private static void checkCompatibility(
             Manifest manifest, Script script, List<ValidationFinding> findings) {
         Integer requiredApiLevel = script.requiredApiLevel();
@@ -175,6 +189,33 @@ public final class ValidationEngine {
                 findings.add(ValidationFinding.error(ValidationCodes.UNUSED_BINDING,
                         stepId, statementIndex,
                         "binding '" + binding + "' is not referenced by the SQL"));
+            }
+        }
+
+        // mixed-prefix-binding: the same bare name written through more
+        // than one prefix form in this statement (supported — one
+        // binding feeds all forms — but usually an authoring accident).
+        Map<String, Set<Character>> prefixesByName = new LinkedHashMap<>();
+        for (SqlToken token : tokens) {
+            if (token.kind() == SqlToken.Kind.PARAM) {
+                prefixesByName.computeIfAbsent(token.text(), k -> new LinkedHashSet<>())
+                        .add(token.prefix());
+            }
+        }
+        for (Map.Entry<String, Set<Character>> entry : prefixesByName.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                StringBuilder forms = new StringBuilder();
+                for (char prefix : entry.getValue()) {
+                    if (forms.length() > 0) {
+                        forms.append(", ");
+                    }
+                    forms.append(prefix).append(entry.getKey());
+                }
+                findings.add(ValidationFinding.warning(ValidationCodes.MIXED_PREFIX_BINDING,
+                        stepId, statementIndex,
+                        "parameter '" + entry.getKey()
+                                + "' is written through more than one prefix form (" + forms
+                                + ") — use ':" + entry.getKey() + "' consistently"));
             }
         }
 

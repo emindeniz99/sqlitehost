@@ -29,7 +29,16 @@ class SqlTokenizerTest {
     @Test
     void bindingNamesAreBare() {
         List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT :callId");
-        assertEquals(new SqlToken(SqlToken.Kind.PARAM, "callId"), tokens.get(1));
+        assertEquals(new SqlToken(SqlToken.Kind.PARAM, "callId", ':'), tokens.get(1));
+    }
+
+    @Test
+    void parameterTokensRetainTheirPrefixCharacter() {
+        List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT :a, @b, $c");
+        assertEquals(List.of(':', '@', '$'), tokens.stream()
+                .filter(t -> t.kind() == SqlToken.Kind.PARAM)
+                .map(SqlToken::prefix)
+                .toList());
     }
 
     @Test

@@ -5,9 +5,15 @@ package io.sqlitehost.validator.sql;
  * parameter name for {@link Kind#PARAM} (prefix stripped), the literal
  * content for {@link Kind#STRING} (quotes removed, {@code ''} escapes
  * resolved), and the identifier text for {@link Kind#IDENT} (unquoted
- * for double-quoted identifiers).
+ * for double-quoted identifiers). {@code prefix} is the parameter
+ * prefix character ({@code ':'}, {@code '@'}, or {@code '$'}) for
+ * {@link Kind#PARAM} and {@code '\0'} for every other kind.
  */
-public record SqlToken(Kind kind, String text) {
+public record SqlToken(Kind kind, String text, char prefix) {
+
+    public SqlToken(Kind kind, String text) {
+        this(kind, text, '\0');
+    }
 
     public enum Kind {
         /** Bare or double-quoted identifier / keyword. */

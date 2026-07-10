@@ -26,6 +26,11 @@ public record ValidationFinding(
         return new ValidationFinding(code, Severity.WARNING, null, -1, message);
     }
 
+    public static ValidationFinding warning(
+            String code, String stepId, int statementIndex, String message) {
+        return new ValidationFinding(code, Severity.WARNING, stepId, statementIndex, message);
+    }
+
     /** One-line rendering: {@code ERROR missing-binding [read/0] …}. */
     public String render() {
         StringBuilder line = new StringBuilder();
