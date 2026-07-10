@@ -360,7 +360,7 @@ public final class ValidationEngine {
             if (emit.callId == null) {
                 continue; // computed ids are skipped by duplicate checks
             }
-            String key = emit.callTableLc + " " + emit.callId;
+            String key = emit.callTableLc + "\0" + emit.callId;
             CallEmit first = firstByTableAndId.putIfAbsent(key, emit);
             if (first != null) {
                 findings.add(ValidationFinding.error(ValidationCodes.DUPLICATE_CALL_ID,
