@@ -1,18 +1,22 @@
 {
-  "name": "@sqlite-host/codegen-core",
+  "name": "@sqlite-host/typespec",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared IR, naming rules, canonical manifest serialization, and DDL generation for SqliteHost emitters",
+  "description": "TypeSpec library for SqliteHost: script envelope models, host-method decorators, and model validation diagnostics",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "tspMain": "lib/main.tsp",
   "exports": {
-    ".": "./dist/index.js",
-    "./frontend": "./dist/frontend.js",
-    "./validate": "./dist/validate.js"
+    ".": {
+      "typespec": "./lib/main.tsp",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
-    "dist"
+    "dist",
+    "lib"
   ],
   "engines": {
     "node": ">=20"
@@ -21,8 +25,10 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test 'dist/test/*.test.js'"
   },
+  "peerDependencies": {
+    "@typespec/compiler": "1.13.0"
+  },
   "devDependencies": {
-    "@sqlite-host/typespec": "workspace:*",
     "@types/node": "^22.0.0",
     "@typespec/compiler": "1.13.0",
     "typescript": "^5.5.0"

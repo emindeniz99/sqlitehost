@@ -1,15 +1,16 @@
 {
-  "name": "@sqlite-host/codegen-core",
+  "name": "@sqlite-host/emitter-manifest",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared IR, naming rules, canonical manifest serialization, and DDL generation for SqliteHost emitters",
+  "description": "SqliteHost manifest emitter: canonical manifest JSON + DDL snapshot from a TypeSpec host library",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./frontend": "./dist/frontend.js",
-    "./validate": "./dist/validate.js"
+    ".": "./dist/index.js"
+  },
+  "bin": {
+    "sqlite-host-emit-manifest": "./dist/cli.js"
   },
   "files": [
     "dist"
@@ -21,10 +22,13 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test 'dist/test/*.test.js'"
   },
-  "devDependencies": {
+  "dependencies": {
+    "@sqlite-host/codegen-core": "workspace:*",
     "@sqlite-host/typespec": "workspace:*",
+    "@typespec/compiler": "1.13.0"
+  },
+  "devDependencies": {
     "@types/node": "^22.0.0",
-    "@typespec/compiler": "1.13.0",
     "typescript": "^5.5.0"
   }
 }
