@@ -80,6 +80,34 @@ export interface VarsTableIr {
   columns: string[];
 }
 
+export interface ControlTableIr {
+  name: string;
+  columns: string[];
+}
+
+/**
+ * Configurable column identifiers and the done-status literal — every
+ * SQL-visible name a script author may want to rename. The halt/fail
+ * action verbs, the engine string, and the trigger derivation rule
+ * stay protocol constants (see docs/naming.md).
+ */
+export interface ColumnsIr {
+  callId: string;
+  itemIndex: string;
+  status: string;
+  doneValue: string;
+  queueId: string;
+  method: string;
+  name: string;
+  valueType: string;
+  intValue: string;
+  realValue: string;
+  textValue: string;
+  blobValue: string;
+  action: string;
+  message: string;
+}
+
 export interface ScriptEnvelopeIr {
   engine: string;
   bindingTypes: string[];
@@ -97,9 +125,11 @@ export interface HostLibraryIr {
     features: string[];
   };
   naming: NamingIr;
+  columns: ColumnsIr;
   queueTable: QueueTableIr;
   inputsTable: InputsTableIr;
   varsTable: VarsTableIr;
+  controlTable: ControlTableIr;
   scriptEnvelope: ScriptEnvelopeIr;
   methods: HostMethodIr[];
 }
@@ -122,7 +152,40 @@ export const FEATURES_V1 = [
   "splitResultTables",
   "scriptInputs",
   "scriptVars",
+  "scriptControl",
 ] as const;
+
+export const COLUMNS_V1: ColumnsIr = {
+  callId: "call_id",
+  itemIndex: "item_index",
+  status: "status",
+  doneValue: "done",
+  queueId: "queue_id",
+  method: "method",
+  name: "name",
+  valueType: "value_type",
+  intValue: "int_value",
+  realValue: "real_value",
+  textValue: "text_value",
+  blobValue: "blob_value",
+  action: "action",
+  message: "message",
+};
+
+/** Protocol verbs for the control table's action column (NOT configurable). */
+export const CONTROL_ACTION_HALT = "halt";
+export const CONTROL_ACTION_FAIL = "fail";
+
+/** Build the column list of each runtime-managed table from the columns config. */
+export function queueTableColumns(c: ColumnsIr): string[] {
+  return [c.queueId, c.callId, c.method, c.status];
+}
+export function namedValueTableColumns(c: ColumnsIr): string[] {
+  return [c.name, c.valueType, c.intValue, c.realValue, c.textValue, c.blobValue];
+}
+export function controlTableColumns(c: ColumnsIr): string[] {
+  return [c.action, c.message];
+}
 
 /** Default per-host minimum SQLite version (the plan's floor, 3.19.3). */
 export const DEFAULT_MIN_SQLITE_VERSION_NUMBER = 3019003;
@@ -143,4 +206,9 @@ export const INPUTS_TABLE_V1: InputsTableIr = {
 export const VARS_TABLE_V1: VarsTableIr = {
   name: "script_vars",
   columns: ["name", "value_type", "int_value", "real_value", "text_value", "blob_value"],
+};
+
+export const CONTROL_TABLE_V1: ControlTableIr = {
+  name: "script_control",
+  columns: ["action", "message"],
 };

@@ -136,7 +136,8 @@ public enum SqliteHostRunStatus
     FailedBinding,
     FailedHandler,
     FailedSchema,
-    FailedValidation
+    FailedValidation,
+    FailedScript
 }
 
 public sealed class SqliteHostRunResult
@@ -149,6 +150,8 @@ public sealed class SqliteHostRunResult
     public string Method { get; set; }
     public string BindingName { get; set; }     // set for missing-/unused-binding
     public int SqliteErrorCode { get; set; }    // native code via SqliteHostAdapterException; 0 = not available
+    public bool Halted { get; set; }            // true when the script halted itself (Status stays Completed)
+    public string HaltMessage { get; set; }     // the script's optional halt message
     public int ExecutedCallCount { get; set; }
     public List<SqliteHostCallDiagnostic> Calls { get; set; }  // populated when EnableDiagnostics
 }
@@ -197,6 +200,25 @@ public sealed class SqliteHostNamingBuilder   // each setter returns this
     public SqliteHostNamingBuilder QueueTable(string value);
     public SqliteHostNamingBuilder InputsTable(string value);
     public SqliteHostNamingBuilder VarsTable(string value);
+    public SqliteHostNamingBuilder ControlTable(string value);
+}
+
+public sealed class SqliteHostColumns      // all default to the protocol names
+{
+    public static SqliteHostColumns Default { get; }
+    public string CallId { get; }          public string ItemIndex { get; }
+    public string Status { get; }          public string DoneValue { get; }
+    public string QueueId { get; }         public string Method { get; }
+    public string Name { get; }            public string ValueType { get; }
+    public string IntValue { get; }        public string RealValue { get; }
+    public string TextValue { get; }       public string BlobValue { get; }
+    public string Action { get; }          public string Message { get; }
+}
+
+public sealed class SqliteHostColumnsBuilder   // one setter per property, returns this
+{
+    public SqliteHostColumnsBuilder CallId(string value);
+    // ... one fluent setter per SqliteHostColumns property, same pattern
 }
 ```
 
@@ -229,6 +251,7 @@ public interface ISqliteHostDefinitionBuilder<THandlers>
     ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel);
     ISqliteHostDefinitionBuilder<THandlers> MinSqliteVersion(int versionNumber);  // SQLITE_VERSION_NUMBER form, e.g. 3019003
     ISqliteHostDefinitionBuilder<THandlers> Naming(Action<SqliteHostNamingBuilder> configure);
+    ISqliteHostDefinitionBuilder<THandlers> Columns(Action<SqliteHostColumnsBuilder> configure);
     SqliteHostDefinition<THandlers> Methods(IReadOnlyList<IHostMethodSpec<THandlers>> methods);
 }
 
@@ -237,6 +260,7 @@ public sealed class SqliteHostDefinition<THandlers>
     public int ApiLevel { get; }
     public int MinSqliteVersionNumber { get; }   // defaults to 3019003 when not set
     public SqliteHostNaming Naming { get; }
+    public SqliteHostColumns Columns { get; }
     public IReadOnlyList<IHostMethodSpec<THandlers>> Methods { get; }
     public IReadOnlyList<string> SupportedFeatures { get; }
     public IReadOnlyList<string> GenerateSchemaStatements();

@@ -5,6 +5,9 @@
  * generator and the Java DDL generator produce. Every statement stays
  * inside the SQLite 3.19.3 feature set: no JSON1, no window functions,
  * no UPSERT, no RETURNING, no STRICT tables.
+ *
+ * Every SQL-visible identifier flows from ir.naming / ir.columns —
+ * nothing here is hardcoded beyond SQL keywords and column types.
  */
 
 import type {
@@ -37,52 +40,53 @@ function scalarColumnLine(field: ScalarFieldIr): string {
 }
 
 function queueTableDdl(ir: HostLibraryIr): string {
+  const c = ir.columns;
   return [
     `CREATE TABLE ${ir.queueTable.name} (`,
-    "    queue_id INTEGER PRIMARY KEY AUTOINCREMENT,",
-    "    call_id TEXT NOT NULL UNIQUE,",
-    "    method TEXT NOT NULL,",
-    "    status TEXT NOT NULL DEFAULT 'pending'",
+    `    ${c.queueId} INTEGER PRIMARY KEY AUTOINCREMENT,`,
+    `    ${c.callId} TEXT NOT NULL UNIQUE,`,
+    `    ${c.method} TEXT NOT NULL,`,
+    `    ${c.status} TEXT NOT NULL DEFAULT 'pending'`,
     ");",
   ].join("\n");
 }
 
-function inputsTableDdl(ir: HostLibraryIr): string {
+function namedValueTableDdl(ir: HostLibraryIr, tableName: string): string {
+  const c = ir.columns;
   return [
-    `CREATE TABLE ${ir.inputsTable.name} (`,
-    "    name TEXT NOT NULL PRIMARY KEY,",
-    "    value_type TEXT NOT NULL,",
-    "    int_value INTEGER,",
-    "    real_value REAL,",
-    "    text_value TEXT,",
-    "    blob_value BLOB",
+    `CREATE TABLE ${tableName} (`,
+    `    ${c.name} TEXT NOT NULL PRIMARY KEY,`,
+    `    ${c.valueType} TEXT NOT NULL,`,
+    `    ${c.intValue} INTEGER,`,
+    `    ${c.realValue} REAL,`,
+    `    ${c.textValue} TEXT,`,
+    `    ${c.blobValue} BLOB`,
     ");",
   ].join("\n");
 }
 
-function varsTableDdl(ir: HostLibraryIr): string {
+function controlTableDdl(ir: HostLibraryIr): string {
+  const c = ir.columns;
   return [
-    `CREATE TABLE ${ir.varsTable.name} (`,
-    "    name TEXT NOT NULL PRIMARY KEY,",
-    "    value_type TEXT NOT NULL,",
-    "    int_value INTEGER,",
-    "    real_value REAL,",
-    "    text_value TEXT,",
-    "    blob_value BLOB",
+    `CREATE TABLE ${ir.controlTable.name} (`,
+    `    ${c.action} TEXT NOT NULL,`,
+    `    ${c.message} TEXT`,
     ");",
   ].join("\n");
 }
 
 function parentTableDdl(
+  ir: HostLibraryIr,
   tableName: string,
   scalarFields: ScalarFieldIr[],
   isResultTable: boolean,
 ): string {
+  const c = ir.columns;
   const lines: string[] = [];
   lines.push(`CREATE TABLE ${tableName} (`);
-  const columnLines: string[] = ["    call_id TEXT NOT NULL PRIMARY KEY"];
+  const columnLines: string[] = [`    ${c.callId} TEXT NOT NULL PRIMARY KEY`];
   if (isResultTable) {
-    columnLines.push("    status TEXT NOT NULL DEFAULT 'done'");
+    columnLines.push(`    ${c.status} TEXT NOT NULL DEFAULT '${c.doneValue}'`);
   }
   for (const field of scalarFields) {
     columnLines.push(scalarColumnLine(field));
@@ -92,44 +96,51 @@ function parentTableDdl(
   return lines.join("\n");
 }
 
-function childTableDdl(listField: ListFieldIr): string {
+function childTableDdl(ir: HostLibraryIr, listField: ListFieldIr): string {
+  const c = ir.columns;
   const lines: string[] = [];
   lines.push(`CREATE TABLE ${listField.childTable} (`);
   const columnLines: string[] = [
-    "    call_id TEXT NOT NULL",
-    "    item_index INTEGER NOT NULL",
+    `    ${c.callId} TEXT NOT NULL`,
+    `    ${c.itemIndex} INTEGER NOT NULL`,
   ];
   for (const field of listField.itemFields) {
     columnLines.push(scalarColumnLine(field));
   }
-  columnLines.push("    PRIMARY KEY (call_id, item_index)");
+  columnLines.push(`    PRIMARY KEY (${c.callId}, ${c.itemIndex})`);
   lines.push(columnLines.join(",\n"));
   lines.push(");");
   return lines.join("\n");
 }
 
 function queueTriggerDdl(ir: HostLibraryIr, method: HostMethodIr): string {
+  const c = ir.columns;
   return [
     `CREATE TRIGGER ${method.queueTrigger}`,
     `AFTER INSERT ON ${method.callTable}`,
     "BEGIN",
-    `    INSERT INTO ${ir.queueTable.name} (call_id, method)`,
-    `    VALUES (NEW.call_id, '${method.methodName}');`,
+    `    INSERT INTO ${ir.queueTable.name} (${c.callId}, ${c.method})`,
+    `    VALUES (NEW.${c.callId}, '${method.methodName}');`,
     "END;",
   ].join("\n");
 }
 
 /** Generate the ordered list of DDL statements for a host library. */
 export function generateSchemaStatements(ir: HostLibraryIr): string[] {
-  const statements: string[] = [queueTableDdl(ir), inputsTableDdl(ir), varsTableDdl(ir)];
+  const statements: string[] = [
+    queueTableDdl(ir),
+    namedValueTableDdl(ir, ir.inputsTable.name),
+    namedValueTableDdl(ir, ir.varsTable.name),
+    controlTableDdl(ir),
+  ];
   for (const method of ir.methods) {
-    statements.push(parentTableDdl(method.callTable, method.input.fields, false));
+    statements.push(parentTableDdl(ir, method.callTable, method.input.fields, false));
     for (const listField of method.input.listFields) {
-      statements.push(childTableDdl(listField));
+      statements.push(childTableDdl(ir, listField));
     }
-    statements.push(parentTableDdl(method.resultTable, method.result.fields, true));
+    statements.push(parentTableDdl(ir, method.resultTable, method.result.fields, true));
     for (const listField of method.result.listFields) {
-      statements.push(childTableDdl(listField));
+      statements.push(childTableDdl(ir, listField));
     }
     statements.push(queueTriggerDdl(ir, method));
   }

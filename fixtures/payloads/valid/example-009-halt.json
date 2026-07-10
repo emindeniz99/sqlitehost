@@ -1,0 +1,53 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-009",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptControl"
+  ],
+  "requiredMethods": [
+    "getValue",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "read-current",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "halt-if-satisfied",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_control (action, message) SELECT 'halt', 'value already at target' FROM result_get_value WHERE call_id = :readCallId AND status = 'done' AND result_value = 42",
+          "bindings": {
+            "readCallId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        },
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT :callId, 'example-key', 42 WHERE NOT EXISTS (SELECT 1 FROM script_control)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

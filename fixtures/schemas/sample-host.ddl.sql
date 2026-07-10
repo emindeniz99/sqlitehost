@@ -23,6 +23,11 @@ CREATE TABLE script_vars (
     blob_value BLOB
 );
 
+CREATE TABLE script_control (
+    action TEXT NOT NULL,
+    message TEXT
+);
+
 CREATE TABLE call_get_value (
     call_id TEXT NOT NULL PRIMARY KEY,
     input_key TEXT NOT NULL

@@ -15,6 +15,7 @@ host application decides logging/telemetry policy.
 | `FailedHandler` | a handler threw |
 | `FailedSchema` | workspace schema creation failed |
 | `FailedValidation` | the parsed script object is structurally invalid |
+| `FailedScript` | the script aborted itself via `script_control` action `fail` |
 
 ## Error codes
 
@@ -39,9 +40,15 @@ host application decides logging/telemetry policy.
 | `max-pending-calls-exceeded` | FailedSql | queue drain found more than `MaxPendingCallsPerStep` pending calls after a step |
 | `unknown-queued-method` | FailedSql | queue row references a method with no registered spec (schema/spec mismatch) |
 | `call-row-missing` | FailedSql | queue row exists but the parent call row is missing |
+| `script-abort` | FailedScript | the script wrote action `fail` into the control table; `ErrorMessage` carries the script's message; the current step's pending calls are not drained |
+| `invalid-control-action` | FailedValidation | the control table's first row carries an action other than `halt`/`fail` |
 | `handler-error` | FailedHandler | handler threw; `Method` and `ErrorMessage` carry details |
 | `result-write-error` | FailedSql | writing result rows failed |
 | `list-child-after-drain` | FailedSql | input list child rows appeared for a call that was already drained in an earlier step (the validator blocks this statically; the runtime detects it defensively by re-counting child rows of drained calls after each step) |
+
+Successful halts: `Status = Completed` with `Halted = true`,
+`HaltMessage` carrying the script's optional message, and `StepId` set
+to the halting step — a halt is not an error.
 
 Failure context fields: `StepId` and `StatementIndex` are set for
 statement-scoped failures (`StatementIndex` is `-1` otherwise);

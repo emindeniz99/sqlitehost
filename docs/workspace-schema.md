@@ -44,6 +44,32 @@ across steps (declare with `INSERT`, reassign with
 as `script_inputs`; `value_type` is self-declared by the script for
 its own bookkeeping.
 
+```sql
+CREATE TABLE script_control (
+    action TEXT NOT NULL,
+    message TEXT
+);
+```
+
+`script_control` is the script's early-exit channel (feature
+`scriptControl`): the runtime creates it empty and checks it **after
+every statement**. When a row exists, the first row by `rowid` wins:
+
+- `action = 'halt'` — graceful stop: remaining statements in the step
+  are skipped, the calls already emitted in the current step are
+  drained normally (the author halted on purpose; emitted effects
+  run), all remaining steps are skipped, and the run returns
+  `Completed` with `Halted = true` and the optional message.
+- `action = 'fail'` — script-initiated abort: remaining statements are
+  skipped and the current step's pending calls are **not** drained
+  (same semantics as a mid-step SQL failure); the run returns
+  `FailedScript` / `script-abort` with the message.
+- any other action value → `FailedValidation` /
+  `invalid-control-action`.
+
+The `halt`/`fail` verbs are protocol constants; the table and column
+names are configurable like every other SQL-visible name.
+
 Runtime inputs land in `script_inputs` before the first step:
 `value_type` is the binding type (`null`/`int32`/`int64`/`bool`/`text`/
 `blob`/`float32`/`float64`); `bool`, `int32`, `int64` store into

@@ -10,7 +10,8 @@
       "typedNamedBindings",
       "splitResultTables",
       "scriptInputs",
-      "scriptVars"
+      "scriptVars",
+      "scriptControl"
     ]
   },
   "naming": {
@@ -20,6 +21,22 @@
     "resultColumnPrefix": "result_",
     "inputListTableInfix": "__input_",
     "resultListTableInfix": "__result_"
+  },
+  "columns": {
+    "callId": "call_id",
+    "itemIndex": "item_index",
+    "status": "status",
+    "doneValue": "done",
+    "queueId": "queue_id",
+    "method": "method",
+    "name": "name",
+    "valueType": "value_type",
+    "intValue": "int_value",
+    "realValue": "real_value",
+    "textValue": "text_value",
+    "blobValue": "blob_value",
+    "action": "action",
+    "message": "message"
   },
   "queueTable": {
     "name": "pending_host_calls",
@@ -50,6 +67,13 @@
       "real_value",
       "text_value",
       "blob_value"
+    ]
+  },
+  "controlTable": {
+    "name": "script_control",
+    "columns": [
+      "action",
+      "message"
     ]
   },
   "scriptEnvelope": {

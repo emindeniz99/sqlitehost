@@ -22,28 +22,47 @@ names appear inside script SQL, so they flow from `@hostLibrary`
 through the manifest into every language, exactly like the prefixes:
 
 ```text
-queueTable:   pending_host_calls   (default)
-inputsTable:  script_inputs        (default)
-varsTable:    script_vars          (default)
+queueTable:    pending_host_calls   (default)
+inputsTable:   script_inputs        (default)
+varsTable:     script_vars          (default)
+controlTable:  script_control      (default)
 ```
 
-Override via `@hostLibrary({ queueTable: "...", inputsTable: "...",
-varsTable: "..." })`. Names must be non-empty, mutually distinct, and
-must not collide with any derived call/result/child table name.
+Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
+non-empty, mutually distinct, and must not collide with any derived
+call/result/child table name.
+
+## Shared column names and the done literal (configurable per host)
+
+Every remaining SQL-visible identifier is host-configurable through
+`@hostLibrary` too — each with a `...Column` option (plus
+`doneStatusValue`), resolved into the manifest's `columns` block that
+every language reads:
+
+```text
+callIdColumn:     call_id       itemIndexColumn: item_index
+statusColumn:     status        doneStatusValue: done
+queueIdColumn:    queue_id      methodColumn:    method
+nameColumn:       name          valueTypeColumn: value_type
+intValueColumn:   int_value     realValueColumn: real_value
+textValueColumn:  text_value    blobValueColumn: blob_value
+actionColumn:     action        messageColumn:   message
+```
+
+Column names must be non-empty and mutually distinct within each
+table, and the row-identity columns (`callId`/`itemIndex`/`status`)
+must not collide with any derived input/result field column.
 
 ## Protocol constants (deliberately NOT configurable)
 
-Everything below is the protocol, not naming taste; making it
-configurable would multiply the cross-language conformance surface for
-no benefit:
-
-- column names inside the runtime-managed tables (`queue_id`,
-  `call_id`, `method`, `status`, `item_index`, `name`, `value_type`,
-  `int_value`, `real_value`, `text_value`, `blob_value`);
-- the result-row status literal `'done'`;
-- the envelope engine string `sqlite-host-v1`;
+- the envelope engine string `sqlite-host-v1` — protocol identity,
+  never appears in script SQL;
+- the control-table action verbs `halt` / `fail` — commands **to** the
+  runtime (unlike the `done` label, which is data a script filters on
+  and is therefore configurable);
 - the queue-trigger derivation rule (`trg_<callTable>_queue` — scripts
-  never reference triggers by name).
+  never reference triggers by name);
+- the manifest/envelope JSON keys (wire format, not SQL).
 
 ## Derivation rules
 

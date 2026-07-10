@@ -75,6 +75,22 @@ export function serializeManifest(ir: HostLibraryIr): string {
       inputListTableInfix: ir.naming.inputListTableInfix,
       resultListTableInfix: ir.naming.resultListTableInfix,
     },
+    columns: {
+      callId: ir.columns.callId,
+      itemIndex: ir.columns.itemIndex,
+      status: ir.columns.status,
+      doneValue: ir.columns.doneValue,
+      queueId: ir.columns.queueId,
+      method: ir.columns.method,
+      name: ir.columns.name,
+      valueType: ir.columns.valueType,
+      intValue: ir.columns.intValue,
+      realValue: ir.columns.realValue,
+      textValue: ir.columns.textValue,
+      blobValue: ir.columns.blobValue,
+      action: ir.columns.action,
+      message: ir.columns.message,
+    },
     queueTable: {
       name: ir.queueTable.name,
       columns: ir.queueTable.columns,
@@ -86,6 +102,10 @@ export function serializeManifest(ir: HostLibraryIr): string {
     varsTable: {
       name: ir.varsTable.name,
       columns: ir.varsTable.columns,
+    },
+    controlTable: {
+      name: ir.controlTable.name,
+      columns: ir.controlTable.columns,
     },
     scriptEnvelope: {
       engine: ir.scriptEnvelope.engine,
