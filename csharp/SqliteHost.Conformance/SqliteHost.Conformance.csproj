@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>SqliteHost.Conformance</RootNamespace>
+    <AssemblyName>SqliteHost.Conformance</AssemblyName>
+    <!-- Class library that SHIPS tests; it is not itself runnable — the
+         consumer's test project (with a runner + concrete subclasses) is.
+         Without this, solution-level `dotnet test` tries to execute it. -->
+    <IsTestProject>false</IsTestProject>
+    <Description>Reusable adapter conformance test suite for SqliteHost (docs/adapter-contract.md): consumers subclass AdapterConformanceTestsBase in their xunit test project with a factory for their ISqliteHostConnection adapter, and the suite proves error surfacing, binding resolution, and value fidelity (Unity-2021-safe).</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Label="NuGet pack metadata">
+    <PackageId>SqliteHost.Conformance</PackageId>
+    <Version>0.1.0-preview</Version>
+    <Authors>SqliteHost contributors (TODO: replace placeholder)</Authors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- TODO: set the real repository URL before publishing.
+         <RepositoryUrl>https://github.com/OWNER/REPO</RepositoryUrl> -->
+    <!-- TODO: license undecided — pick one and uncomment before publishing;
+         see docs/guides/publishing.md.
+         <PackageLicenseExpression>MIT</PackageLicenseExpression> -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Minimal xunit surface that supports netstandard2.0: the attributes
+         ([SkippableFact] via Xunit.SkippableFact) and assertions only; the
+         consumer's test project brings the runner. -->
+    <PackageReference Include="xunit.core" Version="2.9.2" />
+    <PackageReference Include="xunit.assert" Version="2.9.2" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
+    <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

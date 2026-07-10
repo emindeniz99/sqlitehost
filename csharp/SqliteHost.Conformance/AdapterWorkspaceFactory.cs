@@ -1,13 +1,12 @@
 using System;
 
-namespace SqliteHost.Tests.Adapter
+namespace SqliteHost.Conformance
 {
     /// <summary>
-    /// Adapter-agnostic in-memory workspace factory for the multi-adapter
+    /// Adapter-agnostic in-memory workspace factory for conformance and
     /// integration tests: counts OpenWorkspace calls and can retain the
     /// underlying workspace past the run via a no-op-dispose wrapper so
-    /// tests can inspect final table contents (same contract as
-    /// TestWorkspaceFactory, generalized over any adapter opener).
+    /// tests can inspect final table contents.
     /// </summary>
     public sealed class AdapterWorkspaceFactory : ISqliteHostConnectionFactory, IDisposable
     {

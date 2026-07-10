@@ -51,10 +51,46 @@ suite for the exact matrix.
 
 ## Conformance suite
 
-`csharp/SqliteHost.Tests/Adapter/AdapterConformanceTestsBase.cs` is an
-abstract xunit class encoding this contract; the repo runs it against
-all three built-in adapters (Microsoft.Data.Sqlite, System.Data.SQLite,
-sqlite-net-pcl). **If you write your own adapter — including private
-forks of Unity SQLite wrappers — subclass it with your factory and run
-it.** A wrapper that swallows errors will fail `malformed_sql_throws`
-/ `missing_table_throws` immediately; that is the point.
+`SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
+a shippable netstandard2.0 library containing
+`AdapterConformanceTestsBase` — 23 xunit tests encoding this contract,
+fully self-contained (it builds its own minimal probe host through the
+public fluent API; no dependency on the sample or any concrete
+adapter). The repo runs it against all three built-in adapters
+(Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net-pcl) and
+against real SQLite engines 3.9.0 → newest in the version matrix.
+
+**If you write your own adapter — including private forks of Unity
+SQLite wrappers — add the package to your test project and subclass
+it.** A wrapper that swallows errors fails `MalformedSql_Throws` /
+`MissingTable_Throws` immediately; a wrapper that silently binds NULL
+for unbound parameters fails `NoSilentNullSemantics` — that is the
+point (this exact bug was found and fixed in the bundled sqlite-net
+adapter by this suite).
+
+```xml
+<ItemGroup>
+  <PackageReference Include="SqliteHost.Conformance" Version="0.1.0-preview" />
+  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+  <PackageReference Include="xunit" Version="2.9.2" />
+  <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+  <!-- plus whatever SQLite wrapper your adapter is built on -->
+</ItemGroup>
+```
+
+```csharp
+using SqliteHost;
+using SqliteHost.Conformance;
+
+public class MyAdapterConformanceTests : AdapterConformanceTestsBase
+{
+    protected override ISqliteHostConnection OpenAdapterConnection()
+        => MySqliteHostConnection.OpenInMemory();   // your adapter factory
+}
+```
+
+xunit discovers the 23 inherited tests automatically; an optional
+`protected override string SkipEntireSuiteReason` skips the suite with
+a reason where the adapter cannot run. Until the package is published,
+vendoring works too: copy `csharp/SqliteHost.Conformance/` sources into
+your test project.

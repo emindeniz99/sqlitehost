@@ -5,6 +5,7 @@ license checks are ROADMAP items). Intended artifacts (plan §27):
 
 ```text
 NuGet: SqliteHost.Runtime
+NuGet: SqliteHost.Conformance          # adapter conformance suite for consumer test projects
 NuGet: SqliteHost.Abstractions
 NuGet: SqliteHost.Json                 # optional/later
 Maven: io.sqlitehost:sqlite-host-model

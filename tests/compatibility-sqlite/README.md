@@ -56,9 +56,9 @@ suite **only on the Microsoft.Data.Sqlite adapter**. The System.Data.SQLite
 adapter has its own interop + bundled native and never sees the override;
 the sqlite-net adapter technically shares the SQLitePCLRaw provider but is
 skipped too so each matrix cell exercises exactly one adapter against
-exactly one known native build. Those 52 tests (9 fixture scenarios + 17
+exactly one known native build. Those 64 tests (9 fixture scenarios + 23
 conformance tests, x 2 adapters) report as *skipped* with an explicit
-reason — hence 122 passed / 52 skipped per cell, versus 172 passed / 2
+reason — hence 128 passed / 64 skipped per cell, versus 190 passed / 2
 skipped in a normal `dotnet test` run (the 2 normal-run skips are the two
 override-only version-identity tests).
 
@@ -102,11 +102,11 @@ confirmed via the two identity tests; full run
 
 | SQLite  | Tests | UPSERT (3.24) | RETURNING (3.35) | OVER (3.25) | iif() (3.32) | json_valid (build) | positive prepare |
 |---------|-------|---------------|------------------|-------------|--------------|--------------------|------------------|
-| 3.9.0   | PASS — 122 passed, 52 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.9.2   | PASS — 122 passed, 52 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.19.3  | PASS — 122 passed, 52 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.28.0  | PASS — 122 passed, 52 skipped, 0 failed | succeeded | threw | succeeded | threw | threw (no JSON1) | all prepared |
-| 3.53.3 (newest) | PASS — 122 passed, 52 skipped, 0 failed | succeeded | succeeded | succeeded | succeeded | succeeded (built-in) | all prepared |
+| 3.9.0   | PASS — 128 passed, 64 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.9.2   | PASS — 128 passed, 64 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.19.3  | PASS — 128 passed, 64 skipped, 0 failed | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.28.0  | PASS — 128 passed, 64 skipped, 0 failed | succeeded | threw | succeeded | threw | threw (no JSON1) | all prepared |
+| 3.53.3 (newest) | PASS — 128 passed, 64 skipped, 0 failed | succeeded | succeeded | succeeded | succeeded | succeeded (built-in) | all prepared |
 
 ## Conclusion
 

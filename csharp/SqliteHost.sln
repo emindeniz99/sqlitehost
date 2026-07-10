@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqliteHost.Generated.Sample
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqliteHost.Tests", "SqliteHost.Tests\SqliteHost.Tests.csproj", "{2DF86D1B-BE5D-42EE-8BA6-69C84C272740}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqliteHost.Conformance", "SqliteHost.Conformance\SqliteHost.Conformance.csproj", "{62AF7627-0392-4325-A21F-7BC8FB3EC6DC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{2DF86D1B-BE5D-42EE-8BA6-69C84C272740}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2DF86D1B-BE5D-42EE-8BA6-69C84C272740}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2DF86D1B-BE5D-42EE-8BA6-69C84C272740}.Release|Any CPU.Build.0 = Release|Any CPU
+		{62AF7627-0392-4325-A21F-7BC8FB3EC6DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{62AF7627-0392-4325-A21F-7BC8FB3EC6DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{62AF7627-0392-4325-A21F-7BC8FB3EC6DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{62AF7627-0392-4325-A21F-7BC8FB3EC6DC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

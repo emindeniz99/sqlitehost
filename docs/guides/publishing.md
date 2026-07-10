@@ -203,7 +203,7 @@ Dist-tags: `latest` for releases. Use `next` for pre-releases
 (`pnpm publish --tag next`) so `pnpm add @sqlite-host/typespec` never
 resolves to a pre-release by accident.
 
-## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime
+## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance
 
 The csproj packing metadata (`PackageId`, `Version`, `Description`,
 `PackageLicenseExpression`, `PackageReadmeFile`, repo/source-link
@@ -221,8 +221,10 @@ metadata here.
    dotnet pack -c Release
    ```
 
-   Pack `SqliteHost.Abstractions` and `SqliteHost.Runtime` only (the
-   sample and tests never publish).
+   Pack `SqliteHost.Abstractions`, `SqliteHost.Runtime`, and
+   `SqliteHost.Conformance` (the adapter conformance suite consumers
+   reference from their test projects — see docs/adapter-contract.md);
+   the sample and tests never publish.
 3. **Symbols:** enable snupkg in the csproj metadata
    (`IncludeSymbols=true`, `SymbolPackageFormat=snupkg`) — `dotnet
    nuget push` uploads the `.snupkg` alongside automatically.
@@ -232,6 +234,8 @@ metadata here.
    dotnet nuget push bin/Release/SqliteHost.Abstractions.<version>.nupkg \
      --api-key <KEY> --source https://api.nuget.org/v3/index.json
    dotnet nuget push bin/Release/SqliteHost.Runtime.<version>.nupkg \
+     --api-key <KEY> --source https://api.nuget.org/v3/index.json
+   dotnet nuget push bin/Release/SqliteHost.Conformance.<version>.nupkg \
      --api-key <KEY> --source https://api.nuget.org/v3/index.json
    ```
 

@@ -1,6 +1,7 @@
 using System;
 using Example.Game.Generated;
 using Microsoft.Data.Sqlite;
+using SqliteHost.Conformance;
 using SqliteHost.Tests.Adapter;
 using SqliteHost.Tests.Fixtures;
 using SqliteHost.Tests.TestSupport;
