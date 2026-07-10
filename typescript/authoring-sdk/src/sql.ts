@@ -36,6 +36,13 @@ function isIdentStart(ch: string): boolean {
 }
 
 function isIdentPart(ch: string): boolean {
+  // '$' is an identifier character in SQLite (docs/errors.md): a '$'
+  // immediately preceded by an identifier character continues that
+  // identifier instead of starting a parameter.
+  return isParamPart(ch) || ch === "$";
+}
+
+function isParamPart(ch: string): boolean {
   return isIdentStart(ch) || (ch >= "0" && ch <= "9");
 }
 
@@ -88,7 +95,7 @@ export function tokenizeSql(sql: string): SqlToken[] {
     }
     if (ch === ":" || ch === "@" || ch === "$") {
       let j = i + 1;
-      while (j < n && isIdentPart(sql[j])) j++;
+      while (j < n && isParamPart(sql[j])) j++;
       if (j > i + 1) {
         tokens.push({ kind: "parameter", value: sql.slice(i + 1, j) });
         i = j;
@@ -107,7 +114,7 @@ export function tokenizeSql(sql: string): SqlToken[] {
     }
     if (isDigit(ch)) {
       let j = i + 1;
-      while (j < n && (isIdentPart(sql[j]) || sql[j] === ".")) j++;
+      while (j < n && (isParamPart(sql[j]) || sql[j] === ".")) j++;
       tokens.push({ kind: "number", value: sql.slice(i, j) });
       i = j;
       continue;
@@ -203,8 +210,17 @@ export function analyzeInsert(
   tokens: SqlToken[],
   bindings: Record<string, BindingValue>,
 ): InsertInfo | null {
-  if (!keywordAt(tokens, 0, "insert")) return null;
-  let i = 1;
+  // The INSERT keyword may be preceded by a WITH … CTE prefix: find the
+  // first `insert` identifier, like the Java analyzer's indexOfIdent.
+  let insertIndex = -1;
+  for (let k = 0; k < tokens.length; k++) {
+    if (keywordAt(tokens, k, "insert")) {
+      insertIndex = k;
+      break;
+    }
+  }
+  if (insertIndex < 0) return null;
+  let i = insertIndex + 1;
   if (keywordAt(tokens, i, "or")) i += 2; // INSERT OR REPLACE/IGNORE/...
   if (!keywordAt(tokens, i, "into")) return null;
   i++;

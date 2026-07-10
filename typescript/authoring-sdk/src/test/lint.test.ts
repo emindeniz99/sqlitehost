@@ -30,6 +30,18 @@ test("scanner deduplicates repeated parameters", () => {
   );
 });
 
+test("'$' continues an identifier run instead of starting a parameter", () => {
+  // Pinned by docs/errors.md: a '$' immediately preceded by an
+  // identifier character continues that identifier; '$v' at a token
+  // boundary is a parameter.
+  assert.deepStrictEqual(scanNamedParameters("SELECT a$b FROM t"), []);
+  assert.deepStrictEqual(
+    scanNamedParameters("SELECT foo$bar, :real FROM t"),
+    ["real"],
+  );
+  assert.deepStrictEqual(scanNamedParameters("SELECT $v"), ["v"]);
+});
+
 test("list-child-without-parent: child rows with no parent insert anywhere", () => {
   const payload = {
     engine: "sqlite-host-v1",
@@ -56,6 +68,77 @@ test("child rows colocated with the parent produce no list findings", () => {
   const findings = lintScript(payload, manifest);
   assert.ok(!codes(findings).includes("list-child-later-step"));
   assert.ok(!codes(findings).includes("list-child-without-parent"));
+});
+
+test("CTE-prefixed INSERT into an undeclared call table is caught", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: [],
+    steps: [
+      {
+        id: "cte-write",
+        statements: [
+          {
+            sql: "WITH x AS (SELECT 1) INSERT INTO call_set_value (call_id, input_key, input_value) VALUES ('c-1', 'k', 1)",
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.ok(codes(findings).includes("undeclared-method-use"));
+});
+
+test("CTE-prefixed INSERT into a declared call table counts as a use", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["setValue"],
+    steps: [
+      {
+        id: "cte-write",
+        statements: [
+          {
+            sql: "WITH x AS (SELECT 1) INSERT INTO call_set_value (call_id, input_key, input_value) VALUES ('c-1', 'k', 1)",
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.ok(!codes(findings).includes("unused-required-method"));
+  assert.deepStrictEqual(codes(findings), []);
+});
+
+test("list-child-without-parent is skipped when the parent call_id is computed", () => {
+  // The parent insert's call_id is a computed expression, so it is not
+  // statically resolvable — the child check must not false-positive
+  // (mirrors the Java engine's computed-emit guard).
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "computed-parent",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values (call_id, input_default_value) SELECT 'q-' || name, 0 FROM script_inputs",
+          },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES ('q-x', 0, 'k')",
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.deepStrictEqual(
+    findings.filter((f) => f.severity === "error"),
+    [],
+    `expected zero errors, got ${JSON.stringify(findings)}`,
+  );
 });
 
 test("computed call_id expressions are skipped by static resolution", () => {

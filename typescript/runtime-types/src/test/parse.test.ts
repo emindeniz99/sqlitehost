@@ -80,6 +80,22 @@ test("step without statements is invalid-envelope", () => {
   expectFindings(s, "invalid-envelope", "steps[0].statements");
 });
 
+test("empty or missing statements list is invalid-envelope (pinned fixture)", () => {
+  // Pinned contract (docs/script-envelope.md, docs/validation.md): a
+  // step with an empty/missing statements list is invalid-envelope.
+  const fixture = JSON.parse(readFixture("payloads/invalid/empty-statements.json"));
+  expectFindings(fixture, "invalid-envelope", "steps[0].statements");
+  assert.throws(
+    () => parseScript(readFixture("payloads/invalid/empty-statements.json")),
+    (error: unknown) =>
+      error instanceof ScriptParseError &&
+      error.findings.some((f) => f.code === "invalid-envelope"),
+  );
+  const s = baseScript();
+  delete (s["steps"] as Array<Record<string, unknown>>)[0]["statements"];
+  expectFindings(s, "invalid-envelope", "steps[0].statements");
+});
+
 test("statement without sql is invalid-envelope", () => {
   const s = baseScript();
   const statements = (s["steps"] as Array<Record<string, unknown>>)[0][
