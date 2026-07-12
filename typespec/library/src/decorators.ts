@@ -17,6 +17,7 @@ export interface HostLibraryOptions {
   resultColumnPrefix?: string;
   inputListTableInfix?: string;
   resultListTableInfix?: string;
+  functionPrefix?: string;
   queueTable?: string;
   inputsTable?: string;
   varsTable?: string;
@@ -37,11 +38,16 @@ export interface HostLibraryOptions {
   messageColumn?: string;
 }
 
-/** Resolved `@hostMethod` options. `apiLevel` defaults to the library api level in the frontend. */
+/** Resolved `@hostMethod` options. `apiLevel` defaults to the library api
+ *  level in the frontend; `mutates` defaults to true (nothing is
+ *  inline-eligible unless declared non-mutating). */
 export interface HostMethodOptions {
   name: string;
   handler: string;
   apiLevel?: number;
+  mutates?: boolean;
+  inline?: boolean;
+  functionName?: string;
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;

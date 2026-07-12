@@ -25,6 +25,7 @@ import {
   getHostMethodOptions,
   getSqlName,
   reportDiagnostic,
+  type HostMethodOptions,
 } from "@sqlite-host/typespec";
 import type { ColumnsIr, NamingIr, ScalarTypeIr } from "./ir.js";
 import {
@@ -34,6 +35,7 @@ import {
 } from "./ir.js";
 import {
   deriveCallTable,
+  deriveFunctionName,
   deriveInputColumn,
   deriveInputListTable,
   deriveResultColumn,
@@ -51,6 +53,51 @@ const SUPPORTED_SCALARS: Record<string, ScalarTypeIr> = {
   float32: "float32",
   float64: "float64",
 };
+
+/**
+ * SQLite built-in scalar/aggregate function names an inline function
+ * name must not collide with (docs/naming.md). Function names are
+ * case-insensitive in SQLite, so collision checks compare lowercased.
+ */
+export const SQLITE_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
+  "abs",
+  "coalesce",
+  "count",
+  "sum",
+  "min",
+  "max",
+  "length",
+  "lower",
+  "upper",
+  "printf",
+  "random",
+  "replace",
+  "round",
+  "substr",
+  "trim",
+  "date",
+  "time",
+  "datetime",
+  "ifnull",
+  "nullif",
+  "instr",
+  "hex",
+  "quote",
+  "total",
+  "group_concat",
+  "typeof",
+  "unicode",
+  "char",
+  "likelihood",
+  "likely",
+  "unlikely",
+  "last_insert_rowid",
+  "changes",
+  "sqlite_version",
+  "glob",
+  "like",
+  "zeroblob",
+]);
 
 /** Map a std scalar to the IR scalar type; undefined when unsupported. */
 export function mapSupportedScalar(
@@ -163,6 +210,13 @@ export function validateHostLibraryInterface(
   const methodNames = new Set<string>();
   const tableNames = new Set<string>();
   const fieldColumns = new Set<string>();
+  const functionClaims: Array<[string, DiagnosticTarget]> = [];
+
+  // functionPrefix must be non-empty (docs/naming.md). It is a prefix,
+  // not a table, so it joins no other distinctness check.
+  if (naming.functionPrefix.length === 0) {
+    error(ctx, "invalid-function-prefix", {}, iface);
+  }
 
   // Shared workspace table names: non-empty and mutually distinct
   // (docs/naming.md). Collisions with derived tables are checked after
@@ -248,6 +302,43 @@ export function validateHostLibraryInterface(
         }
       }
     }
+
+    if (inputModel !== undefined && resultModel !== undefined) {
+      const functionName = analyzeInlineExposure(
+        ctx,
+        naming,
+        op,
+        options,
+        inputModel,
+        resultModel,
+      );
+      // Duplicate method names already claimed their function name via
+      // the first occurrence; skip re-claiming to avoid a redundant
+      // duplicate-function-name cascade (mirrors claimTables above).
+      if (functionName !== undefined && claimTables) {
+        functionClaims.push([functionName, op]);
+      }
+    }
+  }
+
+  // Function-name collision checks (docs/naming.md) run once every
+  // derived table name is known. SQLite resolves function names
+  // case-insensitively, so all comparisons are lowercased.
+  const tableNamesLower = new Set([...tableNames].map((t) => t.toLowerCase()));
+  const seenFunctions = new Set<string>();
+  for (const [name, target] of functionClaims) {
+    const lower = name.toLowerCase();
+    if (seenFunctions.has(lower)) {
+      error(ctx, "duplicate-function-name", { name }, target);
+    } else {
+      seenFunctions.add(lower);
+    }
+    if (tableNamesLower.has(lower)) {
+      error(ctx, "function-name-collision", { name }, target);
+    }
+    if (SQLITE_BUILTIN_FUNCTIONS.has(lower)) {
+      error(ctx, "builtin-function-collision", { name }, target);
+    }
   }
 
   for (const [option, table] of shared) {
@@ -270,6 +361,93 @@ export function validateHostLibraryInterface(
   }
 
   return ctx.ok;
+}
+
+/**
+ * Inline-exposure analysis for one method (docs/proposals/
+ * inline-host-functions.md). Eligibility: mutates: false, scalar-only
+ * input with trailing optionals, and exactly one scalar result field
+ * (no lists on either side). Ineligible methods are silently not
+ * exposed unless inline exposure was explicitly requested (inline: true
+ * or functionName set), in which case each failed rule is a diagnostic.
+ * Returns the function name the method claims, or undefined when the
+ * method is not exposed.
+ */
+function analyzeInlineExposure(
+  ctx: ValidationContext,
+  naming: NamingIr,
+  op: Operation,
+  options: HostMethodOptions,
+  inputModel: Model,
+  resultModel: Model,
+): string | undefined {
+  const mutates = options.mutates ?? true;
+  const requested = options.inline === true || options.functionName !== undefined;
+  let eligible = !mutates;
+  if (requested && mutates) {
+    error(ctx, "inline-mutating-method", { operation: op.name }, op);
+  }
+
+  const listFields = (model: Model, side: "input" | "result") => {
+    for (const prop of model.properties.values()) {
+      if (prop.type.kind === "Model" && isArrayModelType(ctx.program, prop.type)) {
+        eligible = false;
+        if (requested) {
+          error(
+            ctx,
+            "inline-list-field",
+            { operation: op.name, side, field: prop.name },
+            prop,
+          );
+        }
+      }
+    }
+  };
+  listFields(inputModel, "input");
+  listFields(resultModel, "result");
+
+  const resultScalarCount = [...resultModel.properties.values()].filter(
+    (prop) => prop.type.kind === "Scalar",
+  ).length;
+  if (resultScalarCount !== 1) {
+    eligible = false;
+    if (requested) {
+      error(
+        ctx,
+        "inline-result-not-single-scalar",
+        { operation: op.name, count: String(resultScalarCount) },
+        op,
+      );
+    }
+  }
+
+  // Function arguments are the input fields in declaration order, so
+  // optional fields must be trailing (omitted trailing args = null).
+  let optionalSeen = false;
+  for (const prop of inputModel.properties.values()) {
+    if (prop.type.kind !== "Scalar") {
+      continue;
+    }
+    if (prop.optional) {
+      optionalSeen = true;
+    } else if (optionalSeen) {
+      eligible = false;
+      if (requested) {
+        error(
+          ctx,
+          "inline-required-after-optional",
+          { operation: op.name, field: prop.name },
+          prop,
+        );
+      }
+      break;
+    }
+  }
+
+  if (!eligible || options.inline === false) {
+    return undefined;
+  }
+  return options.functionName ?? deriveFunctionName(naming, options.name);
 }
 
 function isNamedPlainModel(program: Program, type: Type): type is Model {

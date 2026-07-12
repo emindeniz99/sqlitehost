@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   deriveCallTable,
+  deriveFunctionName,
   deriveInputColumn,
   deriveQueueTrigger,
   deriveResultColumn,
@@ -98,7 +99,8 @@ test("CLI exits non-zero on bad usage", () => {
 
 // ---------------------------------------------------------------------------
 // Non-sample smoke IR: different naming prefixes, custom shared workspace
-// table names, fully renamed shared columns, + optional bytes field.
+// table names, fully renamed shared columns, optional bytes field, + one
+// inline-exposed method under a custom functionPrefix.
 // ---------------------------------------------------------------------------
 
 function smokeIr(): HostLibraryIr {
@@ -109,8 +111,10 @@ function smokeIr(): HostLibraryIr {
     resultColumnPrefix: "out_",
     inputListTableInfix: "__in_",
     resultListTableInfix: "__out_",
+    functionPrefix: "udf_",
   };
   const methodName = "archiveReport";
+  const inlineMethodName = "lookupScore";
   return {
     manifestVersion: 1,
     engine: "sqlite-host-v1",
@@ -119,7 +123,12 @@ function smokeIr(): HostLibraryIr {
       interfaceName: "ToolHostMethods",
       apiLevel: 2,
       minSqliteVersionNumber: 3008011,
-      features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
+      features: [
+        "typedNamedBindings",
+        "splitResultTables",
+        "scriptInputs",
+        "inlineFunctions",
+      ],
     },
     naming,
     columns: {
@@ -173,6 +182,7 @@ function smokeIr(): HostLibraryIr {
         methodName,
         handlerName: "ArchiveReport",
         apiLevel: 2,
+        mutates: true,
         callTable: deriveCallTable(naming, methodName),
         resultTable: deriveResultTable(naming, methodName),
         queueTrigger: deriveQueueTrigger(naming, methodName),
@@ -253,6 +263,74 @@ function smokeIr(): HostLibraryIr {
             },
           ],
         },
+        inline: null,
+      },
+      {
+        operationName: "LookupScore",
+        methodName: inlineMethodName,
+        handlerName: "LookupScore",
+        apiLevel: 2,
+        mutates: false,
+        callTable: deriveCallTable(naming, inlineMethodName),
+        resultTable: deriveResultTable(naming, inlineMethodName),
+        queueTrigger: deriveQueueTrigger(naming, inlineMethodName),
+        input: {
+          modelName: "LookupScoreInput",
+          fields: [
+            {
+              propertyName: "reportId",
+              sqlName: "report_id",
+              column: deriveInputColumn(naming, "report_id"),
+              scalarType: "string",
+              optional: false,
+            },
+            {
+              propertyName: "slot",
+              sqlName: "slot",
+              column: deriveInputColumn(naming, "slot"),
+              scalarType: "int32",
+              optional: true,
+            },
+          ],
+          listFields: [],
+        },
+        result: {
+          modelName: "LookupScoreResult",
+          fields: [
+            {
+              propertyName: "score",
+              sqlName: "score",
+              column: deriveResultColumn(naming, "score"),
+              scalarType: "float64",
+              optional: false,
+            },
+          ],
+          listFields: [],
+        },
+        inline: {
+          functionName: deriveFunctionName(naming, inlineMethodName),
+          minArgs: 1,
+          maxArgs: 2,
+          args: [
+            {
+              propertyName: "reportId",
+              sqlName: "report_id",
+              scalarType: "string",
+              optional: false,
+            },
+            {
+              propertyName: "slot",
+              sqlName: "slot",
+              scalarType: "int32",
+              optional: true,
+            },
+          ],
+          returns: {
+            propertyName: "score",
+            sqlName: "score",
+            scalarType: "float64",
+          },
+        },
       },
     ],
   };
@@ -308,6 +386,21 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
   assert.match(specs, /handlers\.ArchiveReport\(input\)/);
 });
 
+test("smoke IR: inline methods emit .Inline between .Results and .Handler, others nothing", () => {
+  const specs = smokeFile("GeneratedHostMethodSpecs.g.cs");
+  // The inline method's spec carries the custom-prefix function name.
+  assert.match(
+    specs,
+    /\.Double\("score", x => x\.Score\)\)\n\s+\.Inline\("udf_lookup_score"\)\n\s+\.Handler\(\(handlers, input\) => handlers\.LookupScore\(input\)\)/,
+  );
+  // The ineligible (mutating, list-carrying) method emits no .Inline.
+  const archiveSpec = specs.slice(
+    specs.indexOf("BuildArchiveReportSpec()"),
+    specs.indexOf("BuildLookupScoreSpec()"),
+  );
+  assert.doesNotMatch(archiveSpec, /\.Inline\(/);
+});
+
 test("smoke IR: host definition reproduces the IR naming prefixes and table names", () => {
   const definition = smokeFile("GeneratedHostDefinition.g.cs");
   assert.match(definition, /\.ApiLevel\(2\)/);
@@ -323,10 +416,11 @@ test("smoke IR: host definition reproduces the IR naming prefixes and table name
   assert.match(definition, /\.InputListTableInfix\("__in_"\)/);
   assert.match(definition, /\.ResultListTableInfix\("__out_"\)/);
   // The shared workspace table names always follow the six prefixes,
-  // in queue/inputs/vars/control order, closing the Naming block.
+  // in queue/inputs/vars/control order; the function prefix closes the
+  // Naming block after .ControlTable (docs/csharp-api.md).
   assert.match(
     definition,
-    /\.ResultListTableInfix\("__out_"\)\n\s+\.QueueTable\("host_queue"\)\n\s+\.InputsTable\("script_params"\)\n\s+\.VarsTable\("script_scratch"\)\n\s+\.ControlTable\("script_ctl"\)\)/,
+    /\.ResultListTableInfix\("__out_"\)\n\s+\.QueueTable\("host_queue"\)\n\s+\.InputsTable\("script_params"\)\n\s+\.VarsTable\("script_scratch"\)\n\s+\.ControlTable\("script_ctl"\)\n\s+\.FunctionPrefix\("udf_"\)\)/,
   );
 });
 
@@ -338,7 +432,7 @@ test("smoke IR: host definition emits all fourteen column values explicitly", ()
     definition,
     new RegExp(
       [
-        /\.ControlTable\("script_ctl"\)\)\n\s+\.Columns\(c => c/,
+        /\.FunctionPrefix\("udf_"\)\)\n\s+\.Columns\(c => c/,
         /\.CallId\("cid"\)/,
         /\.ItemIndex\("idx"\)/,
         /\.Status\("state"\)/,
@@ -411,6 +505,7 @@ test("smoke IR: no emitted file mentions the default shared table or column name
     "real_value",
     "text_value",
     "blob_value",
+    "fn_",
   ];
   for (const file of emitCSharp(smokeIr())) {
     for (const name of defaults) {

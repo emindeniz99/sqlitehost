@@ -190,6 +190,7 @@ test("naming-prefix overrides propagate to every derived physical name", async (
     resultColumnPrefix: "out_",
     inputListTableInfix: "__in_",
     resultListTableInfix: "__out_",
+    functionPrefix: "fn_",
   });
   const [method] = ir.methods;
   assert.equal(method.callTable, "req_get_values");
@@ -546,6 +547,167 @@ test("compileHostLibraries still works for a single library", async () => {
   assert.ok(result.irs, JSON.stringify(result.diagnostics.map((d) => d.message)));
   assert.equal(result.irs.length, 1);
   assert.equal(result.irs[0].library.interfaceName, "Methods");
+});
+
+// ---------------------------------------------------------------------------
+// Inline scalar functions (docs/proposals/inline-host-functions.md).
+// ---------------------------------------------------------------------------
+
+test("mutates defaults to true and methods stay non-inline (back-compat)", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const [method] = result.ir.methods;
+  assert.equal(method.mutates, true);
+  assert.equal(method.inline, null);
+  assert.equal(result.ir.naming.functionPrefix, "fn_");
+  assert.ok(!result.ir.library.features.includes("inlineFunctions"));
+});
+
+test("an eligible mutates:false method is inline-exposed automatically", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "lookupScore", handler: "LookupScore", mutates: false })
+      op LookupScore(input: In): Out;
+    }
+
+    model In {
+      key: string;
+      slot: int32;
+      fallback?: int64;
+      scale?: float32;
+    }
+    model Out { score: float64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const [method] = result.ir.methods;
+  assert.equal(method.mutates, false);
+  assert.deepEqual(method.inline, {
+    functionName: "fn_lookup_score",
+    minArgs: 2,
+    maxArgs: 4,
+    args: [
+      { propertyName: "key", sqlName: "key", scalarType: "string", optional: false },
+      { propertyName: "slot", sqlName: "slot", scalarType: "int32", optional: false },
+      { propertyName: "fallback", sqlName: "fallback", scalarType: "int64", optional: true },
+      { propertyName: "scale", sqlName: "scale", scalarType: "float32", optional: true },
+    ],
+    returns: { propertyName: "score", sqlName: "score", scalarType: "float64" },
+  });
+  assert.deepEqual(result.ir.library.features, [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptInputs",
+    "scriptVars",
+    "scriptControl",
+    "inlineFunctions",
+  ]);
+});
+
+test("functionPrefix and functionName overrides shape the inline function name", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, functionPrefix: "udf_" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue", mutates: false })
+      op GetValue(input: In): Out;
+
+      @hostMethod({
+        name: "peekValue",
+        handler: "PeekValue",
+        mutates: false,
+        functionName: "peek"
+      })
+      op PeekValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.naming.functionPrefix, "udf_");
+  assert.deepEqual(
+    result.ir.methods.map((m) => m.inline?.functionName),
+    ["udf_get_value", "peek"],
+  );
+});
+
+test("inline: false opts an eligible method out and drops the feature", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, inline: false })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const [method] = result.ir.methods;
+  assert.equal(method.mutates, false);
+  assert.equal(method.inline, null);
+  assert.ok(!result.ir.library.features.includes("inlineFunctions"));
+});
+
+test("ineligible mutates:false methods are silently not exposed when not requested", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValues", handler: "GetValues", mutates: false })
+      op GetValues(input: ListIn): Out;
+
+      @hostMethod({ name: "getPair", handler: "GetPair", mutates: false })
+      op GetPair(input: In): PairOut;
+
+      @hostMethod({ name: "getGap", handler: "GetGap", mutates: false })
+      op GetGap(input: GapIn): Out;
+    }
+
+    model Item { key: string; }
+    model ListIn { keys: Item[]; }
+    model In { key: string; }
+    model GapIn {
+      fallback?: int64;
+      key: string;
+    }
+    model Out { value: int64; }
+    model PairOut { value: int64; other: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.deepEqual(
+    result.ir.methods.map((m) => m.inline),
+    [null, null, null],
+  );
+  assert.ok(!result.ir.library.features.includes("inlineFunctions"));
 });
 
 test("methods appear in declaration order and library metadata is resolved", async () => {

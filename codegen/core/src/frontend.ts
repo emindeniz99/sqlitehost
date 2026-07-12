@@ -34,6 +34,7 @@ import {
   getSqlName,
   parseSqliteVersionNumber,
   reportDiagnostic,
+  type HostMethodOptions,
 } from "@sqlite-host/typespec";
 import {
   BINDING_TYPES_V1,
@@ -42,6 +43,7 @@ import {
   controlTableColumns,
   DEFAULT_MIN_SQLITE_VERSION_NUMBER,
   ENGINE_V1,
+  FEATURE_INLINE_FUNCTIONS,
   FEATURES_V1,
   INPUTS_TABLE_V1,
   namedValueTableColumns,
@@ -51,6 +53,7 @@ import {
   type ColumnsIr,
   type HostLibraryIr,
   type HostMethodIr,
+  type InlineIr,
   type ListFieldIr,
   type NamingIr,
   type ObjectShapeIr,
@@ -59,6 +62,7 @@ import {
 import {
   DEFAULT_NAMING,
   deriveCallTable,
+  deriveFunctionName,
   deriveInputColumn,
   deriveInputListTable,
   deriveQueueTrigger,
@@ -206,6 +210,7 @@ function buildLibraryIr(
       options.inputListTableInfix ?? DEFAULT_NAMING.inputListTableInfix,
     resultListTableInfix:
       options.resultListTableInfix ?? DEFAULT_NAMING.resultListTableInfix,
+    functionPrefix: options.functionPrefix ?? DEFAULT_NAMING.functionPrefix,
   };
   // Shared workspace table names and column names are host-level naming
   // too: names resolve here (defaults from the protocol v1 constants)
@@ -242,6 +247,13 @@ function buildLibraryIr(
     methods.push(buildMethod(program, naming, options.apiLevel, op));
   }
 
+  // The adapter-conditional inlineFunctions feature is advertised only
+  // when the host actually defines at least one inline function.
+  const features: string[] = [...FEATURES_V1];
+  if (methods.some((method) => method.inline !== null)) {
+    features.push(FEATURE_INLINE_FUNCTIONS);
+  }
+
   // An invalid minSqliteVersion string was already rejected by the
   // decorator (invalid-min-sqlite-version); the program has errors and
   // callers never emit from it, so the default stands in here.
@@ -259,7 +271,7 @@ function buildLibraryIr(
       interfaceName: iface.name,
       apiLevel: options.apiLevel,
       minSqliteVersionNumber,
-      features: [...FEATURES_V1],
+      features,
     },
     naming,
     columns,
@@ -303,16 +315,80 @@ function buildMethod(
   const methodName = options.name;
   const inputModel = [...op.parameters.properties.values()][0].type as Model;
   const resultModel = op.returnType as Model;
+  const mutates = options.mutates ?? true;
+  const input = buildShape(program, naming, methodName, inputModel, "input");
+  const result = buildShape(program, naming, methodName, resultModel, "result");
   return {
     operationName: op.name,
     methodName,
     handlerName: options.handler,
     apiLevel: options.apiLevel ?? libraryApiLevel,
+    mutates,
     callTable: deriveCallTable(naming, methodName),
     resultTable: deriveResultTable(naming, methodName),
     queueTrigger: deriveQueueTrigger(naming, methodName),
-    input: buildShape(program, naming, methodName, inputModel, "input"),
-    result: buildShape(program, naming, methodName, resultModel, "result"),
+    input,
+    result,
+    inline: buildInline(naming, options, mutates, input, result),
+  };
+}
+
+/**
+ * Inline scalar-function exposure of a method (docs/proposals/
+ * inline-host-functions.md): automatic for every eligible method
+ * (mutates: false, scalar-only input with trailing optionals, exactly
+ * one scalar result field, no lists) unless opted out with
+ * inline: false. Ineligible methods that explicitly requested inline
+ * were already rejected by validation, so this only mirrors the
+ * eligibility rules over the built shapes.
+ */
+function buildInline(
+  naming: NamingIr,
+  options: HostMethodOptions,
+  mutates: boolean,
+  input: ObjectShapeIr,
+  result: ObjectShapeIr,
+): InlineIr | null {
+  if (
+    options.inline === false ||
+    mutates ||
+    input.listFields.length > 0 ||
+    result.listFields.length > 0 ||
+    result.fields.length !== 1
+  ) {
+    return null;
+  }
+  // Arguments are the input fields in declaration order; optional
+  // fields must be trailing (each trailing arity down to the required
+  // count is registered, omitted args arrive as null).
+  let requiredCount = 0;
+  let optionalSeen = false;
+  for (const field of input.fields) {
+    if (field.optional) {
+      optionalSeen = true;
+    } else if (optionalSeen) {
+      return null;
+    } else {
+      requiredCount++;
+    }
+  }
+  const returns = result.fields[0];
+  return {
+    functionName:
+      options.functionName ?? deriveFunctionName(naming, options.name),
+    minArgs: requiredCount,
+    maxArgs: input.fields.length,
+    args: input.fields.map((field) => ({
+      propertyName: field.propertyName,
+      sqlName: field.sqlName,
+      scalarType: field.scalarType,
+      optional: field.optional,
+    })),
+    returns: {
+      propertyName: returns.propertyName,
+      sqlName: returns.sqlName,
+      scalarType: returns.scalarType,
+    },
   };
 }
 

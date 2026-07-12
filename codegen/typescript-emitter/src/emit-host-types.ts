@@ -124,6 +124,29 @@ function childTableMetadata(field: ListFieldIr, columns: ColumnsIr): Literal {
   };
 }
 
+/** The manifest inline block, mirrored exactly (null when not exposed). */
+function inlineMetadata(inline: HostMethodIr["inline"]): Literal {
+  if (inline === null) {
+    return null;
+  }
+  return {
+    functionName: inline.functionName,
+    minArgs: inline.minArgs,
+    maxArgs: inline.maxArgs,
+    args: inline.args.map((arg) => ({
+      propertyName: arg.propertyName,
+      sqlName: arg.sqlName,
+      scalarType: arg.scalarType,
+      optional: arg.optional,
+    })),
+    returns: {
+      propertyName: inline.returns.propertyName,
+      sqlName: inline.returns.sqlName,
+      scalarType: inline.returns.scalarType,
+    },
+  };
+}
+
 function methodMetadata(method: HostMethodIr): Literal {
   return {
     methodName: method.methodName,
@@ -137,6 +160,7 @@ function methodMetadata(method: HostMethodIr): Literal {
     resultColumns: columnMap(method.result.fields),
     inputListFields: method.input.listFields.map(listFieldMetadata),
     resultListFields: method.result.listFields.map(listFieldMetadata),
+    inline: inlineMetadata(method.inline),
   };
 }
 
@@ -175,6 +199,9 @@ function hostMetadata(ir: HostLibraryIr): Literal {
     apiLevel: ir.library.apiLevel,
     minSqliteVersionNumber: ir.library.minSqliteVersionNumber,
     features: [...ir.library.features],
+    // The naming block's only SQL-callable piece: the inline function
+    // prefix (docs/naming.md); other naming values stay resolved-only.
+    functionPrefix: ir.naming.functionPrefix,
     // The manifest columns block, mirrored exactly (key order included).
     columns: {
       callId: c.callId,

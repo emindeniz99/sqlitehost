@@ -73,7 +73,8 @@ test("emitting twice from independently parsed manifests is deterministic", () =
 
 // ---------------------------------------------------------------------------
 // Non-sample smoke IR: different naming prefixes, custom shared workspace
-// table names, optional bytes field.
+// table names, optional bytes field, + one inline-exposed method under a
+// custom functionPrefix.
 // ---------------------------------------------------------------------------
 
 function smokeIr(): HostLibraryIr {
@@ -85,7 +86,12 @@ function smokeIr(): HostLibraryIr {
       interfaceName: "CacheHostMethods",
       apiLevel: 3,
       minSqliteVersionNumber: 3008011,
-      features: ["typedNamedBindings", "splitResultTables", "scriptInputs"],
+      features: [
+        "typedNamedBindings",
+        "splitResultTables",
+        "scriptInputs",
+        "inlineFunctions",
+      ],
     },
     naming: {
       callTablePrefix: "hostcall_",
@@ -94,6 +100,7 @@ function smokeIr(): HostLibraryIr {
       resultColumnPrefix: "out_",
       inputListTableInfix: "__in_",
       resultListTableInfix: "__out_",
+      functionPrefix: "udf_",
     },
     columns: {
       callId: "cid",
@@ -146,6 +153,7 @@ function smokeIr(): HostLibraryIr {
         methodName: "storeEntry",
         handlerName: "StoreEntry",
         apiLevel: 3,
+        mutates: true,
         callTable: "hostcall_store_entry",
         resultTable: "hostresult_store_entry",
         queueTrigger: "trg_hostcall_store_entry_queue",
@@ -218,6 +226,74 @@ function smokeIr(): HostLibraryIr {
             },
           ],
           listFields: [],
+        },
+        inline: null,
+      },
+      {
+        operationName: "LookupEntry",
+        methodName: "lookupEntry",
+        handlerName: "LookupEntry",
+        apiLevel: 3,
+        mutates: false,
+        callTable: "hostcall_lookup_entry",
+        resultTable: "hostresult_lookup_entry",
+        queueTrigger: "trg_hostcall_lookup_entry_queue",
+        input: {
+          modelName: "LookupEntryInput",
+          fields: [
+            {
+              propertyName: "cacheKey",
+              sqlName: "cache_key",
+              column: "in_cache_key",
+              scalarType: "string",
+              optional: false,
+            },
+            {
+              propertyName: "generationHint",
+              sqlName: "generation_hint",
+              column: "in_generation_hint",
+              scalarType: "int64",
+              optional: true,
+            },
+          ],
+          listFields: [],
+        },
+        result: {
+          modelName: "LookupEntryResult",
+          fields: [
+            {
+              propertyName: "generation",
+              sqlName: "generation",
+              column: "out_generation",
+              scalarType: "int64",
+              optional: false,
+            },
+          ],
+          listFields: [],
+        },
+        inline: {
+          functionName: "udf_lookup_entry",
+          minArgs: 1,
+          maxArgs: 2,
+          args: [
+            {
+              propertyName: "cacheKey",
+              sqlName: "cache_key",
+              scalarType: "string",
+              optional: false,
+            },
+            {
+              propertyName: "generationHint",
+              sqlName: "generation_hint",
+              scalarType: "int64",
+              optional: true,
+            },
+          ],
+          returns: {
+            propertyName: "generation",
+            sqlName: "generation",
+            scalarType: "int64",
+          },
         },
       },
     ],
@@ -293,6 +369,31 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   assert.match(binding.contents, /public double asFloat64\(\)/);
 });
 
+test("smoke IR: descriptors carry inline metadata only for inline methods", () => {
+  const files = emitJava(smokeIr());
+  const descriptors = fileByName(files, "MethodDescriptors.java").contents;
+  // The inline method's constant ends with the nested Inline record,
+  // carrying the custom-prefix function name and the arity range.
+  assert.match(
+    descriptors,
+    /public static final Method LOOKUP_ENTRY = new Method\(\n(?:.*\n)*?\s+new Inline\("udf_lookup_entry", 1, 2\)\);/,
+  );
+  // The ineligible (mutating) method's inline component is null.
+  assert.match(
+    descriptors,
+    /public static final Method STORE_ENTRY = new Method\(\n(?:.*\n)*?\s+List\.of\(\),\n\s+null\);/,
+  );
+  // The Method record declares the trailing inline component.
+  assert.match(
+    descriptors,
+    /List<String> resultListTables,\n\s+Inline inline\) \{/,
+  );
+  assert.match(
+    descriptors,
+    /public record Inline\(String functionName, int minArgs, int maxArgs\) \{/,
+  );
+});
+
 test("smoke IR: emitted DTO list has no duplicates and reuses shared items", () => {
   const files = emitJava(smokeIr());
   const paths = files.map((f) => f.path);
@@ -308,6 +409,7 @@ test("smoke IR: no emitted file mentions the default shared table or column name
     "call_id",
     "item_index",
     "queue_id",
+    "fn_",
   ];
   for (const file of emitJava(smokeIr())) {
     for (const name of defaults) {

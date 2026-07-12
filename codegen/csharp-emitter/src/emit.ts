@@ -269,6 +269,12 @@ function fieldBlock(
 }
 
 function specMethod(method: HostMethodIr): string {
+  // Inline scalar-function exposure sits between .Results and .Handler
+  // (docs/csharp-api.md); non-inline methods emit nothing.
+  const inline =
+    method.inline === null
+      ? []
+      : [`                .Inline(${csharpString(method.inline.functionName)})`];
   const lines = [
     `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${method.operationName}Spec()`,
     "        {",
@@ -277,6 +283,7 @@ function specMethod(method: HostMethodIr): string {
     `                .ApiLevel(${method.apiLevel})`,
     ...fieldBlock("Inputs", method.input, true),
     ...fieldBlock("Results", method.result, false),
+    ...inline,
     `                .Handler((handlers, input) => handlers.${method.handlerName}(input))`,
     "                .Build();",
     "        }",
@@ -345,7 +352,8 @@ export function emitHostDefinition(ir: HostLibraryIr): string {
     `                    .QueueTable(${csharpString(ir.queueTable.name)})`,
     `                    .InputsTable(${csharpString(ir.inputsTable.name)})`,
     `                    .VarsTable(${csharpString(ir.varsTable.name)})`,
-    `                    .ControlTable(${csharpString(ir.controlTable.name)}))`,
+    `                    .ControlTable(${csharpString(ir.controlTable.name)})`,
+    `                    .FunctionPrefix(${csharpString(naming.functionPrefix)}))`,
     // All fourteen column values are always emitted explicitly, in
     // SqliteHostColumns property order (docs/csharp-api.md).
     "                .Columns(c => c",

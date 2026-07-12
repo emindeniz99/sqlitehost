@@ -18,6 +18,10 @@ namespace SqliteHost;
  * within each table's column set, and the row-identity columns
  * (callId/itemIndex/status) must not collide with any derived
  * input/result field column.
+ * `functionPrefix` (default `fn_`) prefixes derived inline scalar
+ * function names (`fn_` + snake(methodName), docs/naming.md); it must
+ * be non-empty but, being a prefix rather than a table, joins no other
+ * distinctness check.
  */
 model HostLibraryOptions {
   apiLevel: int32;
@@ -28,6 +32,7 @@ model HostLibraryOptions {
   resultColumnPrefix?: string;
   inputListTableInfix?: string;
   resultListTableInfix?: string;
+  functionPrefix?: string;
   queueTable?: string;
   inputsTable?: string;
   varsTable?: string;
@@ -52,11 +57,21 @@ model HostLibraryOptions {
  * Options for `@hostMethod`. `name` is the logical protocol method name
  * (e.g. "getValue"); `handler` is the member name on the generated
  * handler interface. `apiLevel` defaults to the library's api level.
+ * `mutates` (default `true`) declares whether the handler mutates host
+ * state; only `mutates: false` methods are eligible for inline scalar
+ * function exposure (docs/proposals/inline-host-functions.md). Every
+ * eligible method is exposed automatically; `inline: false` opts a
+ * method out, `inline: true` (or setting `functionName`) forces the
+ * attempt and turns ineligibility into compile errors. `functionName`
+ * overrides the derived `functionPrefix + snake(name)` function name.
  */
 model HostMethodOptions {
   name: string;
   handler: string;
   apiLevel?: int32;
+  mutates?: boolean;
+  inline?: boolean;
+  functionName?: string;
 }
 
 /**

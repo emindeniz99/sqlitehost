@@ -166,6 +166,54 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`${"option"} "${"column"}" collides with a derived input/result field column; pick a name no host method field derives.`,
       },
     },
+    "invalid-function-prefix": {
+      severity: "error",
+      messages: {
+        default: "functionPrefix must be a non-empty prefix for derived inline function names.",
+      },
+    },
+    "inline-mutating-method": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Operation "${"operation"}" requests inline function exposure but mutates host state; inline functions require mutates: false.`,
+      },
+    },
+    "inline-list-field": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Operation "${"operation"}" requests inline function exposure but ${"side"} field "${"field"}" is a list; inline functions require scalar-only input and result.`,
+      },
+    },
+    "inline-result-not-single-scalar": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Operation "${"operation"}" requests inline function exposure but its result has ${"count"} scalar fields; inline functions require exactly one.`,
+      },
+    },
+    "inline-required-after-optional": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Operation "${"operation"}" requests inline function exposure but required input field "${"field"}" follows an optional one; inline function arguments are positional, so optional fields must be trailing.`,
+      },
+    },
+    "duplicate-function-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" is used by more than one method; function names must be unique after naming derivation.`,
+      },
+    },
+    "function-name-collision": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" collides with a derived table name; pick a different functionName or functionPrefix.`,
+      },
+    },
+    "builtin-function-collision": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" collides with a SQLite built-in function; pick a different functionName or functionPrefix.`,
+      },
+    },
   },
 });
 

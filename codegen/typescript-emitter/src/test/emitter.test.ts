@@ -43,9 +43,10 @@ function sampleIr(): HostLibraryIr {
 
 /**
  * Hand-built non-sample IR: non-default naming prefixes (req_/resp_,
- * arg_/out_), non-default queue/inputs/vars/control table names, fully
- * renamed shared columns, an optional bytes field, int32 + int64
- * fields, and a list field on each side of the method.
+ * arg_/out_, udf_), non-default queue/inputs/vars/control table names,
+ * fully renamed shared columns, an optional bytes field, int32 + int64
+ * fields, a list field on each side of the first method, and a second
+ * inline-exposed method under the custom functionPrefix.
  */
 function smokeIr(): HostLibraryIr {
   return {
@@ -56,7 +57,7 @@ function smokeIr(): HostLibraryIr {
       interfaceName: "WarehouseHostMethods",
       apiLevel: 3,
       minSqliteVersionNumber: 3008011,
-      features: ["typedNamedBindings"],
+      features: ["typedNamedBindings", "inlineFunctions"],
     },
     naming: {
       callTablePrefix: "req_",
@@ -65,6 +66,7 @@ function smokeIr(): HostLibraryIr {
       resultColumnPrefix: "out_",
       inputListTableInfix: "__arg_",
       resultListTableInfix: "__out_",
+      functionPrefix: "udf_",
     },
     columns: {
       callId: "cid",
@@ -117,6 +119,7 @@ function smokeIr(): HostLibraryIr {
         methodName: "storeAsset",
         handlerName: "StoreAsset",
         apiLevel: 3,
+        mutates: true,
         callTable: "req_store_asset",
         resultTable: "resp_store_asset",
         queueTrigger: "trg_req_store_asset_queue",
@@ -182,6 +185,74 @@ function smokeIr(): HostLibraryIr {
             },
           ],
           listFields: [],
+        },
+        inline: null,
+      },
+      {
+        operationName: "LookupAsset",
+        methodName: "lookupAsset",
+        handlerName: "LookupAsset",
+        apiLevel: 3,
+        mutates: false,
+        callTable: "req_lookup_asset",
+        resultTable: "resp_lookup_asset",
+        queueTrigger: "trg_req_lookup_asset_queue",
+        input: {
+          modelName: "LookupAssetInput",
+          fields: [
+            {
+              propertyName: "assetId",
+              sqlName: "asset_id",
+              column: "arg_asset_id",
+              scalarType: "int32",
+              optional: false,
+            },
+            {
+              propertyName: "variant",
+              sqlName: "variant",
+              column: "arg_variant",
+              scalarType: "string",
+              optional: true,
+            },
+          ],
+          listFields: [],
+        },
+        result: {
+          modelName: "LookupAssetResult",
+          fields: [
+            {
+              propertyName: "revision",
+              sqlName: "revision",
+              column: "out_revision",
+              scalarType: "int64",
+              optional: false,
+            },
+          ],
+          listFields: [],
+        },
+        inline: {
+          functionName: "udf_lookup_asset",
+          minArgs: 1,
+          maxArgs: 2,
+          args: [
+            {
+              propertyName: "assetId",
+              sqlName: "asset_id",
+              scalarType: "int32",
+              optional: false,
+            },
+            {
+              propertyName: "variant",
+              sqlName: "variant",
+              scalarType: "string",
+              optional: true,
+            },
+          ],
+          returns: {
+            propertyName: "revision",
+            sqlName: "revision",
+            scalarType: "int64",
+          },
         },
       },
     ],
@@ -321,6 +392,48 @@ test("smoke IR: host types derive names, optionality, and scalar types", () => {
   assert.ok(
     output.includes('columns: ["cid", "state", "out_revision", "out_confidence"]'),
   );
+});
+
+test("smoke IR: metadata mirrors functionPrefix and the per-method inline blocks", () => {
+  const output = emitHostTypes(smokeIr(), "acme-warehouse");
+  // The custom function prefix sits between features and columns.
+  assert.ok(output.includes('functionPrefix: "udf_"'));
+  assert.ok(!output.includes("fn_"), "default function prefix leaked");
+  // The inline method's block mirrors the manifest inline shape exactly.
+  assert.ok(
+    output.includes(
+      [
+        "      inline: {",
+        '        functionName: "udf_lookup_asset",',
+        "        minArgs: 1,",
+        "        maxArgs: 2,",
+        "        args: [",
+        "          {",
+        '            propertyName: "assetId",',
+        '            sqlName: "asset_id",',
+        '            scalarType: "int32",',
+        "            optional: false,",
+        "          },",
+        "          {",
+        '            propertyName: "variant",',
+        '            sqlName: "variant",',
+        '            scalarType: "string",',
+        "            optional: true,",
+        "          },",
+        "        ],",
+        "        returns: {",
+        '          propertyName: "revision",',
+        '          sqlName: "revision",',
+        '          scalarType: "int64",',
+        "        },",
+        "      },",
+      ].join("\n"),
+    ),
+    "inline block mirrors the manifest inline shape",
+  );
+  // Non-inline methods mirror the manifest's null (uniform shape).
+  assert.ok(output.includes("inline: null"));
+  assert.equal(output.split("inline: null").length - 1, 1, "exactly one non-inline method");
 });
 
 test("smoke IR: no emitted file mentions the default shared table or column names", () => {

@@ -84,7 +84,9 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
     "scriptInputs",
     "scriptVars",
     "scriptControl",
+    "inlineFunctions",
   ],
+  functionPrefix: "fn_",
   columns: {
     callId: "call_id",
     itemIndex: "item_index",
@@ -141,6 +143,24 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       resultColumns: { value: "result_value" },
       inputListFields: [],
       resultListFields: [],
+      inline: {
+        functionName: "fn_get_value",
+        minArgs: 1,
+        maxArgs: 1,
+        args: [
+          {
+            propertyName: "key",
+            sqlName: "key",
+            scalarType: "string",
+            optional: false,
+          },
+        ],
+        returns: {
+          propertyName: "value",
+          sqlName: "value",
+          scalarType: "int64",
+        },
+      },
     },
     {
       methodName: "setValue",
@@ -154,6 +174,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       resultColumns: { success: "result_success" },
       inputListFields: [],
       resultListFields: [],
+      inline: null,
     },
     {
       methodName: "getValues",
@@ -183,6 +204,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
           },
         },
       ],
+      inline: null,
     },
     {
       methodName: "putBlob",
@@ -200,6 +222,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       resultColumns: { stored: "result_stored" },
       inputListFields: [],
       resultListFields: [],
+      inline: null,
     },
     {
       methodName: "recordScore",
@@ -217,6 +240,7 @@ export const SAMPLE_HOST_METADATA: HostMetadata = {
       resultColumns: { average: "result_average" },
       inputListFields: [],
       resultListFields: [],
+      inline: null,
     },
   ],
   tables: [

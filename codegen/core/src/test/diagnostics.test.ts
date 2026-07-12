@@ -553,6 +553,165 @@ test("rejects a status column colliding with a derived list item result column",
   assertDiagnostic(result, "column-name-collision");
 });
 
+test("rejects inline exposure requested on a mutating method", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "setValue", handler: "SetValue", inline: true })
+        op SetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "inline-mutating-method");
+});
+
+test("rejects inline exposure requested with a list field", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValues", handler: "GetValues", mutates: false, inline: true })
+        op GetValues(input: In): Out;
+      }
+      model Item { key: string; }
+      model In { keys: Item[]; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "inline-list-field");
+});
+
+test("rejects a functionName override on a multi-scalar result (functionName counts as a request)", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getPair", handler: "GetPair", mutates: false, functionName: "fn_pair" })
+        op GetPair(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; other: int64; }
+    `),
+  );
+  assertDiagnostic(result, "inline-result-not-single-scalar");
+});
+
+test("rejects inline exposure requested with a zero-scalar result", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "touchValue", handler: "TouchValue", mutates: false, inline: true })
+        op TouchValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out {}
+    `),
+  );
+  assertDiagnostic(result, "inline-result-not-single-scalar");
+});
+
+test("rejects inline exposure requested with a required input field after an optional one", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, inline: true })
+        op GetValue(input: In): Out;
+      }
+      model In {
+        fallback?: int64;
+        key: string;
+      }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "inline-required-after-optional");
+});
+
+test("rejects two methods claiming the same inline function name", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "fn_same" })
+        op GetValue(input: In): Out;
+
+        @hostMethod({ name: "peekValue", handler: "PeekValue", mutates: false, functionName: "FN_SAME" })
+        op PeekValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-function-name");
+});
+
+test("rejects an inline function name colliding with a derived table name", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "call_get_value" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "function-name-collision");
+});
+
+test("rejects an inline function name colliding with a SQLite built-in", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "coalesce" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "builtin-function-collision");
+});
+
+test("rejects a derived inline function name colliding with a SQLite built-in", async () => {
+  // An empty prefix is itself invalid, so the derived-name collision is
+  // exercised through a prefix that lands exactly on a built-in name.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, functionPrefix: "group_" })
+      interface Methods {
+        @hostMethod({ name: "concat", handler: "Concat", mutates: false })
+        op Concat(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "builtin-function-collision");
+});
+
+test("rejects an empty functionPrefix", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, functionPrefix: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-function-prefix");
+});
+
 test("rejects duplicate @hostLibrary interface names across libraries", async () => {
   const result = await compileSourceAll(`
     import "@sqlite-host/typespec";

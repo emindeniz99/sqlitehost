@@ -50,6 +50,7 @@ export function docComment(text: string, indent = ""): string {
 
 /** JSON-like value rendered as a TypeScript object/array literal. */
 export type Literal =
+  | null
   | string
   | number
   | boolean

@@ -15,6 +15,7 @@
 import {
   toSnakeCase,
   type HostLibraryIr,
+  type HostMethodIr,
   type ListFieldIr,
   type ObjectShapeIr,
   type ScalarFieldIr,
@@ -583,6 +584,15 @@ function methodConstantName(methodName: string): string {
   return toSnakeCase(methodName).toUpperCase();
 }
 
+/** Inline metadata literal: a nested Inline record, or null when absent. */
+function inlineLiteral(method: HostMethodIr): string {
+  if (method.inline === null) {
+    return "null";
+  }
+  const { functionName, minArgs, maxArgs } = method.inline;
+  return `new Inline(${javaString(functionName)}, ${minArgs}, ${maxArgs})`;
+}
+
 /** One MethodDescriptors class mirroring the manifest method metadata. */
 export function emitMethodDescriptors(ir: HostLibraryIr): EmittedFile {
   const packageName = generatedPackageName(ir);
@@ -601,6 +611,7 @@ export function emitMethodDescriptors(ir: HostLibraryIr): EmittedFile {
         stringListLiteral(method.input.listFields.map((l) => l.childTable)),
         stringListLiteral(scalarColumns(method.result.fields)),
         stringListLiteral(method.result.listFields.map((l) => l.childTable)),
+        inlineLiteral(method),
       ];
       return `    /** Metadata for host method {@code ${method.methodName}}. */
     public static final Method ${methodConstantName(method.methodName)} = new Method(
@@ -640,7 +651,10 @@ public final class MethodDescriptors {
     /** Minimum SQLite version required, in SQLITE_VERSION_NUMBER form. */
     public static final int MIN_SQLITE_VERSION_NUMBER = ${ir.library.minSqliteVersionNumber};
 
-    /** One host method's resolved manifest metadata. */
+    /**
+     * One host method's resolved manifest metadata. {@code inline} is
+     * {@code null} for methods without an inline scalar function.
+     */
     public record Method(
             String methodName,
             String handlerName,
@@ -651,7 +665,12 @@ public final class MethodDescriptors {
             List<String> inputColumns,
             List<String> inputListTables,
             List<String> resultColumns,
-            List<String> resultListTables) {
+            List<String> resultListTables,
+            Inline inline) {
+    }
+
+    /** Inline scalar-function exposure of a method (feature inlineFunctions). */
+    public record Inline(String functionName, int minArgs, int maxArgs) {
     }
 
 ${constants}

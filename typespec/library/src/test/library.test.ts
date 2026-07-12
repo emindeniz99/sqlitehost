@@ -86,6 +86,42 @@ test("@hostMethod records name, handler, and optional apiLevel", async () => {
   });
 });
 
+test("@hostMethod records mutates/inline/functionName and @hostLibrary records functionPrefix", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, functionPrefix: "udf_" })
+    interface Methods {
+      @hostMethod({
+        name: "getValue",
+        handler: "GetValue",
+        mutates: false,
+        inline: true,
+        functionName: "udf_lookup"
+      })
+      op GetValue(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.deepEqual(diagnosticCodes(program), []);
+  const [iface] = getHostLibraryInterfaces(program);
+  assert.deepEqual(getHostLibraryOptions(program, iface), {
+    apiLevel: 1,
+    functionPrefix: "udf_",
+  });
+  const op = iface.operations.get("GetValue")!;
+  assert.deepEqual(getHostMethodOptions(program, op), {
+    name: "getValue",
+    handler: "GetValue",
+    mutates: false,
+    inline: true,
+    functionName: "udf_lookup",
+  });
+});
+
 test("@sqlName records the override and leaves other properties untouched", async () => {
   const program = await compileSource(VALID_LIBRARY);
   const [model] = program.resolveTypeReference("Test.In");

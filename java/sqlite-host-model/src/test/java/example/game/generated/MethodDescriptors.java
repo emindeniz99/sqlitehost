@@ -28,7 +28,10 @@ public final class MethodDescriptors {
     /** Minimum SQLite version required, in SQLITE_VERSION_NUMBER form. */
     public static final int MIN_SQLITE_VERSION_NUMBER = 3019003;
 
-    /** One host method's resolved manifest metadata. */
+    /**
+     * One host method's resolved manifest metadata. {@code inline} is
+     * {@code null} for methods without an inline scalar function.
+     */
     public record Method(
             String methodName,
             String handlerName,
@@ -39,7 +42,12 @@ public final class MethodDescriptors {
             List<String> inputColumns,
             List<String> inputListTables,
             List<String> resultColumns,
-            List<String> resultListTables) {
+            List<String> resultListTables,
+            Inline inline) {
+    }
+
+    /** Inline scalar-function exposure of a method (feature inlineFunctions). */
+    public record Inline(String functionName, int minArgs, int maxArgs) {
     }
 
     /** Metadata for host method {@code getValue}. */
@@ -53,7 +61,8 @@ public final class MethodDescriptors {
             List.of("input_key"),
             List.of(),
             List.of("result_value"),
-            List.of());
+            List.of(),
+            new Inline("fn_get_value", 1, 1));
 
     /** Metadata for host method {@code setValue}. */
     public static final Method SET_VALUE = new Method(
@@ -66,7 +75,8 @@ public final class MethodDescriptors {
             List.of("input_key", "input_value"),
             List.of(),
             List.of("result_success"),
-            List.of());
+            List.of(),
+            null);
 
     /** Metadata for host method {@code getValues}. */
     public static final Method GET_VALUES = new Method(
@@ -79,7 +89,8 @@ public final class MethodDescriptors {
             List.of("input_default_value"),
             List.of("call_get_values__input_keys"),
             List.of(),
-            List.of("result_get_values__result_entries"));
+            List.of("result_get_values__result_entries"),
+            null);
 
     /** Metadata for host method {@code putBlob}. */
     public static final Method PUT_BLOB = new Method(
@@ -92,7 +103,8 @@ public final class MethodDescriptors {
             List.of("input_key", "input_data", "input_note"),
             List.of(),
             List.of("result_stored"),
-            List.of());
+            List.of(),
+            null);
 
     /** Metadata for host method {@code recordScore}. */
     public static final Method RECORD_SCORE = new Method(
@@ -105,7 +117,8 @@ public final class MethodDescriptors {
             List.of("input_key", "input_score", "input_weight"),
             List.of(),
             List.of("result_average"),
-            List.of());
+            List.of(),
+            null);
 
     /** All host methods in manifest order. */
     public static final List<Method> ALL = List.of(
