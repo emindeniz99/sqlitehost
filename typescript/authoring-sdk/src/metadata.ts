@@ -14,6 +14,7 @@
 import type {
   HostManifest,
   ManifestColumns,
+  ManifestInline,
   ManifestListField,
 } from "./manifest.js";
 import { parseHostManifest } from "./manifest.js";
@@ -44,6 +45,8 @@ export interface MethodMetadata {
   resultColumns: Record<string, string>;
   inputListFields: ListFieldMetadata[];
   resultListFields: ListFieldMetadata[];
+  /** The manifest inline block, mirrored exactly (null when not exposed). */
+  inline: ManifestInline | null;
 }
 
 export interface HostMetadata {
@@ -53,6 +56,8 @@ export interface HostMetadata {
   apiLevel: number;
   minSqliteVersionNumber: number;
   features: string[];
+  /** Prefix of derived inline function names (manifest naming block). */
+  functionPrefix: string;
   /** Shared SQL-visible column names + done literal (manifest columns block). */
   columns: ManifestColumns;
   queueTable: TableMetadata;
@@ -84,6 +89,20 @@ function childTableMetadata(field: ManifestListField, columns: ManifestColumns):
   return {
     name: field.childTable,
     columns: [columns.callId, columns.itemIndex, ...field.itemFields.map((f) => f.column)],
+  };
+}
+
+/** Copy the manifest inline block as-is (null/absent -> null). */
+function inlineMetadata(inline: ManifestInline | null | undefined): ManifestInline | null {
+  if (inline === null || inline === undefined) {
+    return null;
+  }
+  return {
+    functionName: inline.functionName,
+    minArgs: inline.minArgs,
+    maxArgs: inline.maxArgs,
+    args: inline.args.map((arg) => ({ ...arg })),
+    returns: { ...inline.returns },
   };
 }
 
@@ -127,6 +146,7 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
       resultColumns: columnMap(method.result.fields),
       inputListFields: method.input.listFields.map(listFieldMetadata),
       resultListFields: method.result.listFields.map(listFieldMetadata),
+      inline: inlineMetadata(method.inline),
     });
   }
 
@@ -137,6 +157,7 @@ export function loadHostMetadata(manifest: HostManifest | string | unknown): Hos
     apiLevel: m.library.apiLevel,
     minSqliteVersionNumber: m.library.minSqliteVersionNumber,
     features: [...m.library.features],
+    functionPrefix: m.naming.functionPrefix,
     columns: { ...m.columns },
     queueTable: { name: m.queueTable.name, columns: [...m.queueTable.columns] },
     inputsTable: { name: m.inputsTable.name, columns: [...m.inputsTable.columns] },

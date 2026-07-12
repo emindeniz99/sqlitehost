@@ -250,6 +250,61 @@ export function callIdFilters(
   return filters;
 }
 
+/**
+ * One `identifier(...)` call extracted from the token stream.
+ * `argCount` is the number of top-level arguments, or `UNKNOWN_ARGS`
+ * when the matching `)` is missing (malformed SQL — prepare-only
+ * validation reports it).
+ */
+export interface SqlFunctionCall {
+  /** Function name as written (SQL function names are case-insensitive). */
+  name: string;
+  argCount: number;
+}
+
+/** The closing `)` was never found — arity is unknowable. */
+export const UNKNOWN_ARGS = -1;
+
+/**
+ * Extract every `identifier(...)` function call: an identifier token
+ * immediately followed by `(`, with the argument count taken by a
+ * top-level comma scan to the matching `)`. String literals and
+ * comments never confuse the scan — the tokenizer already collapsed
+ * them. Calls nested in another call's arguments are extracted as
+ * their own entries (mirrors the Java validator's SqlAnalyzer).
+ */
+export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
+  const calls: SqlFunctionCall[] = [];
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (tokens[i].kind === "identifier" && isPunctAt(tokens[i + 1], "(")) {
+      calls.push({ name: tokens[i].value, argCount: countArgs(tokens, i + 2) });
+    }
+  }
+  return calls;
+}
+
+/** Count top-level arguments from just after `(` to the matching `)`. */
+function countArgs(tokens: SqlToken[], start: number): number {
+  let depth = 1;
+  let commas = 0;
+  let sawArgToken = false;
+  for (let pos = start; pos < tokens.length; pos++) {
+    const token = tokens[pos];
+    if (isPunctAt(token, "(")) {
+      depth++;
+    } else if (isPunctAt(token, ")")) {
+      depth--;
+      if (depth === 0) {
+        return sawArgToken ? commas + 1 : 0;
+      }
+    } else if (isPunctAt(token, ",") && depth === 1) {
+      commas++;
+    }
+    sawArgToken = true;
+  }
+  return UNKNOWN_ARGS;
+}
+
 const SELECT_TERMINATORS = new Set([
   "from",
   "where",

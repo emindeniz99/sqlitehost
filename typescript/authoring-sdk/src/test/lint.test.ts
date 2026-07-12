@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  functionCalls,
   lintScript,
   parseHostManifest,
   scanNamedParameters,
   tokenizeSql,
+  UNKNOWN_ARGS,
   type LintFinding,
 } from "../index.js";
 import { readFixture } from "./helpers.js";
@@ -365,6 +367,170 @@ test("custom call-id column: list child/parent matching uses cid", () => {
   // colocation rule must still see them and flag the later step.
   const findings = lintScript(payload, cidManifest());
   assert.ok(codes(findings).includes("list-child-later-step"), JSON.stringify(findings));
+});
+
+// -- inline functions ----------------------------------------------------------
+// Inline function lint (docs/validation.md — feature inlineFunctions):
+// unknown-function keys on the manifest's functionPrefix, arity is
+// checked statically against minArgs..maxArgs, and an invoked inline
+// function both requires the feature declaration and exempts its
+// method from unused-required-method. The fixture matrix runs in
+// lint-conformance.test.ts; these tests pin what it cannot express
+// (arity edges, builtin calls, custom prefixes, case-insensitivity) —
+// mirroring the Java InlineFunctionLintTest.
+
+function inlineScript(features: string[], methods: string[], sql: string) {
+  return {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredFeatures: features,
+    requiredMethods: methods,
+    steps: [{ id: "s", statements: [{ sql }] }],
+  };
+}
+
+test("declared inline call is accepted with zero findings", () => {
+  const findings = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value('k')"),
+    manifest,
+  );
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("example-010 inline payload produces zero findings", () => {
+  const payload = JSON.parse(readFixture("payloads/valid/example-010-inline.json"));
+  const findings = lintScript(payload, manifest);
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("undeclared-feature-use: inline call without the feature, reported once per statement", () => {
+  const findings = lintScript(
+    inlineScript([], ["getValue"], "SELECT fn_get_value('a'), fn_get_value('b')"),
+    manifest,
+  );
+  const undeclared = findings.filter((f) => f.code === "undeclared-feature-use");
+  assert.equal(undeclared.length, 1, JSON.stringify(findings));
+  assert.equal(undeclared[0].severity, "error");
+  assert.equal(undeclared[0].stepId, "s");
+  assert.equal(undeclared[0].statementIndex, 0);
+});
+
+test("unknown-function: prefix-matching identifier not in the manifest", () => {
+  const findings = lintScript(
+    inlineScript(["inlineFunctions"], [], "SELECT fn_get_price('k')"),
+    manifest,
+  );
+  assert.ok(codes(findings).includes("unknown-function"), JSON.stringify(findings));
+});
+
+test("non-prefixed builtins are SQLite's business, not the lint's", () => {
+  const findings = lintScript(
+    inlineScript([], [], "SELECT max(1, 2), abs(-1), coalesce(NULL, 0)"),
+    manifest,
+  );
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("function-arity-mismatch: too many and too few arguments", () => {
+  const tooMany = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value('k', 'extra')"),
+    manifest,
+  );
+  assert.ok(codes(tooMany).includes("function-arity-mismatch"), JSON.stringify(tooMany));
+  const tooFew = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value()"),
+    manifest,
+  );
+  assert.ok(codes(tooFew).includes("function-arity-mismatch"), JSON.stringify(tooFew));
+});
+
+test("arity counts top-level commas only: nested parens and strings with commas", () => {
+  // max(1, 2) nests inside the argument; the literal carries a comma —
+  // both are one top-level argument, so no arity mismatch (and the
+  // nested max(...) is extracted as its own non-prefixed call).
+  const nested = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value(max(1, 2))"),
+    manifest,
+  );
+  assert.deepStrictEqual(nested, [], JSON.stringify(nested));
+  const commaInString = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value('a,b')"),
+    manifest,
+  );
+  assert.deepStrictEqual(commaInString, [], JSON.stringify(commaInString));
+});
+
+test("function names match case-insensitively", () => {
+  // SQL identifiers are case-insensitive: FN_GET_VALUE is the
+  // manifest's fn_get_value, not an unknown function.
+  const findings = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT FN_GET_VALUE('k')"),
+    manifest,
+  );
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("inline invocation exempts unused-required-method; no invocation still warns", () => {
+  // getValue's call table is never written, but its inline function is
+  // invoked — no unused-required-method warning.
+  const invoked = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT fn_get_value('k')"),
+    manifest,
+  );
+  assert.ok(!codes(invoked).includes("unused-required-method"), JSON.stringify(invoked));
+  const notInvoked = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT 1"),
+    manifest,
+  );
+  assert.ok(codes(notInvoked).includes("unused-required-method"), JSON.stringify(notInvoked));
+});
+
+test("custom functionPrefix drives the matching", () => {
+  // A host with functionPrefix 'udf_': 'fn_*' identifiers are no
+  // longer special, and unknown 'udf_*' identifiers are flagged.
+  const base = JSON.parse(readFixture("manifests/sample-host.manifest.json"));
+  const custom = parseHostManifest({
+    ...base,
+    naming: { ...base.naming, functionPrefix: "udf_" },
+    methods: base.methods.map((method: { methodName: string; inline: object }) =>
+      method.methodName === "getValue"
+        ? { ...method, inline: { ...method.inline, functionName: "udf_get_value" } }
+        : method,
+    ),
+  });
+  const known = lintScript(
+    inlineScript(["inlineFunctions"], ["getValue"], "SELECT udf_get_value('k')"),
+    custom,
+  );
+  assert.deepStrictEqual(known, [], JSON.stringify(known));
+  const unknownUdf = lintScript(
+    inlineScript(["inlineFunctions"], [], "SELECT udf_bogus('k')"),
+    custom,
+  );
+  assert.ok(codes(unknownUdf).includes("unknown-function"), JSON.stringify(unknownUdf));
+  // 'fn_get_value' does not carry this host's prefix — no
+  // unknown-function; prepare-only validation is what fails it.
+  const fnIsNotSpecial = lintScript(
+    inlineScript(["inlineFunctions"], [], "SELECT fn_get_value('k')"),
+    custom,
+  );
+  assert.ok(!codes(fnIsNotSpecial).includes("unknown-function"), JSON.stringify(fnIsNotSpecial));
+});
+
+test("functionCalls: identifier-then-paren extraction with top-level arg counts", () => {
+  const tokens = tokenizeSql(
+    "SELECT fn_get_value(max(1, 2), 'a,b'), count(*), 'lit(', t.col FROM t WHERE fn_open('x'",
+  );
+  assert.deepStrictEqual(functionCalls(tokens), [
+    { name: "fn_get_value", argCount: 2 },
+    { name: "max", argCount: 2 },
+    { name: "count", argCount: 1 },
+    // ')' never closes: arity is unknowable — UNKNOWN_ARGS, skipped by lint.
+    { name: "fn_open", argCount: UNKNOWN_ARGS },
+  ]);
+  assert.deepStrictEqual(functionCalls(tokenizeSql("SELECT fn_noargs()")), [
+    { name: "fn_noargs", argCount: 0 },
+  ]);
 });
 
 test("duplicate-input-name: two inputs sharing a name is an error", () => {

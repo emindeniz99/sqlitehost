@@ -36,16 +36,42 @@ export interface ManifestShape {
   listFields: ManifestListField[];
 }
 
+/** Argument of an inline scalar function (input field, declaration order). */
+export interface ManifestInlineArg {
+  propertyName: string;
+  sqlName: string;
+  scalarType: ManifestScalarType;
+  optional: boolean;
+}
+
+/**
+ * Inline scalar-function exposure of a method (feature `inlineFunctions`,
+ * docs/proposals/inline-host-functions.md); `null` when not exposed.
+ */
+export interface ManifestInline {
+  functionName: string;
+  minArgs: number;
+  maxArgs: number;
+  args: ManifestInlineArg[];
+  returns: {
+    propertyName: string;
+    sqlName: string;
+    scalarType: ManifestScalarType;
+  };
+}
+
 export interface ManifestMethod {
   operationName: string;
   methodName: string;
   handlerName: string;
   apiLevel: number;
+  mutates: boolean;
   callTable: string;
   resultTable: string;
   queueTrigger: string;
   input: ManifestShape;
   result: ManifestShape;
+  inline: ManifestInline | null;
 }
 
 export interface ManifestTable {
@@ -92,6 +118,7 @@ export interface HostManifest {
     resultColumnPrefix: string;
     inputListTableInfix: string;
     resultListTableInfix: string;
+    functionPrefix: string;
   };
   columns: ManifestColumns;
   queueTable: ManifestTable;

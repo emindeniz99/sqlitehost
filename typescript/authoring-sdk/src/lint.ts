@@ -13,8 +13,15 @@ import {
   type BindingValue,
   type Script,
 } from "@sqlite-host/runtime-types";
-import type { HostManifest } from "./manifest.js";
-import { analyzeInsert, callIdFilters, scanNamedParameters, tokenizeSql } from "./sql.js";
+import type { HostManifest, ManifestMethod } from "./manifest.js";
+import {
+  analyzeInsert,
+  callIdFilters,
+  functionCalls,
+  scanNamedParameters,
+  tokenizeSql,
+  UNKNOWN_ARGS,
+} from "./sql.js";
 
 export type LintCode =
   | "invalid-envelope"
@@ -32,10 +39,16 @@ export type LintCode =
   | "duplicate-call-id"
   | "list-child-later-step"
   | "list-child-without-parent"
+  | "undeclared-feature-use"
+  | "unknown-function"
+  | "function-arity-mismatch"
   | "result-read-unknown-call"
   | "result-read-not-after-call";
 
 export type LintSeverity = "error" | "warning";
+
+/** Feature a script must declare to call inline functions (docs/validation.md). */
+const FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
 
 export interface LintFinding {
   code: LintCode;
@@ -136,9 +149,17 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   const inputChildTables = new Map<string, { methodName: string; callTable: string }>();
   const resultTables = new Map<string, string>(); // result table -> method name
   const resultChildTables = new Map<string, string>(); // result child table -> method name
+  const inlineFunctions = new Map<string, ManifestMethod>(); // function name (lc) -> method
+  // Tolerate pre-inline manifests (no functionPrefix): an empty prefix
+  // never matches, so no identifier is ever flagged unknown-function.
+  const functionPrefix = manifest.naming.functionPrefix ?? "";
+  const functionPrefixLc = functionPrefix.toLowerCase();
   for (const method of manifest.methods) {
     callTables.set(method.callTable, method.methodName);
     resultTables.set(method.resultTable, method.methodName);
+    if (method.inline !== null && method.inline !== undefined) {
+      inlineFunctions.set(method.inline.functionName.toLowerCase(), method);
+    }
     for (const listField of method.input.listFields) {
       inputChildTables.set(listField.childTable, {
         methodName: method.methodName,
@@ -153,6 +174,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   // -- per-statement scan ----------------------------------------------------
   const inserts: InsertRecord[] = [];
   const resultReads: ResultReadRecord[] = [];
+  const inlineInvokedMethods = new Set<string>(); // methods invoked via inline function
   script.steps.forEach((step, stepIndex) => {
     step.statements.forEach((statement, statementIndex) => {
       const at = { stepId: step.id, statementIndex };
@@ -217,6 +239,61 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
           stepId: step.id,
           statementIndex,
         });
+      }
+
+      // Inline function lint (docs/validation.md — feature
+      // inlineFunctions) over the identifier(...) calls: a manifest
+      // inline function must be declared through requiredFeatures
+      // (undeclared-feature-use) and called with an argument count
+      // inside minArgs..maxArgs (function-arity-mismatch); an unmatched
+      // identifier is unknown-function only when it carries the host's
+      // functionPrefix — non-prefix identifiers (max(...), abs(...))
+      // are SQLite's business, not the lint's (mirrors the Java engine).
+      const reportedFunctions = new Set<string>();
+      for (const call of functionCalls(tokens)) {
+        const nameLc = call.name.toLowerCase();
+        const method = inlineFunctions.get(nameLc);
+        if (method === undefined) {
+          if (
+            functionPrefixLc !== "" &&
+            nameLc.startsWith(functionPrefixLc) &&
+            !reportedFunctions.has(nameLc)
+          ) {
+            reportedFunctions.add(nameLc);
+            findings.push({
+              code: "unknown-function",
+              severity: "error",
+              message: `function "${call.name}" matches the functionPrefix "${functionPrefix}" but is not an inline function of the manifest`,
+              ...at,
+            });
+          }
+          continue;
+        }
+        inlineInvokedMethods.add(method.methodName);
+        const inline = method.inline!;
+        if (
+          !(script.requiredFeatures ?? []).includes(FEATURE_INLINE_FUNCTIONS) &&
+          !reportedFunctions.has(nameLc)
+        ) {
+          reportedFunctions.add(nameLc);
+          findings.push({
+            code: "undeclared-feature-use",
+            severity: "error",
+            message: `inline function "${call.name}" requires feature "${FEATURE_INLINE_FUNCTIONS}" which is not declared in requiredFeatures`,
+            ...at,
+          });
+        }
+        if (
+          call.argCount !== UNKNOWN_ARGS &&
+          (call.argCount < inline.minArgs || call.argCount > inline.maxArgs)
+        ) {
+          findings.push({
+            code: "function-arity-mismatch",
+            severity: "error",
+            message: `inline function "${call.name}" is called with ${call.argCount} argument(s) but takes ${inline.minArgs}${inline.maxArgs === inline.minArgs ? "" : `..${inline.maxArgs}`}`,
+            ...at,
+          });
+        }
       }
 
       // Result-read lineage collection: result tables referenced +
@@ -333,11 +410,14 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   for (const methodName of requiredMethods) {
     const method = methodsByName.get(methodName);
     if (method === undefined) continue; // already unknown-required-method
-    if (!inserts.some((insert) => insert.table === method.callTable)) {
+    if (
+      !inserts.some((insert) => insert.table === method.callTable) &&
+      !inlineInvokedMethods.has(methodName)
+    ) {
       findings.push({
         code: "unused-required-method",
         severity: "warning",
-        message: `required method "${methodName}" is never called (no INSERT INTO ${method.callTable})`,
+        message: `required method "${methodName}" is never called (no INSERT INTO ${method.callTable} and no inline function invocation)`,
       });
     }
   }
