@@ -41,17 +41,41 @@ function shapeJson(shape: ObjectShapeIr): object {
   };
 }
 
+function inlineJson(inline: HostMethodIr["inline"]): object | null {
+  if (inline === null) {
+    return null;
+  }
+  return {
+    functionName: inline.functionName,
+    minArgs: inline.minArgs,
+    maxArgs: inline.maxArgs,
+    args: inline.args.map((a) => ({
+      propertyName: a.propertyName,
+      sqlName: a.sqlName,
+      scalarType: a.scalarType,
+      optional: a.optional,
+    })),
+    returns: {
+      propertyName: inline.returns.propertyName,
+      sqlName: inline.returns.sqlName,
+      scalarType: inline.returns.scalarType,
+    },
+  };
+}
+
 function methodJson(method: HostMethodIr): object {
   return {
     operationName: method.operationName,
     methodName: method.methodName,
     handlerName: method.handlerName,
     apiLevel: method.apiLevel,
+    mutates: method.mutates,
     callTable: method.callTable,
     resultTable: method.resultTable,
     queueTrigger: method.queueTrigger,
     input: shapeJson(method.input),
     result: shapeJson(method.result),
+    inline: inlineJson(method.inline),
   };
 }
 
@@ -74,6 +98,7 @@ export function serializeManifest(ir: HostLibraryIr): string {
       resultColumnPrefix: ir.naming.resultColumnPrefix,
       inputListTableInfix: ir.naming.inputListTableInfix,
       resultListTableInfix: ir.naming.resultListTableInfix,
+      functionPrefix: ir.naming.functionPrefix,
     },
     columns: {
       callId: ir.columns.callId,

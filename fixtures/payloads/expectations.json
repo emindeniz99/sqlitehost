@@ -33,6 +33,12 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-010-inline.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-009-halt.json",
       "valid": true,
       "errors": [],
@@ -65,6 +71,39 @@
           "validators": ["java", "typescript"]
         }
       ]
+    },
+    {
+      "payload": "invalid/inline-undeclared-feature.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "undeclared-feature-use",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/inline-unknown-function.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unknown-function",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/inline-arity-mismatch.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "function-arity-mismatch",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
     },
     {
       "payload": "invalid/duplicate-input-name.json",

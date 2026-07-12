@@ -17,7 +17,8 @@ namespace Example.Game;
 interface GameHostMethods {
   @hostMethod({
     name: "getValue",
-    handler: "GetValue"
+    handler: "GetValue",
+    mutates: false
   })
   op GetValue(input: GetValueInput): GetValueResult;
 

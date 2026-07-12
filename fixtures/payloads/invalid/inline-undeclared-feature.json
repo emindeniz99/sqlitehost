@@ -1,0 +1,29 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-inline-undeclared-feature",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "requiredMethods": [
+    "getValue",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "double-if-not-target",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT :callId, 'example-key', fn_get_value('example-key') * 2 WHERE fn_get_value('example-key') <> 42",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

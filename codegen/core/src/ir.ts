@@ -22,6 +22,7 @@ export interface NamingIr {
   resultColumnPrefix: string;
   inputListTableInfix: string;
   resultListTableInfix: string;
+  functionPrefix: string;
 }
 
 export interface ScalarFieldIr {
@@ -50,6 +51,31 @@ export interface ObjectShapeIr {
   listFields: ListFieldIr[];
 }
 
+/** Argument of an inline scalar function (input field, declaration order). */
+export interface InlineArgIr {
+  propertyName: string;
+  sqlName: string;
+  scalarType: ScalarTypeIr;
+  optional: boolean;
+}
+
+/**
+ * Inline scalar-function exposure of a method (feature inlineFunctions).
+ * Present only when the method is eligible (mutates:false, scalar-only
+ * input, exactly one scalar result field) and not opted out.
+ */
+export interface InlineIr {
+  functionName: string;
+  minArgs: number;
+  maxArgs: number;
+  args: InlineArgIr[];
+  returns: {
+    propertyName: string;
+    sqlName: string;
+    scalarType: ScalarTypeIr;
+  };
+}
+
 export interface HostMethodIr {
   /** TypeSpec operation name (e.g. "GetValue"). */
   operationName: string;
@@ -58,11 +84,16 @@ export interface HostMethodIr {
   /** Handler member name on the generated handler interface. */
   handlerName: string;
   apiLevel: number;
+  /** True when the handler mutates host state (default). Non-mutating
+   *  methods are eligible for inline function exposure. */
+  mutates: boolean;
   callTable: string;
   resultTable: string;
   queueTrigger: string;
   input: ObjectShapeIr;
   result: ObjectShapeIr;
+  /** Inline function exposure, or null when not exposed. */
+  inline: InlineIr | null;
 }
 
 export interface QueueTableIr {
@@ -154,6 +185,13 @@ export const FEATURES_V1 = [
   "scriptVars",
   "scriptControl",
 ] as const;
+
+/**
+ * Adapter-conditional feature: present in a manifest's library.features
+ * only when the host exposes at least one inline function; supported by
+ * a runtime only when its connection factory is function-capable.
+ */
+export const FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
 
 export const COLUMNS_V1: ColumnsIr = {
   callId: "call_id",

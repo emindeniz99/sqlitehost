@@ -11,7 +11,8 @@
       "splitResultTables",
       "scriptInputs",
       "scriptVars",
-      "scriptControl"
+      "scriptControl",
+      "inlineFunctions"
     ]
   },
   "naming": {
@@ -20,7 +21,8 @@
     "inputColumnPrefix": "input_",
     "resultColumnPrefix": "result_",
     "inputListTableInfix": "__input_",
-    "resultListTableInfix": "__result_"
+    "resultListTableInfix": "__result_",
+    "functionPrefix": "fn_"
   },
   "columns": {
     "callId": "call_id",
@@ -95,6 +97,7 @@
       "methodName": "getValue",
       "handlerName": "GetValue",
       "apiLevel": 1,
+      "mutates": false,
       "callTable": "call_get_value",
       "resultTable": "result_get_value",
       "queueTrigger": "trg_call_get_value_queue",
@@ -123,6 +126,24 @@
           }
         ],
         "listFields": []
+      },
+      "inline": {
+        "functionName": "fn_get_value",
+        "minArgs": 1,
+        "maxArgs": 1,
+        "args": [
+          {
+            "propertyName": "key",
+            "sqlName": "key",
+            "scalarType": "string",
+            "optional": false
+          }
+        ],
+        "returns": {
+          "propertyName": "value",
+          "sqlName": "value",
+          "scalarType": "int64"
+        }
       }
     },
     {
@@ -130,6 +151,7 @@
       "methodName": "setValue",
       "handlerName": "SetValue",
       "apiLevel": 1,
+      "mutates": true,
       "callTable": "call_set_value",
       "resultTable": "result_set_value",
       "queueTrigger": "trg_call_set_value_queue",
@@ -165,13 +187,15 @@
           }
         ],
         "listFields": []
-      }
+      },
+      "inline": null
     },
     {
       "operationName": "GetValues",
       "methodName": "getValues",
       "handlerName": "GetValues",
       "apiLevel": 1,
+      "mutates": true,
       "callTable": "call_get_values",
       "resultTable": "result_get_values",
       "queueTrigger": "trg_call_get_values_queue",
@@ -238,13 +262,15 @@
             ]
           }
         ]
-      }
+      },
+      "inline": null
     },
     {
       "operationName": "PutBlob",
       "methodName": "putBlob",
       "handlerName": "PutBlob",
       "apiLevel": 1,
+      "mutates": true,
       "callTable": "call_put_blob",
       "resultTable": "result_put_blob",
       "queueTrigger": "trg_call_put_blob_queue",
@@ -287,13 +313,15 @@
           }
         ],
         "listFields": []
-      }
+      },
+      "inline": null
     },
     {
       "operationName": "RecordScore",
       "methodName": "recordScore",
       "handlerName": "RecordScore",
       "apiLevel": 1,
+      "mutates": true,
       "callTable": "call_record_score",
       "resultTable": "result_record_score",
       "queueTrigger": "trg_call_record_score_queue",
@@ -336,7 +364,8 @@
           }
         ],
         "listFields": []
-      }
+      },
+      "inline": null
     }
   ]
 }

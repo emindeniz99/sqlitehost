@@ -26,7 +26,13 @@ queueTable:    pending_host_calls   (default)
 inputsTable:   script_inputs        (default)
 varsTable:     script_vars          (default)
 controlTable:  script_control      (default)
+functionPrefix: fn_                  (default; inline scalar functions)
 ```
+
+Derived inline function name: `functionPrefix + snake(methodName)` —
+`getValue` → `fn_get_value` (only for inline-eligible methods; see
+`docs/proposals/inline-host-functions.md`). Diagnostics reject
+collisions with derived names and SQLite built-in function names.
 
 Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
 non-empty, mutually distinct, and must not collide with any derived

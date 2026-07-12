@@ -14,6 +14,7 @@ export const DEFAULT_NAMING: NamingIr = {
   resultColumnPrefix: "result_",
   inputListTableInfix: "__input_",
   resultListTableInfix: "__result_",
+  functionPrefix: "fn_",
 };
 
 /**
@@ -92,4 +93,8 @@ export function deriveResultListTable(
 
 export function deriveQueueTrigger(naming: NamingIr, methodName: string): string {
   return "trg_" + deriveCallTable(naming, methodName) + "_queue";
+}
+
+export function deriveFunctionName(naming: NamingIr, methodName: string): string {
+  return naming.functionPrefix + toSnakeCase(methodName);
 }

@@ -58,10 +58,18 @@ code (`java` = full engine, `typescript` = static authoring subset).
 |---|---|---|
 | `implicit-column-list` | error | INSERT into a call table or call/result child table must have an explicit column list |
 | `undeclared-method-use` | error | script INSERTs into a call table whose method is not in `requiredMethods` |
-| `unused-required-method` | warning | `requiredMethods` entry whose call table is never written |
+| `unused-required-method` | warning | `requiredMethods` entry whose call table is never written AND whose inline function is never invoked |
 | `duplicate-call-id` | error | two INSERTs emit the same statically-resolvable `call_id` for the same call table |
 | `list-child-later-step` | error | child list rows emitted in a different (later) step than their parent call row; parents and children must be colocated (an intentionally empty list is fine) |
 | `list-child-without-parent` | error | child list rows whose `call_id` has no parent insert |
+
+### Inline functions (feature `inlineFunctions`)
+
+| Code | Severity | Rule |
+|---|---|---|
+| `undeclared-feature-use` | error | the script invokes a manifest inline function but `requiredFeatures` lacks `inlineFunctions` |
+| `unknown-function` | error | an identifier call matching the host's `functionPrefix` does not correspond to any manifest inline function |
+| `function-arity-mismatch` | error | an inline function is called with an argument count outside `minArgs..maxArgs` |
 
 ### Result-read lineage (java validator only in v1)
 

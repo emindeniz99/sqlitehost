@@ -42,6 +42,26 @@ failures:
   (`missing-binding`). An adapter must never silently bind NULL for a
   parameter the payload did not provide.
 
+## Optional capability: inline scalar functions
+
+An adapter whose wrapper can reach `sqlite3_create_function` may
+implement `ISqliteHostScalarFunctionConnection` and mark its factory
+with `ISqliteHostScalarFunctionCapableFactory`. Contract:
+
+- register each `SqliteHostScalarFunction` for **every arity** in
+  `MinArgs..MaxArgs` before any script SQL runs;
+- catch **everything** thrown by `Invoke` and report it via the SQL
+  error channel prefixed `SQLITEHOST_HANDLER_ERROR:` — an exception
+  must never cross the native frames (IL2CPP safety); the runtime maps
+  the marker back to `FailedHandler`/`handler-error`;
+- do not register with SQLITE_DETERMINISTIC (v1 rule — see
+  `docs/proposals/inline-host-functions.md`);
+- incapable adapters implement nothing: hosts running on them
+  clean-skip scripts that require `inlineFunctions`.
+
+The conformance suite gains an optional capability section that runs
+only against capable adapters.
+
 ## Value fidelity
 
 Round-trip fidelity is part of the contract: int32, int64 (values

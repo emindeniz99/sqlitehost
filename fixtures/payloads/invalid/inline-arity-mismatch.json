@@ -1,0 +1,30 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-inline-arity-mismatch",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "inlineFunctions"
+  ],
+  "requiredMethods": [
+    "getValue",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "write",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) VALUES (:callId, 'example-key', fn_get_value('example-key', 'extra'))",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

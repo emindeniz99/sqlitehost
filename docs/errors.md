@@ -42,7 +42,8 @@ host application decides logging/telemetry policy.
 | `call-row-missing` | FailedSql | queue row exists but the parent call row is missing |
 | `script-abort` | FailedScript | the script wrote action `fail` into the control table; `ErrorMessage` carries the script's message; the current step's pending calls are not drained |
 | `invalid-control-action` | FailedValidation | the control table's first row carries an action other than `halt`/`fail` |
-| `handler-error` | FailedHandler | handler threw; `Method` and `ErrorMessage` carry details |
+| `handler-error` | FailedHandler | handler threw — via the queue drain OR inside an inline function (the adapter reports the `SQLITEHOST_HANDLER_ERROR:` marker through the SQL error and the runtime maps it back); `Method` and `ErrorMessage` carry details |
+| `inline-registration-error` | FailedSchema | registering the host's inline scalar functions on a capable connection failed |
 | `result-write-error` | FailedSql | writing result rows failed |
 | `list-child-after-drain` | FailedSql | input list child rows appeared for a call that was already drained in an earlier step (the validator blocks this statically; the runtime detects it defensively by re-counting child rows of drained calls after each step) |
 
@@ -57,7 +58,9 @@ statement-scoped failures (`StatementIndex` is `-1` otherwise);
 native SQLite error code when the adapter surfaced one via
 `SqliteHostAdapterException` (`0` = not available);
 `ExecutedCallCount` always counts successfully completed handler
-invocations.
+invocations through the queue drain; `InlineCallCount` counts handler
+invocations made through inline scalar functions (informational — the
+SQLite planner may evaluate a function 0..N times per row).
 
 ## Logging policy
 

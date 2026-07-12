@@ -153,6 +153,7 @@ public sealed class SqliteHostRunResult
     public bool Halted { get; set; }            // true when the script halted itself (Status stays Completed)
     public string HaltMessage { get; set; }     // the script's optional halt message
     public int ExecutedCallCount { get; set; }
+    public int InlineCallCount { get; set; }    // handler invocations via inline functions (informational)
     public List<SqliteHostCallDiagnostic> Calls { get; set; }  // populated when EnableDiagnostics
 }
 
@@ -187,6 +188,7 @@ public sealed class SqliteHostNaming
     public string QueueTable { get; }     // default "pending_host_calls"
     public string InputsTable { get; }    // default "script_inputs"
     public string VarsTable { get; }      // default "script_vars"
+    public string FunctionPrefix { get; } // default "fn_" (inline scalar functions)
 }
 
 public sealed class SqliteHostNamingBuilder   // each setter returns this
@@ -201,6 +203,35 @@ public sealed class SqliteHostNamingBuilder   // each setter returns this
     public SqliteHostNamingBuilder InputsTable(string value);
     public SqliteHostNamingBuilder VarsTable(string value);
     public SqliteHostNamingBuilder ControlTable(string value);
+    public SqliteHostNamingBuilder FunctionPrefix(string value);
+}
+
+// ---- Inline scalar functions (feature inlineFunctions) ----
+
+public sealed class SqliteHostScalarFunction
+{
+    public string Name { get; }
+    public int MinArgs { get; }
+    public int MaxArgs { get; }
+    // args.Length is within [MinArgs..MaxArgs]; omitted trailing args arrive as Null values.
+    public Func<SqliteHostBindingValue[], SqliteHostBindingValue> Invoke { get; }
+}
+
+// A connection that can register scalar functions. Adapter contract:
+// catch EVERYTHING thrown by Invoke and report it through the SQL error
+// channel prefixed with "SQLITEHOST_HANDLER_ERROR:" — an exception must
+// never cross the native frames (IL2CPP safety).
+public interface ISqliteHostScalarFunctionConnection : ISqliteHostConnection
+{
+    void RegisterScalarFunction(SqliteHostScalarFunction function);
+}
+
+// Marker on the factory = static capability: the runtime knows whether
+// inlineFunctions is supported WITHOUT opening a workspace, so the
+// clean-skip precheck stays workspace-free. Connections returned by a
+// capable factory must implement ISqliteHostScalarFunctionConnection.
+public interface ISqliteHostScalarFunctionCapableFactory : ISqliteHostConnectionFactory
+{
 }
 
 public sealed class SqliteHostColumns      // all default to the protocol names
@@ -291,6 +322,12 @@ public interface IHostMethodSpecBuilder<THandlers, TInput, TResult>
         Action<IResultFieldsBuilder<TResult>> configure);
     IHostMethodSpecBuilder<THandlers, TInput, TResult> Handler(
         Func<THandlers, TInput, TResult> handler);
+    // Exposes the method as an inline scalar function (generated code
+    // emits this between .Results and .Handler). Build() validates
+    // eligibility: mutates:false semantics are the generator's duty;
+    // shape rules (scalar-only input, exactly one scalar result, no
+    // lists) are re-checked here fail-loud.
+    IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName);
     IHostMethodSpec<THandlers> Build();
 }
 ```
