@@ -203,7 +203,7 @@ Dist-tags: `latest` for releases. Use `next` for pre-releases
 (`pnpm publish --tag next`) so `pnpm add @sqlite-host/typespec` never
 resolves to a pre-release by accident.
 
-## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance
+## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance, SqliteHost.Adapters.Native
 
 The csproj packing metadata (`PackageId`, `Version`, `Description`,
 `PackageLicenseExpression`, `PackageReadmeFile`, repo/source-link
@@ -221,9 +221,10 @@ metadata here.
    dotnet pack -c Release
    ```
 
-   Pack `SqliteHost.Abstractions`, `SqliteHost.Runtime`, and
+   Pack `SqliteHost.Abstractions`, `SqliteHost.Runtime`,
    `SqliteHost.Conformance` (the adapter conformance suite consumers
-   reference from their test projects — see docs/adapter-contract.md);
+   reference from their test projects — see docs/adapter-contract.md),
+   and `SqliteHost.Adapters.Native` (the DllImport adapter);
    the sample and tests never publish.
 3. **Symbols:** enable snupkg in the csproj metadata
    (`IncludeSymbols=true`, `SymbolPackageFormat=snupkg`) — `dotnet

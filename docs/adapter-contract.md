@@ -78,9 +78,21 @@ tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the
 public fluent API; no dependency on the sample or any concrete
-adapter). The repo runs it against all three built-in adapters
-(Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net-pcl) and
-against real SQLite engines 3.9.0 → newest in the version matrix.
+adapter). The repo runs it against all four built-in adapters
+(Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net-pcl, and
+**SqliteHost.Adapters.Native** — a shippable pure-DllImport/P-Invoke
+adapter that consumes libsqlite3 directly, implements the
+scalar-function capability natively, and serves as the reference for
+DllImport-style wrapper authors) and against real SQLite engines
+3.9.0 → newest in the version matrix.
+
+Native-adapter IL2CPP caveat: its scalar-function support uses reverse
+P/Invoke callbacks, which under Unity IL2CPP require
+`[MonoPInvokeCallback]` on two static methods — a netstandard2.0
+package cannot reference the Unity attribute, so Unity consumers
+vendoring the source add it themselves (documented on the class
+headers). The Execute/Query path is callback-free and IL2CPP-clean
+as-is.
 
 **If you write your own adapter — including private forks of Unity
 SQLite wrappers — add the package to your test project and subclass

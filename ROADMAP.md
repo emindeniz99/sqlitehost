@@ -14,10 +14,13 @@ entries when shipped.
   scope, license decision, and name/trademark signoff (note the SQLite
   trademark caveat) — everything else is prepared; follow
   [docs/guides/publishing.md](./docs/guides/publishing.md).
-- **Shippable Unity SQLite adapter package**: the sqlite-net adapter
-  pattern is implemented and tested in `csharp/SqliteHost.Tests/Adapter/
-  SqliteNetAdapter.cs`; packaging it into the UPM package (with a
-  native SQLite plugin story per platform) remains.
+- **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
+  now ships the DllImport adapter (scalar functions included; Unity
+  consumers vendoring it add `[MonoPInvokeCallback]` on two callbacks
+  for IL2CPP — see docs/adapter-contract.md). What remains is only the
+  UPM packaging + per-platform native libsqlite3 plugin story; the
+  sqlite-net wrapper pattern also stays available as
+  `csharp/SqliteHost.Tests/Adapter/SqliteNetAdapter.cs`.
 
 ## Scripting-language proposals (designed, awaiting owner decision)
 
@@ -34,21 +37,7 @@ script terminating by construction). Deliberately absent and proposed:
   `fail`, optional message) → clean `Completed`/`FailedValidation`
   outcome with the message in diagnostics. Cheap; needs a contract
   decision on status semantics.
-- **Inline host functions (scalar UDFs) — designed, awaiting
-  implementation go**: non-mutating single-scalar-result host methods
-  automatically exposed as SQL functions (`fn_get_value('k')`) on
-  adapters capable of `sqlite3_create_function` (DllImport-style
-  wrappers included), dual with the always-present call-table form,
-  gated by the `inlineFunctions` feature + factory capability so
-  incapable hosts clean-skip. Full design (owner decisions: automatic
-  exposure with opt-out; mutations closed in v1 with the door
-  documented; no idempotent flag yet; single-scalar rule and the
-  obj/list answer via a future `tableFunctions` tier):
-  [docs/proposals/inline-host-functions.md](./docs/proposals/inline-host-functions.md).
-  **Version/capability caveat (owner note)**: the originating consumer
-  environment — a SQLite-3.19-era wrapper — could not register custom
-  functions at all; that limitation is part of why this toolkit
-  exists. Never a floor requirement.
+
 - **Determinism lint**: warn when payload SQL calls nondeterministic
   builtins (`random()`, `date('now')` etc.) since script replays would
   diverge.

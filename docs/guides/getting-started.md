@@ -116,17 +116,23 @@ vendored files are stable and diffable.
 logic. The runtime invokes it only through the generated interface —
 never by reflection, never by inference.
 
-**Adapter.** Implement `ISqliteHostConnectionFactory` /
-`ISqliteHostConnection` / `ISqliteHostRow` over whatever SQLite
-wrapper you already use. Read `docs/adapter-contract.md` first — the
-core rule is *no silent failure*. Three reference adapters to mirror,
-all in `csharp/SqliteHost.Tests/Adapter/`:
+**Adapter.** Easiest path: use the shipped
+`csharp/SqliteHost.Adapters.Native/` package — a pure
+DllImport("sqlite3") adapter with no dependencies beyond Abstractions
+(scalar-function capability included; under Unity IL2CPP add
+`[MonoPInvokeCallback]` to its two static callbacks when vendoring —
+the Execute/Query path needs nothing). Or implement
+`ISqliteHostConnectionFactory` / `ISqliteHostConnection` /
+`ISqliteHostRow` over whatever SQLite wrapper you already use — read
+`docs/adapter-contract.md` first; the core rule is *no silent
+failure*. Reference adapters to mirror, in
+`csharp/SqliteHost.Tests/Adapter/`:
 
 - `MicrosoftDataSqliteAdapter.cs` (Microsoft.Data.Sqlite — the shape
   to copy for desktop/server),
 - `SystemDataSqliteAdapter.cs` (System.Data.SQLite),
 - `SqliteNetAdapter.cs` (sqlite-net-pcl — the shape to copy for
-  Unity wrappers).
+  wrapper-handle integrations).
 
 Then prove your adapter with the conformance suite: your vendored
 copy of `csharp/SqliteHost.Conformance/` ships
