@@ -106,9 +106,12 @@ namespace SqliteHost.Tests
             Assert.Equal(1, factory.VersionQueryCount);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ValidateEnvironment_OnRealAdapter_Completes_WithoutCreatingSchema()
         {
+            // Expects the sample-floor gate to PASS on the real engine; the
+            // below-floor refusal on real engines is FloorGateTests' job.
+            SampleHostFloor.SkipBelowFloor();
             using var factory = new TestWorkspaceFactory(retainWorkspace: true);
             var runtime = CreateRuntime(factory, GeneratedHostDefinition.Build());
 
@@ -123,9 +126,10 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { 0L }, objectCounts);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ValidateEnvironment_DisposesTheWorkspace()
         {
+            SampleHostFloor.SkipBelowFloor();
             var factory = new TestWorkspaceFactory();
             var runtime = CreateRuntime(factory, GeneratedHostDefinition.Build());
 

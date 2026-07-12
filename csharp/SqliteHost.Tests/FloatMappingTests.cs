@@ -15,6 +15,10 @@ namespace SqliteHost.Tests
             EchoFloatTypeHandlers handlers,
             TestWorkspaceFactory factory)
         {
+            // Every test here runs the workspace on the real engine, so all
+            // would fail via the version gate below the (default) floor the
+            // FloatTypeHost definition carries (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             return new SqliteHostRuntime<IFloatTypeHandlers>(
                 connectionFactory: factory,
                 hostDefinition: FloatTypeHost.Build(),
@@ -33,7 +37,7 @@ namespace SqliteHost.Tests
                 ("optF64", withOptionals ? SqliteHostBindingValue.Float64(0.0) : SqliteHostBindingValue.Null()));
         }
 
-        [Fact]
+        [SkippableFact]
         public void FloatBindings_RoundTripIntoTheInputDto()
         {
             var handlers = new EchoFloatTypeHandlers();
@@ -52,7 +56,7 @@ namespace SqliteHost.Tests
             Assert.Empty(input.Pairs);
         }
 
-        [Fact]
+        [SkippableFact]
         public void OptionalFloatNullInputs_MapToNullDtoValues()
         {
             var handlers = new EchoFloatTypeHandlers();
@@ -67,7 +71,7 @@ namespace SqliteHost.Tests
             Assert.Null(handlers.LastInput.OptF64);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ResultFloats_AreStoredAsRealValues()
         {
             var handlers = new EchoFloatTypeHandlers();
@@ -102,7 +106,7 @@ namespace SqliteHost.Tests
             Assert.Equal("real", row0.F64Type);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ResultOptionalFloatNulls_AreWrittenAsNullColumns()
         {
             var handlers = new EchoFloatTypeHandlers();
@@ -120,7 +124,7 @@ namespace SqliteHost.Tests
             Assert.All(Assert.Single(nullFlags), Assert.True);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Float32RoundTrip_PreservesExactDyadicValue()
         {
             // 0.75 is exactly representable as an IEEE-754 single, so it must
@@ -140,7 +144,7 @@ namespace SqliteHost.Tests
             Assert.Equal(0.75, Assert.Single(stored));   // exact as double too
         }
 
-        [Fact]
+        [SkippableFact]
         public void ListItemFloats_RoundTripThroughChildTables()
         {
             var handlers = new EchoFloatTypeHandlers();
@@ -189,7 +193,7 @@ namespace SqliteHost.Tests
             Assert.Null(childRows[1].OptF32);
         }
 
-        [Fact]
+        [SkippableFact]
         public void RuntimeFloatInputs_StoreIntoRealValue_NullStoresAllValueColumnsNull()
         {
             var handlers = new EchoFloatTypeHandlers();

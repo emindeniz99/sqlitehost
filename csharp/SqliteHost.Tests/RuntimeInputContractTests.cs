@@ -29,9 +29,10 @@ namespace SqliteHost.Tests
             return (runtime, factory, handlers);
         }
 
-        [Fact]
+        [SkippableFact]
         public void InputsAreOptional_ScriptWithoutInputsCompletes()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, _) = CreateRuntime();
             var script = Scripts.New(
                 Scripts.Step("only",
@@ -78,11 +79,12 @@ namespace SqliteHost.Tests
             Assert.Contains("date", ex.Message);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Example007_MixedPrefixSameName_RunsCompleted()
         {
             // :callId and $callId in one statement are fed by the single
             // prefixless binding "callId" (docs/adapter-contract.md).
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, handlers) = CreateRuntime();
             handlers.Storage["example-key"] = 5;
 

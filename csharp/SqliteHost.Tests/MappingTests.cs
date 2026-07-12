@@ -19,6 +19,10 @@ namespace SqliteHost.Tests
             EchoEveryTypeHandlers handlers,
             TestWorkspaceFactory factory)
         {
+            // Every test here runs the workspace on the real engine, so all
+            // would fail via the version gate below the (default) floor the
+            // EveryTypeHost definition carries (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             return new SqliteHostRuntime<IEveryTypeHandlers>(
                 connectionFactory: factory,
                 hostDefinition: EveryTypeHost.Build(),
@@ -43,7 +47,7 @@ namespace SqliteHost.Tests
                 ("optPayload", withOptionals ? SqliteHostBindingValue.Blob(OptPayloadBytes) : SqliteHostBindingValue.Null()));
         }
 
-        [Fact]
+        [SkippableFact]
         public void AllBindingTypesAndPrefixes_RoundTripIntoTheInputDto()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -68,7 +72,7 @@ namespace SqliteHost.Tests
             Assert.Empty(input.Pairs);
         }
 
-        [Fact]
+        [SkippableFact]
         public void OptionalNullInputs_MapToNullDtoValues()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -87,7 +91,7 @@ namespace SqliteHost.Tests
             Assert.Null(input.OptPayload);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ResultScalars_AreWrittenWithCorrectSqliteRepresentations()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -124,7 +128,7 @@ namespace SqliteHost.Tests
             Assert.Equal(0, row0.OptFlag);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ResultOptionalNulls_AreWrittenAsNullColumns()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -143,7 +147,7 @@ namespace SqliteHost.Tests
             Assert.All(Assert.Single(nullFlags), Assert.True);
         }
 
-        [Fact]
+        [SkippableFact]
         public void InputList_OrdersByItemIndex_NotInsertionOrder()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -168,7 +172,7 @@ namespace SqliteHost.Tests
             Assert.Equal("third", pairs[2].K);
         }
 
-        [Fact]
+        [SkippableFact]
         public void EmptyInputList_MapsToEmptyListAndWritesNoChildRows()
         {
             var handlers = new EchoEveryTypeHandlers();
@@ -187,7 +191,7 @@ namespace SqliteHost.Tests
             Assert.Empty(childRows);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ResultList_WritesChildRowsWithSequentialItemIndex()
         {
             var handlers = new EchoEveryTypeHandlers();

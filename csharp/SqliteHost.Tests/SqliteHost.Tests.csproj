@@ -33,6 +33,7 @@
     <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
     <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj" />
     <ProjectReference Include="../SqliteHost.Conformance/SqliteHost.Conformance.csproj" />
+    <ProjectReference Include="../SqliteHost.Adapters.Native/SqliteHost.Adapters.Native.csproj" />
     <ProjectReference Include="../SqliteHost.Generated.Sample/SqliteHost.Generated.Sample.csproj" />
   </ItemGroup>
 

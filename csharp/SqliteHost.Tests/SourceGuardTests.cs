@@ -8,8 +8,8 @@ using Xunit;
 namespace SqliteHost.Tests
 {
     /// <summary>
-    /// Source-level guards over SqliteHost.Runtime and
-    /// SqliteHost.Abstractions (docs/errors.md logging policy,
+    /// Source-level guards over SqliteHost.Runtime, SqliteHost.Abstractions,
+    /// and SqliteHost.Adapters.Native (docs/errors.md logging policy,
     /// docs/compatibility.md IL2CPP guardrail): the shipped packages emit no
     /// logs and use no reflection. The tests scan the actual .cs sources at
     /// test time, ignoring comment text. No exceptions are allowed today; if
@@ -64,11 +64,11 @@ namespace SqliteHost.Tests
                 "Forbidden tokens in shipped sources:\n" + string.Join("\n", violations));
         }
 
-        /// <summary>Top-level .cs files of the two shipped packages (bin/obj excluded by construction).</summary>
+        /// <summary>Top-level .cs files of the shipped runtime-side packages (bin/obj excluded by construction).</summary>
         private static IEnumerable<string> GuardedSourceFiles()
         {
             string csharpRoot = Path.Combine(Directory.GetParent(FixturePaths.Root).FullName, "csharp");
-            string[] projects = { "SqliteHost.Runtime", "SqliteHost.Abstractions" };
+            string[] projects = { "SqliteHost.Runtime", "SqliteHost.Abstractions", "SqliteHost.Adapters.Native" };
             bool any = false;
             foreach (string project in projects)
             {

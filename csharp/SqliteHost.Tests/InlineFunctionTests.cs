@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Example.Game.Generated;
 using Microsoft.Data.Sqlite;
+using SqliteHost.Adapters.Native;
 using SqliteHost.Conformance;
 using SqliteHost.Tests.Adapter;
 using SqliteHost.Tests.TestSupport;
@@ -28,8 +29,13 @@ namespace SqliteHost.Tests
         {
             Skip.If(
                 SkipUnderNativeOverride && NativeSqliteOverride.IsActive,
-                "SQLITEHOST_NATIVE_SQLITE is set: the dynamic-provider override is scoped to the "
-                + "Microsoft.Data.Sqlite adapter; this adapter bundles/loads its own native SQLite.");
+                "SQLITEHOST_NATIVE_SQLITE is set: the override is scoped to the Microsoft.Data.Sqlite "
+                + "and SqliteHost.Adapters.Native adapters; this adapter bundles/loads its own native SQLite.");
+            // Below the sample host's floor every runtime-driven scenario
+            // would fail via the designed sqlite-version-too-low gate (see
+            // FloorGateTests). The two CleanSkip_* tests never open a
+            // workspace and run everywhere.
+            SampleHostFloor.SkipBelowFloor();
         }
 
         private SqliteHostRunResult RunGeneratedHost(
@@ -353,5 +359,12 @@ namespace SqliteHost.Tests
 
         protected override ISqliteHostConnection OpenAdapterConnection()
             => SqliteNetConnection.OpenInMemory();
+    }
+
+    /// <summary>Inline function matrix on the shippable SqliteHost.Adapters.Native P/Invoke adapter (honors SQLITEHOST_NATIVE_SQLITE).</summary>
+    public class NativeAdapterInlineFunctionTests : InlineFunctionTestsBase
+    {
+        protected override ISqliteHostConnection OpenAdapterConnection()
+            => NativeSqliteHostConnection.OpenInMemory();
     }
 }

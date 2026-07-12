@@ -17,6 +17,10 @@ namespace SqliteHost.Tests
             FakeGameHandlers handlers,
             TestWorkspaceFactory factory = null)
         {
+            // Every test here runs the workspace on the real engine, so all
+            // would fail via the version gate below the sample host's floor
+            // (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             return new SqliteHostRuntime<IGeneratedHostHandlers>(
                 connectionFactory: factory ?? new TestWorkspaceFactory(),
                 hostDefinition: GeneratedHostDefinition.Build(),
@@ -41,7 +45,7 @@ namespace SqliteHost.Tests
                 ("value", SqliteHostBindingValue.Int64(value)));
         }
 
-        [Fact]
+        [SkippableFact]
         public void FailAction_SkipsTheFailingStepsDrain_EarlierStepsEffectsPersist()
         {
             var handlers = new FakeGameHandlers();
@@ -80,7 +84,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "s-1|done", "g-1|pending" }, queueRows);
         }
 
-        [Fact]
+        [SkippableFact]
         public void InvalidControlAction_FailsValidation_WithStatementContext()
         {
             var handlers = new FakeGameHandlers();
@@ -101,7 +105,7 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void HaltMidStep_SkipsLaterStatements_ButDrainsCallsEmittedSoFar()
         {
             var handlers = new FakeGameHandlers();
@@ -138,7 +142,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "g-1" }, callIds);
         }
 
-        [Fact]
+        [SkippableFact]
         public void Halt_WithNullMessage_CompletesWithNullHaltMessage()
         {
             var handlers = new FakeGameHandlers();
@@ -154,7 +158,7 @@ namespace SqliteHost.Tests
             Assert.Null(result.HaltMessage);
         }
 
-        [Fact]
+        [SkippableFact]
         public void FirstControlRowByRowidWins()
         {
             var handlers = new FakeGameHandlers();

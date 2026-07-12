@@ -21,6 +21,10 @@ namespace SqliteHost.Tests
             FakeGameHandlers handlers,
             TestWorkspaceFactory factory = null)
         {
+            // Every test here runs the workspace on the real engine, so all
+            // would fail via the version gate below the sample host's floor
+            // (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             return new SqliteHostRuntime<IGeneratedHostHandlers>(
                 connectionFactory: factory ?? new TestWorkspaceFactory(),
                 hostDefinition: GeneratedHostDefinition.Build(),
@@ -45,7 +49,7 @@ namespace SqliteHost.Tests
                 ("key", SqliteHostBindingValue.Text(key)));
         }
 
-        [Fact]
+        [SkippableFact]
         public void DuplicateItemIndex_FailsAtInsert_ThroughThePrimaryKeyConstraint()
         {
             var handlers = new FakeGameHandlers();
@@ -66,7 +70,7 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);   // step aborted before drain
         }
 
-        [Fact]
+        [SkippableFact]
         public void ItemIndexGaps_MapToADenseOrderedList()
         {
             var handlers = new FakeGameHandlers();
@@ -93,7 +97,7 @@ namespace SqliteHost.Tests
             Assert.Equal("c", handlers.LastGetValuesInput.Keys[2].Key);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ListChildRowsAddedAfterDrain_FailSql_ListChildAfterDrain()
         {
             var handlers = new FakeGameHandlers();

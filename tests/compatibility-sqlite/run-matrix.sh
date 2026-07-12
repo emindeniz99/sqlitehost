@@ -7,9 +7,11 @@
 # that native build via the SQLITEHOST_NATIVE_SQLITE dynamic-provider
 # override (see csharp/SqliteHost.Tests/Adapter/NativeSqliteOverride.cs).
 #
-# Exit status: non-zero if any SUPPORTED-FLOOR version (>= 3.19.3) fails.
-# 3.9.0 and 3.9.2 are below the documented floor (docs/compatibility.md)
-# and are run for information only.
+# Exit status: non-zero if ANY version fails. 3.9.0 and 3.9.2 are below the
+# documented floor (docs/compatibility.md); on those engines the
+# runtime-driven suites skip with a reason (SampleHostFloor) while
+# FloorGateTests assert the sqlite-version-too-low gate itself plus a
+# lowered-floor end-to-end run, so below-floor rows are expected green too.
 set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +19,19 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CACHE_DIR="$SCRIPT_DIR/.cache"
 SOLUTION="$PROJECT_ROOT/csharp/SqliteHost.sln"
 FLOOR_VERSION="3.19.3"
+FLOOR_VERSION_NUMBER=3019003   # sqlite3_libversion_number encoding of the floor
+
+# The four runtime-driven conformance tests live in the shippable
+# SqliteHost.Conformance base class, whose only skip hook
+# (SkipEntireSuiteReason) disables the WHOLE suite — including the
+# adapter-level sections that measurably pass below the floor. Below-floor
+# cells therefore exclude exactly those four methods instead, so the
+# adapter-level conformance coverage keeps running; every other
+# runtime-driven test skips itself with a reason via SampleHostFloor.
+BELOW_FLOOR_FILTER='FullyQualifiedName!~UnknownBinding_FailsMissingBinding'
+BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ExtraBinding_FailsUnusedBinding'
+BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ErrorMidStep_AbortsTheStep'
+BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ScalarFunction_NullForRequiredArg'
 
 mkdir -p "$CACHE_DIR"
 
@@ -80,7 +95,7 @@ build_native() {
 
 # --- run ------------------------------------------------------------------
 declare -a RESULT_VERSION RESULT_STATUS RESULT_DETAIL
-overall_floor_failure=0
+overall_failure=0
 
 version_ge() { # version_ge A B: is A >= B?
   [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]
@@ -95,7 +110,7 @@ for entry in "${VERSIONS[@]}"; do
   so="$(build_native "$ver" "$year" "$num")"
   if [ -z "$so" ] || [ ! -f "$so" ]; then
     RESULT_VERSION+=("$ver"); RESULT_STATUS+=("BUILD-FAIL"); RESULT_DETAIL+=("download/compile failed")
-    version_ge "$ver" "$FLOOR_VERSION" && overall_floor_failure=1
+    overall_failure=1
     continue
   fi
 
@@ -105,15 +120,20 @@ for entry in "${VERSIONS[@]}"; do
   IFS=. read -r vmaj vmin vpat <<<"$ver"
   vernum=$((vmaj * 1000000 + vmin * 1000 + vpat))
 
+  extra_args=()
+  if [ "$vernum" -lt "$FLOOR_VERSION_NUMBER" ]; then
+    extra_args+=(--filter "$BELOW_FLOOR_FILTER")
+  fi
+
   log="$CACHE_DIR/test-$ver.log"
   if SQLITEHOST_NATIVE_SQLITE="$so" \
      SQLITEHOST_EXPECTED_SQLITE_VERSION="$ver" \
      SQLITEHOST_EXPECTED_SQLITE_VERSION_NUMBER="$vernum" \
-     dotnet test "$SOLUTION" --nologo -v q >"$log" 2>&1; then
+     dotnet test "$SOLUTION" --nologo -v q "${extra_args[@]}" >"$log" 2>&1; then
     status="PASS"
   else
     status="FAIL"
-    version_ge "$ver" "$FLOOR_VERSION" && overall_floor_failure=1
+    overall_failure=1
   fi
   summary="$(grep -E 'Failed:.*Passed:.*Total:' "$log" | tail -1 \
     | sed -E 's/.*(Failed:[ ]*[0-9]+),[ ]*(Passed:[ ]*[0-9]+),[ ]*(Skipped:[ ]*[0-9]+),[ ]*(Total:[ ]*[0-9]+).*/\1, \2, \3, \4/' \
@@ -134,8 +154,8 @@ for i in "${!RESULT_VERSION[@]}"; do
 done
 echo "============================================================="
 
-if [ "$overall_floor_failure" -ne 0 ]; then
-  echo "FLOOR VIOLATION: a supported version (>= $FLOOR_VERSION) failed." >&2
+if [ "$overall_failure" -ne 0 ]; then
+  echo "MATRIX FAILURE: a version row did not pass (below-floor rows are expected green too)." >&2
   exit 1
 fi
-echo "All supported-floor versions (>= $FLOOR_VERSION) passed."
+echo "All versions passed (>= $FLOOR_VERSION runs the full suite; below-floor rows skip the runtime-driven suites and prove the gate via FloorGateTests)."

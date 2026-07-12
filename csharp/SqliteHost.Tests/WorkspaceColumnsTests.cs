@@ -173,9 +173,10 @@ namespace SqliteHost.Tests
             Assert.DoesNotContain("'done'", ddl);
         }
 
-        [Fact]
+        [SkippableFact]
         public void CustomColumnsHost_EndToEnd_DrainResultsListsAndHaltUseTheCustomNames()
         {
+            SampleHostFloor.SkipBelowFloor();
             var handlers = new RecordingHandlers();
             using var factory = new TestWorkspaceFactory(retainWorkspace: true);
             var runtime = new SqliteHostRuntime<IColumnsHandlers>(

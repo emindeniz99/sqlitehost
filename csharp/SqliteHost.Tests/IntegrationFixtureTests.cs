@@ -1,6 +1,7 @@
 using System;
 using Example.Game.Generated;
 using Microsoft.Data.Sqlite;
+using SqliteHost.Adapters.Native;
 using SqliteHost.Conformance;
 using SqliteHost.Tests.Adapter;
 using SqliteHost.Tests.Fixtures;
@@ -12,16 +13,19 @@ namespace SqliteHost.Tests
     /// <summary>
     /// End-to-end runs of the committed fixture payloads with
     /// dictionary-backed fake handlers, parameterized across every real
-    /// adapter (Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net) via
-    /// the concrete subclasses at the bottom of this file. Every scenario
-    /// runs once per adapter.
+    /// adapter (Microsoft.Data.Sqlite, System.Data.SQLite, sqlite-net,
+    /// SqliteHost.Adapters.Native) via the concrete subclasses at the
+    /// bottom of this file. Every scenario runs once per adapter.
     ///
     /// Native-override runs (SQLITEHOST_NATIVE_SQLITE set by
-    /// tests/compatibility-sqlite/run-matrix.sh): only the
-    /// Microsoft.Data.Sqlite subclass runs. System.Data.SQLite ships its own
-    /// interop + native and never sees the SQLitePCLRaw provider override;
-    /// sqlite-net technically would, but is skipped too so each matrix run
-    /// exercises exactly one adapter against exactly one known native build.
+    /// tests/compatibility-sqlite/run-matrix.sh): the Microsoft.Data.Sqlite
+    /// subclass runs (SQLitePCLRaw dynamic provider) and so does the
+    /// SqliteHost.Adapters.Native subclass (its test-side DllImportResolver
+    /// honors the same variable — see NativeAdapterLibraryResolver), so each
+    /// matrix cell exercises both overridable adapters against exactly one
+    /// known native build. System.Data.SQLite ships its own interop + native
+    /// and never sees either override; sqlite-net technically shares the
+    /// SQLitePCLRaw provider but is skipped too to keep the cell scoped.
     /// </summary>
     public abstract class IntegrationFixtureTestsBase
     {
@@ -53,8 +57,11 @@ namespace SqliteHost.Tests
         {
             Skip.If(
                 SkipUnderNativeOverride && NativeSqliteOverride.IsActive,
-                "SQLITEHOST_NATIVE_SQLITE is set: the dynamic-provider override is scoped to the "
-                + "Microsoft.Data.Sqlite adapter; this adapter bundles/loads its own native SQLite.");
+                "SQLITEHOST_NATIVE_SQLITE is set: the override is scoped to the Microsoft.Data.Sqlite "
+                + "and SqliteHost.Adapters.Native adapters; this adapter bundles/loads its own native SQLite.");
+            // Below the sample host's floor every fixture run would fail via
+            // the designed sqlite-version-too-low gate (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             var runtime = new SqliteHostRuntime<IGeneratedHostHandlers>(
                 connectionFactory: factory ?? CreateFactory(),
                 hostDefinition: GeneratedHostDefinition.Build(),
@@ -372,5 +379,12 @@ namespace SqliteHost.Tests
 
         protected override ISqliteHostConnection OpenAdapterConnection()
             => SqliteNetConnection.OpenInMemory();
+    }
+
+    /// <summary>Fixture matrix on the shippable SqliteHost.Adapters.Native P/Invoke adapter (honors SQLITEHOST_NATIVE_SQLITE).</summary>
+    public class NativeAdapterIntegrationFixtureTests : IntegrationFixtureTestsBase
+    {
+        protected override ISqliteHostConnection OpenAdapterConnection()
+            => NativeSqliteHostConnection.OpenInMemory();
     }
 }

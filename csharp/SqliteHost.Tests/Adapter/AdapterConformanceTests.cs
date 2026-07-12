@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using SqliteHost.Adapters.Native;
 using SqliteHost.Conformance;
 
 namespace SqliteHost.Tests.Adapter
@@ -6,18 +7,21 @@ namespace SqliteHost.Tests.Adapter
     /// <summary>
     /// Runs the shippable adapter conformance suite
     /// (SqliteHost.Conformance.AdapterConformanceTestsBase) against all
-    /// three built-in adapters.
+    /// four built-in adapters.
     ///
-    /// Native-override runs (SQLITEHOST_NATIVE_SQLITE): scoped to the
-    /// Microsoft.Data.Sqlite adapter, same policy as IntegrationFixtureTests.
+    /// Native-override runs (SQLITEHOST_NATIVE_SQLITE): scoped to the two
+    /// adapters that honor the override — Microsoft.Data.Sqlite (SQLitePCLRaw
+    /// dynamic provider) and SqliteHost.Adapters.Native (test-side
+    /// DllImportResolver, see NativeAdapterLibraryResolver) — same policy as
+    /// IntegrationFixtureTests.
     /// </summary>
     internal static class NativeOverrideSuiteSkip
     {
         /// <summary>Skip reason for adapters excluded from native-override matrix runs.</summary>
         internal static string ReasonOrNull =>
             NativeSqliteOverride.IsActive
-                ? "SQLITEHOST_NATIVE_SQLITE is set: the dynamic-provider override is scoped to the "
-                  + "Microsoft.Data.Sqlite adapter; this adapter bundles/loads its own native SQLite."
+                ? "SQLITEHOST_NATIVE_SQLITE is set: the override is scoped to the Microsoft.Data.Sqlite "
+                  + "and SqliteHost.Adapters.Native adapters; this adapter bundles/loads its own native SQLite."
                 : null;
     }
 
@@ -48,5 +52,16 @@ namespace SqliteHost.Tests.Adapter
 
         protected override ISqliteHostConnection OpenAdapterConnection()
             => SqliteNetConnection.OpenInMemory();
+    }
+
+    /// <summary>
+    /// Conformance suite on the shippable SqliteHost.Adapters.Native
+    /// P/Invoke adapter (honors SQLITEHOST_NATIVE_SQLITE via the test-side
+    /// DllImportResolver, so it RUNS in every matrix cell).
+    /// </summary>
+    public class NativeAdapterConformanceTests : AdapterConformanceTestsBase
+    {
+        protected override ISqliteHostConnection OpenAdapterConnection()
+            => NativeSqliteHostConnection.OpenInMemory();
     }
 }

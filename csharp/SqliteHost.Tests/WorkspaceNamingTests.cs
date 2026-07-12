@@ -108,9 +108,10 @@ namespace SqliteHost.Tests
             Assert.Contains("    INSERT INTO host_queue (call_id, method)\n", trigger);
         }
 
-        [Fact]
+        [SkippableFact]
         public void CustomNamedHost_EndToEnd_QueueInputsAndVarsUseTheCustomTables()
         {
+            SampleHostFloor.SkipBelowFloor();
             var handlers = new RecordingHandlers();
             using var factory = new TestWorkspaceFactory(retainWorkspace: true);
             var runtime = new SqliteHostRuntime<ICustomHandlers>(

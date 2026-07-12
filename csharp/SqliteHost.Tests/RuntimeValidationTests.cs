@@ -199,9 +199,10 @@ namespace SqliteHost.Tests
             Assert.Equal(0, factory.OpenCount);
         }
 
-        [Fact]
+        [SkippableFact]
         public void MissingBinding_FailsBinding_WithStatementContext()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, handlers) = CreateRuntime();
             var script = Scripts.New(
                 Scripts.Step("only",
@@ -219,9 +220,10 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void UnusedBinding_FailsBinding()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, _) = CreateRuntime();
             var script = Scripts.New(
                 Scripts.Step("only",
@@ -238,9 +240,10 @@ namespace SqliteHost.Tests
             Assert.Equal(0, result.StatementIndex);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ParametersInsideCommentsAndLiterals_AreNotMissingBindings()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, _) = CreateRuntime();
             var script = Scripts.New(
                 Scripts.Step("only",
@@ -254,12 +257,13 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
         }
 
-        [Fact]
+        [SkippableFact]
         public void DollarInsideIdentifier_IsNotAParameter_RunCompletes()
         {
             // Pinned rule (docs/errors.md): a '$' immediately preceded by an
             // identifier character continues the identifier, so a$b needs no
             // binding and the run completes with default options.
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, _) = CreateRuntime();
             var script = Scripts.New(
                 Scripts.Step("only",
@@ -270,9 +274,10 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
         }
 
-        [Fact]
+        [SkippableFact]
         public void ValidateBindingsOff_SkipsBindingValidation()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, _, _) = CreateRuntime(new SqliteHostRuntimeOptions
             {
                 ValidateBindings = false
@@ -289,9 +294,10 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
         }
 
-        [Fact]
+        [SkippableFact]
         public void WorkspaceIsDisposedAfterRun()
         {
+            SampleHostFloor.SkipBelowFloor();
             var (runtime, factory, _) = CreateRuntime();
             SqliteHostRunResult result = runtime.Run(ValidSingleCallScript());
             Assert.Equal(SqliteHostRunStatus.Completed, result.Status);

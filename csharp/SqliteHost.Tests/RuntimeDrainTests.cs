@@ -13,6 +13,10 @@ namespace SqliteHost.Tests
             TestWorkspaceFactory factory = null,
             SqliteHostRuntimeOptions options = null)
         {
+            // Every test here runs the workspace on the real engine, so all
+            // would fail via the version gate below the sample host's floor
+            // (see FloorGateTests).
+            SampleHostFloor.SkipBelowFloor();
             return new SqliteHostRuntime<IGeneratedHostHandlers>(
                 connectionFactory: factory ?? new TestWorkspaceFactory(),
                 hostDefinition: GeneratedHostDefinition.Build(),
@@ -37,7 +41,7 @@ namespace SqliteHost.Tests
                 ("value", SqliteHostBindingValue.Int64(value)));
         }
 
-        [Fact]
+        [SkippableFact]
         public void PendingCallsDrainInQueueIdOrder()
         {
             var handlers = new FakeGameHandlers();
@@ -55,7 +59,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "getValue:k1", "setValue:k2:5", "getValue:k3" }, handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void DrainHappensOnlyAfterTheWholeStepSucceeds()
         {
             // A step whose 2nd statement fails must not invoke handlers for
@@ -77,7 +81,7 @@ namespace SqliteHost.Tests
             Assert.Equal(0, result.ExecutedCallCount);
         }
 
-        [Fact]
+        [SkippableFact]
         public void MaxPendingCallsPerStepExceeded_FailsBeforeAnyHandlerRuns()
         {
             var handlers = new FakeGameHandlers();
@@ -98,7 +102,7 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void HandlerException_FailsHandler_WithMethodAndCounts()
         {
             var handlers = new FakeGameHandlers();
@@ -121,7 +125,7 @@ namespace SqliteHost.Tests
             Assert.Equal(-1, result.StatementIndex);
         }
 
-        [Fact]
+        [SkippableFact]
         public void UnknownQueuedMethod_FailsSql()
         {
             var handlers = new FakeGameHandlers();
@@ -138,7 +142,7 @@ namespace SqliteHost.Tests
             Assert.Equal("ghostMethod", result.Method);
         }
 
-        [Fact]
+        [SkippableFact]
         public void QueueRowWithoutCallRow_FailsSql_CallRowMissing()
         {
             var handlers = new FakeGameHandlers();
@@ -155,7 +159,7 @@ namespace SqliteHost.Tests
             Assert.Equal("getValue", result.Method);
         }
 
-        [Fact]
+        [SkippableFact]
         public void DuplicateCallIdAcrossMethods_IsSqlError()
         {
             // pending_host_calls.call_id is UNIQUE; the queue trigger insert
@@ -175,7 +179,7 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);
         }
 
-        [Fact]
+        [SkippableFact]
         public void CompletedRun_MarksQueueRowsDone_AndWritesResultRows()
         {
             var handlers = new FakeGameHandlers();
@@ -202,7 +206,7 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "g-1|done|41" }, resultRows);
         }
 
-        [Fact]
+        [SkippableFact]
         public void HandlerFailure_LeavesNoResultRowForTheFailingCall()
         {
             var handlers = new FakeGameHandlers();
