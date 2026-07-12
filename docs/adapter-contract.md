@@ -73,7 +73,9 @@ suite for the exact matrix.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — 23 xunit tests encoding this contract,
+`AdapterConformanceTestsBase` — the xunit contract suite (23 core
+tests + an optional scalar-function capability section on capable
+adapters),
 fully self-contained (it builds its own minimal probe host through the
 public fluent API; no dependency on the sample or any concrete
 adapter). The repo runs it against all three built-in adapters
@@ -109,7 +111,7 @@ public class MyAdapterConformanceTests : AdapterConformanceTestsBase
 }
 ```
 
-xunit discovers the 23 inherited tests automatically; an optional
+xunit discovers the inherited tests automatically; an optional
 `protected override string SkipEntireSuiteReason` skips the suite with
 a reason where the adapter cannot run. Until the package is published,
 vendoring works too: copy `csharp/SqliteHost.Conformance/` sources into

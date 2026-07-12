@@ -13,18 +13,22 @@ indent, LF, trailing newline. Committed snapshot:
 | `manifestVersion` | `1` |
 | `engine` | `"sqlite-host-v1"` |
 | `library` | `namespace`, `interfaceName`, `apiLevel`, `minSqliteVersionNumber`, `features` |
-| `naming` | the six host-level naming conventions |
+| `naming` | the host-level naming conventions (six prefixes/infixes + `functionPrefix`) |
+| `columns` | the fourteen configurable column identifiers + done literal |
 | `queueTable` | `pending_host_calls` + column list |
 | `inputsTable` | `script_inputs` + column list |
 | `varsTable` | `script_vars` + column list (script-managed variable scratch space) |
+| `controlTable` | `script_control` + column list (halt/abort channel) |
 | `scriptEnvelope` | envelope engine + binding type list |
 | `methods` | ordered method descriptors (declaration order) |
 
 ## Method descriptor
 
 `operationName` (TypeSpec op), `methodName` (protocol name),
-`handlerName`, `apiLevel`, resolved `callTable`/`resultTable`/
-`queueTrigger`, and `input`/`result` shapes: `modelName`, scalar
+`handlerName`, `apiLevel`, `mutates` (default true; false = inline
+eligible), resolved `callTable`/`resultTable`/`queueTrigger`,
+`input`/`result` shapes, and `inline` (function exposure block —
+`functionName`, `minArgs`, `maxArgs`, `args`, `returns` — or null): `modelName`, scalar
 `fields` (`propertyName`, `sqlName`, `column`, `scalarType`,
 `optional`), and `listFields` (`propertyName`, `sqlName`, `childTable`,
 `itemModelName`, `itemFields`).

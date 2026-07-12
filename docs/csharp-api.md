@@ -213,7 +213,9 @@ public sealed class SqliteHostScalarFunction
     public string Name { get; }
     public int MinArgs { get; }
     public int MaxArgs { get; }
-    // args.Length is within [MinArgs..MaxArgs]; omitted trailing args arrive as Null values.
+    // Invoke receives the ACTUAL invoked arity: args.Length is within
+    // [MinArgs..MaxArgs]; the runtime's wrapper treats absent trailing
+    // args as null when mapping to the input DTO.
     public Func<SqliteHostBindingValue[], SqliteHostBindingValue> Invoke { get; }
 }
 
@@ -299,8 +301,12 @@ public sealed class SqliteHostDefinition<THandlers>
 }
 ```
 
-`SupportedFeatures` for protocol v1 is
-`["typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars"]`.
+`SupportedFeatures` on the definition lists the base features
+(`typedNamedBindings`, `splitResultTables`, `scriptInputs`,
+`scriptVars`, `scriptControl`); the runtime's *effective* feature set
+additionally includes `inlineFunctions` when the definition exposes at
+least one inline function AND the connection factory implements
+`ISqliteHostScalarFunctionCapableFactory`.
 
 ### Fluent method descriptor API
 

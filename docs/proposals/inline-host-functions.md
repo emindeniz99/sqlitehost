@@ -1,7 +1,9 @@
 # Proposal: optional inline host functions (scalar UDFs)
 
-Status: **designed, not implemented** (owner-approved direction,
-implementation deliberately deferred — see Implementation phases).
+Status: **implemented** (codegen + C# runtime/adapters + Java/TS
+validators; see docs/adapter-contract.md and docs/csharp-api.md for
+the shipped surface). Future tiers (`tableFunctions`, idempotent
+mutations) remain design-only.
 
 ## Motivation
 
