@@ -31,7 +31,8 @@ class CustomColumnsLineageTest {
                 + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
                 + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
                 + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
-                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\"},"
+                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\","
+                + "\"functionPrefix\":\"fn_\"},"
                 + "\"columns\":{\"callId\":\"cid\",\"itemIndex\":\"idx\","
                 + "\"status\":\"state\",\"doneValue\":\"ok\",\"queueId\":\"qid\","
                 + "\"method\":\"op\",\"name\":\"var_name\",\"valueType\":\"vt\","
@@ -47,7 +48,7 @@ class CustomColumnsLineageTest {
                 + "\"scriptEnvelope\":{\"engine\":\"sqlite-host-v1\",\"bindingTypes\":"
                 + "[\"null\",\"int32\",\"int64\",\"bool\",\"text\",\"blob\",\"float32\",\"float64\"]},"
                 + "\"methods\":[{\"operationName\":\"GetValue\",\"methodName\":\"getValue\","
-                + "\"handlerName\":\"GetValue\",\"apiLevel\":1,"
+                + "\"handlerName\":\"GetValue\",\"apiLevel\":1,\"mutates\":true,"
                 + "\"callTable\":\"call_get_value\",\"resultTable\":\"result_get_value\","
                 + "\"queueTrigger\":\"trg_call_get_value_queue\","
                 + "\"input\":{\"modelName\":\"GetValueInput\",\"fields\":["
@@ -55,7 +56,8 @@ class CustomColumnsLineageTest {
                 + "\"scalarType\":\"string\",\"optional\":false}],\"listFields\":[]},"
                 + "\"result\":{\"modelName\":\"GetValueResult\",\"fields\":["
                 + "{\"propertyName\":\"value\",\"sqlName\":\"value\",\"column\":\"result_value\","
-                + "\"scalarType\":\"int64\",\"optional\":false}],\"listFields\":[]}}]}");
+                + "\"scalarType\":\"int64\",\"optional\":false}],\"listFields\":[]},"
+                + "\"inline\":null}]}");
     }
 
     private static ValidationReport validate(String scriptJson) throws IOException {

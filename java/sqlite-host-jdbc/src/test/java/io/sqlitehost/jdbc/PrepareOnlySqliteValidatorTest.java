@@ -79,6 +79,36 @@ class PrepareOnlySqliteValidatorTest {
     }
 
     @Test
+    void inlineFunctionCallsPrepareAgainstRegisteredStubs() throws Exception {
+        // fn_get_value is registered as a NULL-returning stub for every
+        // arity in minArgs..maxArgs before preparing, so the function
+        // form compiles (docs/proposals/inline-host-functions.md).
+        assertEquals(List.of(), prepare(script(
+                "INSERT INTO call_set_value (call_id, input_key, input_value)"
+                        + " SELECT :c, 'k', fn_get_value('k') * 2"
+                        + " WHERE fn_get_value('k') <> 42")));
+    }
+
+    @Test
+    void unknownFunctionStillFailsToPrepare() throws Exception {
+        List<ValidationFinding> findings = prepare(script("SELECT fn_get_price('k')"));
+        assertEquals(1, findings.size());
+        assertEquals(ValidationCodes.SQL_PREPARE_ERROR, findings.get(0).code());
+        assertTrue(findings.get(0).message().contains("fn_get_price"),
+                findings.get(0).message());
+    }
+
+    @Test
+    void wrongArityInlineCallFailsToPrepare() throws Exception {
+        // Only the declared arities are registered — a two-argument
+        // fn_get_value does not exist.
+        List<ValidationFinding> findings = prepare(script(
+                "SELECT fn_get_value('k', 'extra')"));
+        assertEquals(1, findings.size());
+        assertEquals(ValidationCodes.SQL_PREPARE_ERROR, findings.get(0).code());
+    }
+
+    @Test
     void prepareDoesNotExecuteTheStatement() throws Exception {
         // A duplicate-PK pair prepares fine twice: nothing is stepped,
         // so the UNIQUE violation that execution would hit never fires.

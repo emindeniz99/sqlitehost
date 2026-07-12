@@ -3,9 +3,12 @@ package io.sqlitehost.jdbc;
 import io.sqlitehost.model.ddl.DdlGenerator;
 import io.sqlitehost.model.envelope.Script;
 import io.sqlitehost.model.envelope.Step;
+import io.sqlitehost.model.manifest.InlineFunction;
 import io.sqlitehost.model.manifest.Manifest;
+import io.sqlitehost.model.manifest.MethodDescriptor;
 import io.sqlitehost.validator.ValidationCodes;
 import io.sqlitehost.validator.ValidationFinding;
+import org.sqlite.Function;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -41,6 +44,7 @@ public final class PrepareOnlySqliteValidator {
         List<ValidationFinding> findings = new ArrayList<>();
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
             createSchema(connection, manifest);
+            registerInlineFunctionStubs(connection, manifest);
             for (Step step : script.steps()) {
                 List<io.sqlitehost.model.envelope.Statement> statements = step.statements();
                 for (int i = 0; i < statements.size(); i++) {
@@ -67,6 +71,31 @@ public final class PrepareOnlySqliteValidator {
         try (java.sql.Statement statement = connection.createStatement()) {
             for (String ddl : DdlGenerator.generateSchemaStatements(manifest)) {
                 statement.execute(ddl);
+            }
+        }
+    }
+
+    /**
+     * Register a NULL-returning stub for every manifest inline function
+     * at every arity in minArgs..maxArgs, so the function form compiles
+     * during prepare (docs/proposals/inline-host-functions.md — the
+     * Java prepare-only plan). The stubs are never stepped; identifiers
+     * outside the manifest still fail prepare with "no such function".
+     */
+    private static void registerInlineFunctionStubs(Connection connection, Manifest manifest)
+            throws SQLException {
+        for (MethodDescriptor method : manifest.methods()) {
+            InlineFunction inline = method.inline();
+            if (inline == null) {
+                continue;
+            }
+            for (int arity = inline.minArgs(); arity <= inline.maxArgs(); arity++) {
+                Function.create(connection, inline.functionName(), new Function() {
+                    @Override
+                    protected void xFunc() {
+                        // No result set — SQL NULL. Prepare-only: never invoked.
+                    }
+                }, arity, 0);
             }
         }
     }

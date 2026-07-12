@@ -29,6 +29,11 @@ public final class ValidationCodes {
     public static final String LIST_CHILD_LATER_STEP = "list-child-later-step";
     public static final String LIST_CHILD_WITHOUT_PARENT = "list-child-without-parent";
 
+    // Inline functions (feature inlineFunctions)
+    public static final String UNDECLARED_FEATURE_USE = "undeclared-feature-use";
+    public static final String UNKNOWN_FUNCTION = "unknown-function";
+    public static final String FUNCTION_ARITY_MISMATCH = "function-arity-mismatch";
+
     // Result-read lineage
     public static final String RESULT_READ_UNKNOWN_CALL = "result-read-unknown-call";
     public static final String RESULT_READ_NOT_AFTER_CALL = "result-read-not-after-call";

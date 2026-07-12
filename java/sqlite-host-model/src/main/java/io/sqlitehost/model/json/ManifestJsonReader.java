@@ -2,6 +2,9 @@ package io.sqlitehost.model.json;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.sqlitehost.model.manifest.InlineArg;
+import io.sqlitehost.model.manifest.InlineFunction;
+import io.sqlitehost.model.manifest.InlineReturn;
 import io.sqlitehost.model.manifest.ListField;
 import io.sqlitehost.model.manifest.Manifest;
 import io.sqlitehost.model.manifest.ManifestColumns;
@@ -59,7 +62,8 @@ public final class ManifestJsonReader {
                 requireString(namingNode, "inputColumnPrefix"),
                 requireString(namingNode, "resultColumnPrefix"),
                 requireString(namingNode, "inputListTableInfix"),
-                requireString(namingNode, "resultListTableInfix"));
+                requireString(namingNode, "resultListTableInfix"),
+                requireString(namingNode, "functionPrefix"));
 
         JsonNode columnsNode = requireObject(root, "columns");
         ManifestColumns columns = new ManifestColumns(
@@ -121,11 +125,58 @@ public final class ManifestJsonReader {
                 requireString(node, "methodName"),
                 requireString(node, "handlerName"),
                 requireInt(node, "apiLevel"),
+                requireBoolean(node, "mutates"),
                 requireString(node, "callTable"),
                 requireString(node, "resultTable"),
                 requireString(node, "queueTrigger"),
                 readShape(requireObject(node, "input")),
-                readShape(requireObject(node, "result")));
+                readShape(requireObject(node, "result")),
+                readInline(node));
+    }
+
+    /**
+     * The {@code inline} block is required but nullable: {@code null}
+     * when the method is not inline-exposed, an object otherwise
+     * (docs/manifest.md).
+     */
+    private static InlineFunction readInline(JsonNode methodNode) throws JsonReadException {
+        JsonNode node = methodNode.get("inline");
+        if (node == null) {
+            throw new JsonReadException(
+                    "manifest field 'inline' must be present (null when not exposed)");
+        }
+        if (node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new JsonReadException("manifest field 'inline' must be an object or null");
+        }
+        List<InlineArg> args = new ArrayList<>();
+        JsonNode argsNode = node.get("args");
+        if (argsNode == null || !argsNode.isArray()) {
+            throw new JsonReadException("inline args must be an array");
+        }
+        for (JsonNode argNode : argsNode) {
+            if (argNode == null || !argNode.isObject()) {
+                throw new JsonReadException("inline arg must be an object");
+            }
+            args.add(new InlineArg(
+                    requireString(argNode, "propertyName"),
+                    requireString(argNode, "sqlName"),
+                    requireScalarType(argNode),
+                    requireBoolean(argNode, "optional")));
+        }
+        JsonNode returnsNode = requireObject(node, "returns");
+        InlineReturn returns = new InlineReturn(
+                requireString(returnsNode, "propertyName"),
+                requireString(returnsNode, "sqlName"),
+                requireScalarType(returnsNode));
+        return new InlineFunction(
+                requireString(node, "functionName"),
+                requireInt(node, "minArgs"),
+                requireInt(node, "maxArgs"),
+                args,
+                returns);
     }
 
     private static ObjectShape readShape(JsonNode node) throws JsonReadException {
@@ -165,11 +216,6 @@ public final class ManifestJsonReader {
         if (node == null || !node.isObject()) {
             throw new JsonReadException("scalar field must be an object");
         }
-        String scalarTypeName = requireString(node, "scalarType");
-        ScalarType scalarType = ScalarType.fromJsonName(scalarTypeName);
-        if (scalarType == null) {
-            throw new JsonReadException("unknown scalar type '" + scalarTypeName + "'");
-        }
         JsonNode optionalNode = node.get("optional");
         if (optionalNode == null || !optionalNode.isBoolean()) {
             throw new JsonReadException("scalar field optional must be a boolean");
@@ -178,8 +224,17 @@ public final class ManifestJsonReader {
                 requireString(node, "propertyName"),
                 requireString(node, "sqlName"),
                 requireString(node, "column"),
-                scalarType,
+                requireScalarType(node),
                 optionalNode.asBoolean());
+    }
+
+    private static ScalarType requireScalarType(JsonNode node) throws JsonReadException {
+        String scalarTypeName = requireString(node, "scalarType");
+        ScalarType scalarType = ScalarType.fromJsonName(scalarTypeName);
+        if (scalarType == null) {
+            throw new JsonReadException("unknown scalar type '" + scalarTypeName + "'");
+        }
+        return scalarType;
     }
 
     private static JsonNode requireObject(JsonNode parent, String field)
@@ -198,6 +253,15 @@ public final class ManifestJsonReader {
             throw new JsonReadException("manifest field '" + field + "' must be a string");
         }
         return node.asText();
+    }
+
+    private static boolean requireBoolean(JsonNode parent, String field)
+            throws JsonReadException {
+        JsonNode node = parent.get(field);
+        if (node == null || !node.isBoolean()) {
+            throw new JsonReadException("manifest field '" + field + "' must be a boolean");
+        }
+        return node.asBoolean();
     }
 
     private static int requireInt(JsonNode parent, String field) throws JsonReadException {

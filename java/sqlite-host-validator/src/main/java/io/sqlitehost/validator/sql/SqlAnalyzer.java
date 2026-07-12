@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Statement-shape analysis over the token stream: INSERT parsing and
+ * Statement-shape analysis over the token stream: INSERT parsing,
+ * {@code identifier(...)} function-call extraction, and
  * {@code <callIdColumn> = <atom>} comparison extraction (the call-id
  * column name comes from the manifest columns block). Best-effort
  * static analysis for lint purposes (docs/validation.md) — not a SQL
@@ -155,6 +156,47 @@ public final class SqlAnalyzer {
             items.add(ValueExpr.classify(current));
         }
         return items;
+    }
+
+    /**
+     * Extract every {@code identifier(...)} function call: an
+     * {@link SqlToken.Kind#IDENT} immediately followed by {@code '('},
+     * with the argument count taken by a top-level comma scan to the
+     * matching {@code ')'}. String literals and comments never confuse
+     * the scan — the tokenizer already collapsed them. Calls nested in
+     * another call's arguments are extracted as their own entries.
+     */
+    public static List<FunctionCall> functionCalls(List<SqlToken> tokens) {
+        List<FunctionCall> calls = new ArrayList<>();
+        for (int i = 0; i + 1 < tokens.size(); i++) {
+            if (tokens.get(i).kind() == SqlToken.Kind.IDENT
+                    && tokens.get(i + 1).isPunct("(")) {
+                calls.add(new FunctionCall(tokens.get(i).text(), countArgs(tokens, i + 2)));
+            }
+        }
+        return calls;
+    }
+
+    /** Count top-level arguments from just after '(' to the matching ')'. */
+    private static int countArgs(List<SqlToken> tokens, int start) {
+        int depth = 1;
+        int commas = 0;
+        boolean sawArgToken = false;
+        for (int pos = start; pos < tokens.size(); pos++) {
+            SqlToken token = tokens.get(pos);
+            if (token.isPunct("(")) {
+                depth++;
+            } else if (token.isPunct(")")) {
+                depth--;
+                if (depth == 0) {
+                    return sawArgToken ? commas + 1 : 0;
+                }
+            } else if (token.isPunct(",") && depth == 1) {
+                commas++;
+            }
+            sawArgToken = true;
+        }
+        return FunctionCall.UNKNOWN_ARGS;
     }
 
     /**

@@ -8,7 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** INSERT-shape parsing and static call_id comparison extraction. */
+/**
+ * INSERT-shape parsing, function-call extraction, and static call_id
+ * comparison extraction.
+ */
 class SqlAnalyzerTest {
 
     private static InsertStatement insert(String sql) {
@@ -102,6 +105,50 @@ class SqlAnalyzerTest {
     @Test
     void nonInsertReturnsNull() {
         assertNull(insert("SELECT 1"));
+    }
+
+    @Test
+    void extractsFunctionCallsWithArgCounts() {
+        List<FunctionCall> calls = SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(
+                "SELECT fn_get_value('k') * 2 WHERE fn_get_value('k') <> 42"));
+        assertEquals(List.of(new FunctionCall("fn_get_value", 1),
+                new FunctionCall("fn_get_value", 1)), calls);
+    }
+
+    @Test
+    void countsTopLevelArgsThroughNestedParensAndStrings() {
+        // The nested max(...) call is extracted as its own entry; its
+        // commas and the comma inside the string literal don't count
+        // toward fn_check's top-level argument scan.
+        List<FunctionCall> calls = SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(
+                "SELECT fn_check(1, max(2, 3), 'a,b')"));
+        assertTrue(calls.contains(new FunctionCall("fn_check", 3)), calls.toString());
+        assertTrue(calls.contains(new FunctionCall("max", 2)), calls.toString());
+    }
+
+    @Test
+    void stringArgumentWithCommasIsOneArgument() {
+        assertEquals(List.of(new FunctionCall("fn_x", 1)),
+                SqlAnalyzer.functionCalls(SqlTokenizer.tokenize("SELECT fn_x('a, b, c')")));
+    }
+
+    @Test
+    void zeroArgCallHasZeroArgs() {
+        assertEquals(List.of(new FunctionCall("fn_now", 0)),
+                SqlAnalyzer.functionCalls(SqlTokenizer.tokenize("SELECT fn_now()")));
+    }
+
+    @Test
+    void bareIdentifiersAreNotCalls() {
+        assertEquals(List.of(),
+                SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(
+                        "SELECT result_value FROM result_get_value")));
+    }
+
+    @Test
+    void unterminatedCallHasUnknownArgs() {
+        assertEquals(List.of(new FunctionCall("fn_x", FunctionCall.UNKNOWN_ARGS)),
+                SqlAnalyzer.functionCalls(SqlTokenizer.tokenize("SELECT fn_x(1, 2")));
     }
 
     @Test

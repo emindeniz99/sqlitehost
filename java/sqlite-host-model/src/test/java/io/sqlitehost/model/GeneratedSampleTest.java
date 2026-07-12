@@ -93,6 +93,13 @@ class GeneratedSampleTest {
                     actual.resultColumns());
             assertEquals(expected.result().listFields().stream().map(ListField::childTable).toList(),
                     actual.resultListTables());
+            if (expected.inline() == null) {
+                assertNull(actual.inline());
+            } else {
+                assertEquals(expected.inline().functionName(), actual.inline().functionName());
+                assertEquals(expected.inline().minArgs(), actual.inline().minArgs());
+                assertEquals(expected.inline().maxArgs(), actual.inline().maxArgs());
+            }
         }
     }
 }

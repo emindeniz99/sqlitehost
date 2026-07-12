@@ -25,7 +25,8 @@ class DdlGeneratorCustomColumnsTest {
                 + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
                 + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
                 + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
-                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\"},"
+                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\","
+                + "\"functionPrefix\":\"fn_\"},"
                 + "\"columns\":{\"callId\":\"cid\",\"itemIndex\":\"idx\","
                 + "\"status\":\"state\",\"doneValue\":\"ok\",\"queueId\":\"qid\","
                 + "\"method\":\"op\",\"name\":\"var_name\",\"valueType\":\"vt\","
@@ -40,7 +41,7 @@ class DdlGeneratorCustomColumnsTest {
                 + "\"controlTable\":{\"name\":\"ctl\",\"columns\":[\"cmd\",\"note\"]},"
                 + "\"scriptEnvelope\":{\"engine\":\"sqlite-host-v1\",\"bindingTypes\":[]},"
                 + "\"methods\":[{\"operationName\":\"GetValues\",\"methodName\":\"getValues\","
-                + "\"handlerName\":\"GetValues\",\"apiLevel\":1,"
+                + "\"handlerName\":\"GetValues\",\"apiLevel\":1,\"mutates\":true,"
                 + "\"callTable\":\"call_get_values\",\"resultTable\":\"result_get_values\","
                 + "\"queueTrigger\":\"trg_call_get_values_queue\","
                 + "\"input\":{\"modelName\":\"GetValuesInput\",\"fields\":["
@@ -53,7 +54,7 @@ class DdlGeneratorCustomColumnsTest {
                 + "\"result\":{\"modelName\":\"GetValuesResult\",\"fields\":["
                 + "{\"propertyName\":\"total\",\"sqlName\":\"total\","
                 + "\"column\":\"result_total\",\"scalarType\":\"int64\",\"optional\":false}],"
-                + "\"listFields\":[]}}]}";
+                + "\"listFields\":[]},\"inline\":null}]}";
     }
 
     @Test

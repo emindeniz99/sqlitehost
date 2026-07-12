@@ -5,11 +5,13 @@ import io.sqlitehost.model.envelope.RuntimeInput;
 import io.sqlitehost.model.envelope.Script;
 import io.sqlitehost.model.envelope.Statement;
 import io.sqlitehost.model.envelope.Step;
+import io.sqlitehost.model.manifest.InlineFunction;
 import io.sqlitehost.model.manifest.ListField;
 import io.sqlitehost.model.manifest.Manifest;
 import io.sqlitehost.model.manifest.MethodDescriptor;
 import io.sqlitehost.model.manifest.ScalarField;
 import io.sqlitehost.model.manifest.ScalarType;
+import io.sqlitehost.validator.sql.FunctionCall;
 import io.sqlitehost.validator.sql.InsertStatement;
 import io.sqlitehost.validator.sql.SqlAnalyzer;
 import io.sqlitehost.validator.sql.SqlToken;
@@ -29,13 +31,17 @@ import java.util.Set;
 /**
  * Script semantic lint (docs/validation.md layer 4) over a manifest
  * and a parsed script. Implements the pinned Structural, Bindings,
- * Host-call usage, and Result-read lineage codes. All SQL-visible
+ * Host-call usage, Inline functions, and Result-read lineage codes.
+ * All SQL-visible
  * column names (call id, item index, …) come from the manifest columns
  * block. Static call-id resolution covers literals and text bindings;
  * computed ids are skipped by lineage/duplicate checks — documented
  * best-effort linting, not proof.
  */
 public final class ValidationEngine {
+
+    /** Feature a script must declare to call inline functions (docs/validation.md). */
+    private static final String FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
 
     public ValidationReport validate(Manifest manifest, Script script) {
         List<ValidationFinding> findings = new ArrayList<>();
@@ -226,6 +232,9 @@ public final class ValidationEngine {
                     stepIndex, stepId, statementIndex, analysis, findings);
         }
 
+        analyzeFunctionCalls(schema, script, tokens, stepId, statementIndex,
+                analysis, findings);
+
         // Result-read lineage collection: result tables referenced +
         // statically resolvable call-id filters (manifest columns.callId).
         Set<String> readMethods = new LinkedHashSet<>();
@@ -310,6 +319,58 @@ public final class ValidationEngine {
     }
 
     /**
+     * Inline function lint (docs/validation.md — feature
+     * inlineFunctions) over the {@code identifier(...)} calls of one
+     * statement: a manifest inline function must be declared through
+     * requiredFeatures (undeclared-feature-use) and called with an
+     * argument count inside minArgs..maxArgs (function-arity-mismatch);
+     * an unmatched identifier is unknown-function only when it carries
+     * the host's functionPrefix — non-prefix identifiers (max(...),
+     * abs(...)) are SQLite's business, not the lint's.
+     */
+    private static void analyzeFunctionCalls(
+            SchemaIndex schema, Script script, List<SqlToken> tokens,
+            String stepId, int statementIndex,
+            Analysis analysis, List<ValidationFinding> findings) {
+        Set<String> reported = new HashSet<>();
+        for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
+            String nameLc = lower(call.name());
+            MethodDescriptor method = schema.inlineFunctions.get(nameLc);
+            if (method == null) {
+                if (nameLc.startsWith(schema.functionPrefixLc) && reported.add(nameLc)) {
+                    findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_FUNCTION,
+                            stepId, statementIndex,
+                            "function '" + call.name() + "' matches the functionPrefix '"
+                                    + schema.functionPrefix
+                                    + "' but is not an inline function of the manifest"));
+                }
+                continue;
+            }
+            analysis.inlineInvokedMethods.add(method.methodName());
+            if (!script.requiredFeatures().contains(FEATURE_INLINE_FUNCTIONS)
+                    && reported.add(nameLc)) {
+                findings.add(ValidationFinding.error(ValidationCodes.UNDECLARED_FEATURE_USE,
+                        stepId, statementIndex,
+                        "inline function '" + call.name() + "' requires feature '"
+                                + FEATURE_INLINE_FUNCTIONS
+                                + "' which is not declared in requiredFeatures"));
+            }
+            InlineFunction inline = method.inline();
+            if (call.argCount() != FunctionCall.UNKNOWN_ARGS
+                    && (call.argCount() < inline.minArgs()
+                            || call.argCount() > inline.maxArgs())) {
+                findings.add(ValidationFinding.error(ValidationCodes.FUNCTION_ARITY_MISMATCH,
+                        stepId, statementIndex,
+                        "inline function '" + call.name() + "' is called with "
+                                + call.argCount() + " argument(s) but takes "
+                                + inline.minArgs()
+                                + (inline.maxArgs() == inline.minArgs()
+                                        ? "" : ".." + inline.maxArgs())));
+            }
+        }
+    }
+
+    /**
      * binding-type-mismatch: for inserts into a call table (or a call
      * list child table) with an explicit column list, a parameter that
      * feeds a known column must be compatible with the column's scalar
@@ -389,10 +450,11 @@ public final class ValidationEngine {
             }
             boolean written = analysis.callEmits.stream()
                     .anyMatch(emit -> emit.methodName.equals(methodName));
-            if (!written) {
+            if (!written && !analysis.inlineInvokedMethods.contains(methodName)) {
                 findings.add(ValidationFinding.warning(ValidationCodes.UNUSED_REQUIRED_METHOD,
                         "required method '" + methodName
-                                + "' is declared but its call table is never written"));
+                                + "' is declared but its call table is never written"
+                                + " and its inline function is never invoked"));
             }
         }
     }
@@ -627,24 +689,34 @@ public final class ValidationEngine {
         final List<CallEmit> callEmits = new ArrayList<>();
         final List<ChildWrite> childWrites = new ArrayList<>();
         final List<ResultRead> resultReads = new ArrayList<>();
+        /** Methods whose inline function is invoked somewhere in the script. */
+        final Set<String> inlineInvokedMethods = new HashSet<>();
     }
 
     /** Physical-name lookups derived from the manifest (names are resolved). */
     private static final class SchemaIndex {
         final String callIdColumn;
         final String itemIndexColumn;
+        final String functionPrefix;
+        final String functionPrefixLc;
         final Map<String, MethodDescriptor> callTables = new HashMap<>();
         final Map<String, ChildTable> callChildTables = new HashMap<>();
         final Map<String, MethodDescriptor> resultTables = new HashMap<>();
         final Map<String, MethodDescriptor> resultChildTables = new HashMap<>();
         final Map<String, Map<String, ColumnType>> insertableColumns = new HashMap<>();
+        final Map<String, MethodDescriptor> inlineFunctions = new HashMap<>();
 
         SchemaIndex(Manifest manifest) {
             callIdColumn = manifest.columns().callId();
             itemIndexColumn = manifest.columns().itemIndex();
+            functionPrefix = manifest.naming().functionPrefix();
+            functionPrefixLc = lower(functionPrefix);
             for (MethodDescriptor method : manifest.methods()) {
                 callTables.put(lower(method.callTable()), method);
                 resultTables.put(lower(method.resultTable()), method);
+                if (method.inline() != null) {
+                    inlineFunctions.put(lower(method.inline().functionName()), method);
+                }
 
                 Map<String, ColumnType> callColumns = new HashMap<>();
                 callColumns.put(lower(callIdColumn),

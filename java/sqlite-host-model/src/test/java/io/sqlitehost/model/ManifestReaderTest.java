@@ -2,6 +2,7 @@ package io.sqlitehost.model;
 
 import io.sqlitehost.model.json.JsonReadException;
 import io.sqlitehost.model.json.ManifestJsonReader;
+import io.sqlitehost.model.manifest.InlineFunction;
 import io.sqlitehost.model.manifest.Manifest;
 import io.sqlitehost.model.manifest.MethodDescriptor;
 import io.sqlitehost.model.manifest.ScalarType;
@@ -12,6 +13,8 @@ import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,10 +36,11 @@ class ManifestReaderTest {
         assertEquals(1, manifest.library().apiLevel());
         assertEquals(3019003, manifest.library().minSqliteVersionNumber());
         assertEquals(List.of("typedNamedBindings", "splitResultTables", "scriptInputs",
-                        "scriptVars", "scriptControl"),
+                        "scriptVars", "scriptControl", "inlineFunctions"),
                 manifest.library().features());
         assertEquals("call_", manifest.naming().callTablePrefix());
         assertEquals("__result_", manifest.naming().resultListTableInfix());
+        assertEquals("fn_", manifest.naming().functionPrefix());
         assertEquals("call_id", manifest.columns().callId());
         assertEquals("item_index", manifest.columns().itemIndex());
         assertEquals("status", manifest.columns().status());
@@ -109,6 +113,36 @@ class ManifestReaderTest {
         assertEquals(ScalarType.FLOAT64, recordScore.result().fields().get(0).scalarType());
     }
 
+    @Test
+    void readsMutatesAndInlineBlocks() throws IOException {
+        Manifest manifest = readSampleManifest();
+
+        // getValue is non-mutating and inline-exposed.
+        MethodDescriptor getValue = manifest.methodByName("getValue");
+        assertFalse(getValue.mutates());
+        InlineFunction inline = getValue.inline();
+        assertEquals("fn_get_value", inline.functionName());
+        assertEquals(1, inline.minArgs());
+        assertEquals(1, inline.maxArgs());
+        assertEquals(1, inline.args().size());
+        assertEquals("key", inline.args().get(0).propertyName());
+        assertEquals("key", inline.args().get(0).sqlName());
+        assertEquals(ScalarType.STRING, inline.args().get(0).scalarType());
+        assertFalse(inline.args().get(0).optional());
+        assertEquals("value", inline.returns().propertyName());
+        assertEquals("value", inline.returns().sqlName());
+        assertEquals(ScalarType.INT64, inline.returns().scalarType());
+
+        // Every other sample method mutates and is not exposed.
+        for (MethodDescriptor method : manifest.methods()) {
+            if (method == getValue) {
+                continue;
+            }
+            assertTrue(method.mutates(), method.methodName());
+            assertNull(method.inline(), method.methodName());
+        }
+    }
+
     /** A minimal manifest carrying every required block (methods empty). */
     private static String minimalManifestJson() {
         return "{\"manifestVersion\":1,\"engine\":\"sqlite-host-v1\","
@@ -116,7 +150,8 @@ class ManifestReaderTest {
                 + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
                 + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
                 + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
-                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\"},"
+                + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\","
+                + "\"functionPrefix\":\"fn_\"},"
                 + "\"columns\":{\"callId\":\"call_id\",\"itemIndex\":\"item_index\","
                 + "\"status\":\"status\",\"doneValue\":\"done\",\"queueId\":\"queue_id\","
                 + "\"method\":\"method\",\"name\":\"name\",\"valueType\":\"value_type\","
@@ -191,14 +226,60 @@ class ManifestReaderTest {
     void unknownScalarTypeIsAReaderError() {
         String json = minimalManifestJson().replace("\"methods\":[]",
                 "\"methods\":[{\"operationName\":\"Op\",\"methodName\":\"op\",\"handlerName\":\"Op\","
-                + "\"apiLevel\":1,\"callTable\":\"call_op\",\"resultTable\":\"result_op\","
+                + "\"apiLevel\":1,\"mutates\":true,"
+                + "\"callTable\":\"call_op\",\"resultTable\":\"result_op\","
                 + "\"queueTrigger\":\"trg_call_op_queue\","
                 + "\"input\":{\"modelName\":\"OpInput\",\"fields\":[{\"propertyName\":\"x\","
                 + "\"sqlName\":\"x\",\"column\":\"input_x\",\"scalarType\":\"float\",\"optional\":false}],"
                 + "\"listFields\":[]},"
-                + "\"result\":{\"modelName\":\"OpResult\",\"fields\":[],\"listFields\":[]}}]");
+                + "\"result\":{\"modelName\":\"OpResult\",\"fields\":[],\"listFields\":[]},"
+                + "\"inline\":null}]");
         JsonReadException e = assertThrows(JsonReadException.class,
                 () -> ManifestJsonReader.read(json));
         assertTrue(e.getMessage().contains("unknown scalar type 'float'"), e.getMessage());
+    }
+
+    /** The minimal manifest with one method (mutates true, inline null). */
+    private static String minimalMethodManifestJson() {
+        return minimalManifestJson().replace("\"methods\":[]",
+                "\"methods\":[{\"operationName\":\"Op\",\"methodName\":\"op\",\"handlerName\":\"Op\","
+                + "\"apiLevel\":1,\"mutates\":true,"
+                + "\"callTable\":\"call_op\",\"resultTable\":\"result_op\","
+                + "\"queueTrigger\":\"trg_call_op_queue\","
+                + "\"input\":{\"modelName\":\"OpInput\",\"fields\":[],\"listFields\":[]},"
+                + "\"result\":{\"modelName\":\"OpResult\",\"fields\":[],\"listFields\":[]},"
+                + "\"inline\":null}]");
+    }
+
+    @Test
+    void inlineNullParsesAsNotExposed() throws IOException {
+        Manifest manifest = ManifestJsonReader.read(minimalMethodManifestJson());
+        assertTrue(manifest.methodByName("op").mutates());
+        assertNull(manifest.methodByName("op").inline());
+    }
+
+    @Test
+    void missingMutatesIsAReaderError() {
+        String json = minimalMethodManifestJson().replace("\"mutates\":true,", "");
+        JsonReadException e = assertThrows(JsonReadException.class,
+                () -> ManifestJsonReader.read(json));
+        assertTrue(e.getMessage().contains("mutates"), e.getMessage());
+    }
+
+    @Test
+    void missingInlineKeyIsAReaderError() {
+        String json = minimalMethodManifestJson().replace(",\"inline\":null", "");
+        JsonReadException e = assertThrows(JsonReadException.class,
+                () -> ManifestJsonReader.read(json));
+        assertTrue(e.getMessage().contains("inline"), e.getMessage());
+    }
+
+    @Test
+    void missingFunctionPrefixIsAReaderError() {
+        String json = minimalManifestJson()
+                .replace(",\"functionPrefix\":\"fn_\"", "");
+        JsonReadException e = assertThrows(JsonReadException.class,
+                () -> ManifestJsonReader.read(json));
+        assertTrue(e.getMessage().contains("functionPrefix"), e.getMessage());
     }
 }
