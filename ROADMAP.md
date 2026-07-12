@@ -34,19 +34,21 @@ script terminating by construction). Deliberately absent and proposed:
   `fail`, optional message) → clean `Completed`/`FailedValidation`
   outcome with the message in diagnostics. Cheap; needs a contract
   decision on status semantics.
-- **Consumer-registered SQL functions**: expose custom deterministic
-  scalar functions through the adapter (SQLite `create_function`) so
-  hosts can offer e.g. domain math to scripts. Needs an adapter
-  capability interface + validator awareness (unknown-function
-  whitelist). **Version/capability caveat (owner note)**: the
-  originating consumer environment — a SQLite-3.19-era wrapper — could
-  not register custom functions at all; that limitation is part of why
-  this toolkit exists (orchestrate with plain SQL + typed host calls
-  instead of custom UDFs). If ever implemented, this must be an
-  optional adapter capability gated behind a feature flag and an
-  explicit min-version/capability check — never a floor requirement,
-  and scripts relying on it must declare it in requiredFeatures so
-  hosts without the capability clean-skip.
+- **Inline host functions (scalar UDFs) — designed, awaiting
+  implementation go**: non-mutating single-scalar-result host methods
+  automatically exposed as SQL functions (`fn_get_value('k')`) on
+  adapters capable of `sqlite3_create_function` (DllImport-style
+  wrappers included), dual with the always-present call-table form,
+  gated by the `inlineFunctions` feature + factory capability so
+  incapable hosts clean-skip. Full design (owner decisions: automatic
+  exposure with opt-out; mutations closed in v1 with the door
+  documented; no idempotent flag yet; single-scalar rule and the
+  obj/list answer via a future `tableFunctions` tier):
+  [docs/proposals/inline-host-functions.md](./docs/proposals/inline-host-functions.md).
+  **Version/capability caveat (owner note)**: the originating consumer
+  environment — a SQLite-3.19-era wrapper — could not register custom
+  functions at all; that limitation is part of why this toolkit
+  exists. Never a floor requirement.
 - **Determinism lint**: warn when payload SQL calls nondeterministic
   builtins (`random()`, `date('now')` etc.) since script replays would
   diverge.
