@@ -29,23 +29,26 @@ amalgamations and runs the full C# suite against each binary through a
 SQLitePCLRaw dynamic provider (with `sqlite_version()` identity
 assertions). Measured results:
 
-| SQLite binary | suite result | UPSERT canary (3.24+) | RETURNING canary (3.35+) |
-|---|---|---|---|
-| 3.9.2 (below floor) | PASS | throws | throws |
-| 3.19.3 (floor) | PASS | throws | throws |
-| 3.28.0 | PASS | succeeds | throws |
-| 3.53.3 (newest) | PASS | succeeds | succeeds |
+| SQLite binary | result |
+|---|---|
+| 3.9.0 / 3.9.2 (below floor) | PASS — every adapter-level test (full conformance incl. scalar functions) passes; runtime-driven suites skip by design (the default host floor 3019003 gate refuses the engine — itself asserted by FloorGateTests) and a lowered-floor host (`MinSqliteVersion(3009000)`) completes a real call→drain→result-read script end-to-end |
+| 3.19.3 (floor) | PASS |
+| 3.28.0 | PASS |
+| 3.53.3 (newest) | PASS |
 
-The canary tests prove the harness actually detects version gates.
-Honest note: the suite also passes on 3.9.2 because the generated SQL
-uses only ancient constructs — the supported floor remains **3.19.3 by
-policy**; older-version passes are informational, not a promise. See
-`tests/compatibility-sqlite/README.md`.
+Canary tests (UPSERT 3.24+, RETURNING 3.35+, OVER 3.25+, iif 3.32+,
+json_valid) prove the harness detects version gates; full measured
+tables and the below-floor skip policy live in
+`tests/compatibility-sqlite/README.md`. "Engine-verified down to
+3.9.0" is thereby backed two ways: the adapter surface passes wholesale
+on 3.9.0, and a host that declares `minSqliteVersion: "3.9.0"` runs
+end-to-end on the real 3.9.0 binary.
 
-The C# integration fixtures additionally run on three adapters:
-Microsoft.Data.Sqlite (ADO.NET), System.Data.SQLite (ADO.NET), and
-sqlite-net-pcl (wrapper `Handle` + SQLitePCL.raw — the Unity/
-SQLite4Unity3d adapter pattern). The Java suite runs on xerial
+The C# integration fixtures additionally run on four adapters:
+Microsoft.Data.Sqlite (ADO.NET), System.Data.SQLite (ADO.NET),
+sqlite-net-pcl (wrapper `Handle` + SQLitePCL.raw), and
+SqliteHost.Adapters.Native (shippable pure-DllImport adapter — the
+native-style reference, scalar functions included). The Java suite runs on xerial
 sqlite-jdbc (bundled modern SQLite).
 
 ## C# / Unity — Unity 2021 LTS and newer
