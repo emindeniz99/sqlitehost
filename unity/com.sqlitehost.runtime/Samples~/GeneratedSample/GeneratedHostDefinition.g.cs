@@ -22,7 +22,8 @@ namespace Example.Game.Generated
                     .QueueTable("pending_host_calls")
                     .InputsTable("script_inputs")
                     .VarsTable("script_vars")
-                    .ControlTable("script_control"))
+                    .ControlTable("script_control")
+                    .FunctionPrefix("fn_"))
                 .Columns(c => c
                     .CallId("call_id")
                     .ItemIndex("item_index")

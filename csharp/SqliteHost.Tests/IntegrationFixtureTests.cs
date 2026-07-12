@@ -37,6 +37,14 @@ namespace SqliteHost.Tests
         private AdapterWorkspaceFactory CreateFactory(bool retainWorkspace = false)
             => new AdapterWorkspaceFactory(OpenAdapterConnection, retainWorkspace);
 
+        /// <summary>
+        /// Factory carrying the static scalar-function capability marker;
+        /// all three built-in adapters implement the connection capability
+        /// (example-010 requires the inlineFunctions feature).
+        /// </summary>
+        private AdapterWorkspaceFactory CreateCapableFactory(bool retainWorkspace = false)
+            => new ScalarFunctionCapableAdapterWorkspaceFactory(OpenAdapterConnection, retainWorkspace);
+
         private SqliteHostRunResult RunFixture(
             string payload,
             FakeGameHandlers handlers,
@@ -203,6 +211,44 @@ namespace SqliteHost.Tests
                 row => row.GetText(0) + "|" + row.GetFloat64(1).ToString(
                     System.Globalization.CultureInfo.InvariantCulture));
             Assert.Equal(new[] { "score-1|98.5", "score-2|49.25" }, averages);
+        }
+
+        [SkippableFact]
+        public void Example010_InlineRead_DoublesTheStoredValue_WhenNot42()
+        {
+            var handlers = new FakeGameHandlers();
+            handlers.Storage["example-key"] = 7;
+
+            SqliteHostRunResult result = RunFixture(
+                "valid/example-010-inline.json", handlers, factory: CreateCapableFactory());
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            // fn_get_value appears twice in the statement (WHERE clause and
+            // select list); the planner may evaluate it more, never less.
+            Assert.True(result.InlineCallCount >= 2,
+                "expected InlineCallCount >= 2 but was " + result.InlineCallCount);
+            // Inline reads never enqueue: only the setValue drain counts.
+            Assert.Equal(1, result.ExecutedCallCount);
+            Assert.Equal(14, handlers.Storage["example-key"]);
+            Assert.Equal(new[] { "setValue:example-key:14" },
+                handlers.Log.FindAll(entry => entry.StartsWith("setValue:")));
+        }
+
+        [SkippableFact]
+        public void Example010_InlineRead_SkipsTheWrite_WhenStoredValueIsAlready42()
+        {
+            var handlers = new FakeGameHandlers();
+            handlers.Storage["example-key"] = 42;
+
+            SqliteHostRunResult result = RunFixture(
+                "valid/example-010-inline.json", handlers, factory: CreateCapableFactory());
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.True(result.InlineCallCount >= 1,
+                "expected InlineCallCount >= 1 but was " + result.InlineCallCount);
+            Assert.Equal(0, result.ExecutedCallCount);
+            Assert.Equal(42, handlers.Storage["example-key"]);
+            Assert.DoesNotContain(handlers.Log, entry => entry.StartsWith("setValue:"));
         }
 
         [SkippableFact]

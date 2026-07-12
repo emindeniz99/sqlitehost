@@ -13,6 +13,7 @@ namespace SqliteHost
         private string _inputsTable = "script_inputs";
         private string _varsTable = "script_vars";
         private string _controlTable = "script_control";
+        private string _functionPrefix = "fn_";
 
         public SqliteHostNamingBuilder CallTablePrefix(string value)
         {
@@ -74,6 +75,12 @@ namespace SqliteHost
             return this;
         }
 
+        public SqliteHostNamingBuilder FunctionPrefix(string value)
+        {
+            _functionPrefix = value;
+            return this;
+        }
+
         internal SqliteHostNaming Build()
         {
             return new SqliteHostNaming(
@@ -86,7 +93,8 @@ namespace SqliteHost
                 _queueTable,
                 _inputsTable,
                 _varsTable,
-                _controlTable);
+                _controlTable,
+                _functionPrefix);
         }
     }
 }

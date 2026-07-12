@@ -21,7 +21,8 @@ namespace SqliteHost
             List<InputListField<TInput>> inputListFields,
             List<ScalarWriteField<TResult>> resultFields,
             List<ResultListField<TResult>> resultListFields,
-            Func<THandlers, TInput, TResult> handler)
+            Func<THandlers, TInput, TResult> handler,
+            InlineFunctionModel inlineFunction)
         {
             MethodName = methodName;
             ApiLevel = apiLevel;
@@ -30,12 +31,68 @@ namespace SqliteHost
             _resultFields = resultFields;
             _resultListFields = resultListFields;
             _handler = handler;
+            InlineFunction = inlineFunction;
             SchemaModel = BuildSchemaModel();
         }
 
         public string MethodName { get; }
         public int ApiLevel { get; }
         public SchemaMethodModel SchemaModel { get; }
+        public InlineFunctionModel InlineFunction { get; }
+
+        public SqliteHostScalarFunction CreateInlineFunction(THandlers handlers, Action onHandlerInvocation)
+        {
+            InlineFunctionModel inline = InlineFunction;
+            if (inline == null)
+            {
+                throw new InvalidOperationException(
+                    "Method '" + MethodName + "' is not exposed as an inline function.");
+            }
+            List<ScalarReadField<TInput>> inputFields = _inputFields;
+            ScalarWriteField<TResult> resultField = _resultFields[0];
+            Func<THandlers, TInput, TResult> handler = _handler;
+            return new SqliteHostScalarFunction(
+                inline.FunctionName,
+                inline.MinArgs,
+                inline.MaxArgs,
+                delegate(SqliteHostBindingValue[] args)
+                {
+                    try
+                    {
+                        var input = new TInput();
+                        var row = new InlineArgumentRow(args);
+                        for (int i = 0; i < inputFields.Count; i++)
+                        {
+                            ScalarReadField<TInput> field = inputFields[i];
+                            if (row.IsNull(i))
+                            {
+                                if (!field.Optional)
+                                {
+                                    throw new SqliteHostInlineArgumentException(
+                                        "Argument '" + field.SqlName + "' is required but received NULL.");
+                                }
+                                if (i >= args.Length)
+                                {
+                                    // Omitted trailing arg: the DTO property
+                                    // keeps its default (= null).
+                                    continue;
+                                }
+                            }
+                            field.Apply(input, row, i);
+                        }
+                        if (onHandlerInvocation != null)
+                        {
+                            onHandlerInvocation();
+                        }
+                        TResult result = handler(handlers, input);
+                        return resultField.Read(result);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new SqliteHostInlineFunctionException(inline.FunctionName, ex);
+                    }
+                });
+        }
 
         public void ExecuteCall(
             ISqliteHostConnection connection,

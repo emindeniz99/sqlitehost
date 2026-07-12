@@ -6,9 +6,13 @@ namespace SqliteHost.Conformance
     /// Adapter-agnostic in-memory workspace factory for conformance and
     /// integration tests: counts OpenWorkspace calls and can retain the
     /// underlying workspace past the run via a no-op-dispose wrapper so
-    /// tests can inspect final table contents.
+    /// tests can inspect final table contents. Deliberately NOT marked
+    /// ISqliteHostScalarFunctionCapableFactory — the capability is a static
+    /// factory-level promise; use
+    /// <see cref="ScalarFunctionCapableAdapterWorkspaceFactory"/> when the
+    /// opened adapter registers scalar functions.
     /// </summary>
-    public sealed class AdapterWorkspaceFactory : ISqliteHostConnectionFactory, IDisposable
+    public class AdapterWorkspaceFactory : ISqliteHostConnectionFactory, IDisposable
     {
         private readonly Func<ISqliteHostConnection> _open;
         private readonly bool _retainWorkspace;
@@ -29,7 +33,7 @@ namespace SqliteHost.Conformance
             OpenCount++;
             ISqliteHostConnection adapter = _open();
             LastWorkspace = adapter;
-            return _retainWorkspace ? new NonDisposingConnection(adapter) : adapter;
+            return _retainWorkspace ? NonDisposingConnection.Wrap(adapter) : adapter;
         }
 
         public void Dispose()
@@ -38,6 +42,22 @@ namespace SqliteHost.Conformance
             {
                 LastWorkspace.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// <see cref="AdapterWorkspaceFactory"/> carrying the static
+    /// scalar-function capability marker (feature inlineFunctions). Only
+    /// wrap adapters whose connections implement
+    /// ISqliteHostScalarFunctionConnection.
+    /// </summary>
+    public sealed class ScalarFunctionCapableAdapterWorkspaceFactory
+        : AdapterWorkspaceFactory, ISqliteHostScalarFunctionCapableFactory
+    {
+        public ScalarFunctionCapableAdapterWorkspaceFactory(
+            Func<ISqliteHostConnection> open, bool retainWorkspace = false)
+            : base(open, retainWorkspace)
+        {
         }
     }
 }

@@ -28,7 +28,7 @@ namespace SqliteHost.Tests.Adapter
     /// override runs to keep the version matrix scoped to the
     /// Microsoft.Data.Sqlite adapter (see IntegrationFixtureTests).
     /// </summary>
-    public sealed class SqliteNetConnection : ISqliteHostPrepareConnection
+    public sealed class SqliteNetConnection : ISqliteHostPrepareConnection, ISqliteHostScalarFunctionConnection
     {
         private readonly SQLite.SQLiteConnection _connection;
 
@@ -83,6 +83,122 @@ namespace SqliteHost.Tests.Adapter
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
             return new SqliteNetPreparedStatement(PrepareOnly(sql));
+        }
+
+        /// <summary>
+        /// Optional capability (docs/adapter-contract.md) — THE reference
+        /// native-style implementation: sqlite3_create_function on the raw
+        /// handle, once per arity in MinArgs..MaxArgs (no
+        /// SQLITE_DETERMINISTIC in v1). Args are read with sqlite3_value_*,
+        /// the result is set with sqlite3_result_*, and EVERYTHING thrown
+        /// by Invoke is reported via sqlite3_result_error with the
+        /// SQLITEHOST_HANDLER_ERROR: marker — an exception must never cross
+        /// the native frames (IL2CPP safety).
+        /// </summary>
+        public void RegisterScalarFunction(SqliteHostScalarFunction function)
+        {
+            if (function == null)
+            {
+                throw new ArgumentNullException(nameof(function));
+            }
+            for (int arity = function.MinArgs; arity <= function.MaxArgs; arity++)
+            {
+                int rc = raw.sqlite3_create_function(
+                    Handle, function.Name, arity, null,
+                    delegate(sqlite3_context ctx, object userData, sqlite3_value[] args)
+                    {
+                        InvokeScalarFunction(function, ctx, args);
+                    });
+                if (rc != raw.SQLITE_OK)
+                {
+                    throw Error("sqlite3_create_function", rc);
+                }
+            }
+        }
+
+        private static void InvokeScalarFunction(
+            SqliteHostScalarFunction function, sqlite3_context ctx, sqlite3_value[] args)
+        {
+            SqliteHostBindingValue result;
+            try
+            {
+                int count = args == null ? 0 : args.Length;
+                var values = new SqliteHostBindingValue[count];
+                for (int i = 0; i < count; i++)
+                {
+                    values[i] = FromFunctionArgument(args[i]);
+                }
+                result = function.Invoke(values) ?? SqliteHostBindingValue.Null();
+            }
+            catch (Exception ex)
+            {
+                raw.sqlite3_result_error(
+                    ctx, SqliteHostScalarFunction.HandlerErrorMarker + " " + ex.Message);
+                return;
+            }
+            SetFunctionResult(ctx, result);
+        }
+
+        private static SqliteHostBindingValue FromFunctionArgument(sqlite3_value value)
+        {
+            switch (raw.sqlite3_value_type(value))
+            {
+                case raw.SQLITE_INTEGER:
+                    return SqliteHostBindingValue.Int64(raw.sqlite3_value_int64(value));
+                case raw.SQLITE_FLOAT:
+                    return SqliteHostBindingValue.Float64(raw.sqlite3_value_double(value));
+                case raw.SQLITE_TEXT:
+                    return SqliteHostBindingValue.Text(raw.sqlite3_value_text(value).utf8_to_string());
+                case raw.SQLITE_BLOB:
+                    return SqliteHostBindingValue.Blob(raw.sqlite3_value_blob(value).ToArray());
+                default:
+                    return SqliteHostBindingValue.Null();
+            }
+        }
+
+        private static void SetFunctionResult(sqlite3_context ctx, SqliteHostBindingValue value)
+        {
+            switch (value.Type)
+            {
+                case SqliteHostBindingType.Int32:
+                    raw.sqlite3_result_int64(ctx, value.Int32Value);
+                    break;
+                case SqliteHostBindingType.Int64:
+                    raw.sqlite3_result_int64(ctx, value.Int64Value);
+                    break;
+                case SqliteHostBindingType.Bool:
+                    raw.sqlite3_result_int64(ctx, value.BoolValue ? 1L : 0L);
+                    break;
+                case SqliteHostBindingType.Text:
+                    if (value.TextValue == null)
+                    {
+                        raw.sqlite3_result_null(ctx);
+                    }
+                    else
+                    {
+                        raw.sqlite3_result_text(ctx, value.TextValue);
+                    }
+                    break;
+                case SqliteHostBindingType.Blob:
+                    if (value.BlobValue == null)
+                    {
+                        raw.sqlite3_result_null(ctx);
+                    }
+                    else
+                    {
+                        raw.sqlite3_result_blob(ctx, value.BlobValue);
+                    }
+                    break;
+                case SqliteHostBindingType.Float32:
+                    raw.sqlite3_result_double(ctx, (double)value.Float32Value);
+                    break;
+                case SqliteHostBindingType.Float64:
+                    raw.sqlite3_result_double(ctx, value.Float64Value);
+                    break;
+                default:
+                    raw.sqlite3_result_null(ctx);
+                    break;
+            }
         }
 
         public void Dispose()
@@ -268,8 +384,8 @@ namespace SqliteHost.Tests.Adapter
         }
     }
 
-    /// <summary>In-memory workspace factory over the sqlite-net adapter.</summary>
-    public sealed class SqliteNetWorkspaceFactory : ISqliteHostConnectionFactory
+    /// <summary>In-memory workspace factory over the sqlite-net adapter (scalar-function capable).</summary>
+    public sealed class SqliteNetWorkspaceFactory : ISqliteHostScalarFunctionCapableFactory
     {
         public ISqliteHostConnection OpenWorkspace() => SqliteNetConnection.OpenInMemory();
     }

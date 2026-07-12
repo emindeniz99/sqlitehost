@@ -28,4 +28,32 @@ namespace SqliteHost
         {
         }
     }
+
+    /// <summary>
+    /// An inline scalar-function argument violated the signature mapping
+    /// (SQL NULL for a required field, or a value that cannot be read as
+    /// the field's scalar type). Mirrors the NOT NULL call-table contract.
+    /// </summary>
+    internal sealed class SqliteHostInlineArgumentException : Exception
+    {
+        public SqliteHostInlineArgumentException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Wraps everything thrown inside an inline scalar function so the
+    /// message the adapter reports through the SQL error channel starts
+    /// with the function name — the runtime resolves the failed Method
+    /// from it when mapping the SQLITEHOST_HANDLER_ERROR: marker back to
+    /// FailedHandler/handler-error.
+    /// </summary>
+    internal sealed class SqliteHostInlineFunctionException : Exception
+    {
+        public SqliteHostInlineFunctionException(string functionName, Exception inner)
+            : base(functionName + ": " + inner.Message, inner)
+        {
+        }
+    }
 }

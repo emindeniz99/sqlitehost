@@ -19,6 +19,14 @@ namespace SqliteHost
         private readonly SqliteHostRuntimeOptions _options;
 
         /// <summary>
+        /// The definition's features plus "inlineFunctions" when the
+        /// definition exposes at least one inline method AND the factory is
+        /// statically function-capable — so the compat precheck stays
+        /// workspace-free (docs/proposals/inline-host-functions.md).
+        /// </summary>
+        private readonly IReadOnlyList<string> _supportedFeatures;
+
+        /// <summary>
         /// True once a workspace of this runtime instance passed the
         /// sqlite_version() gate; the native library cannot change under a
         /// live instance, so the check is not repeated on later runs.
@@ -47,6 +55,21 @@ namespace SqliteHost
             _hostDefinition = hostDefinition;
             _handlers = handlers;
             _options = options ?? new SqliteHostRuntimeOptions();
+            _supportedFeatures = ComputeSupportedFeatures(connectionFactory, hostDefinition);
+        }
+
+        private static IReadOnlyList<string> ComputeSupportedFeatures(
+            ISqliteHostConnectionFactory connectionFactory,
+            SqliteHostDefinition<THandlers> hostDefinition)
+        {
+            if (!hostDefinition.HasInlineFunctions
+                || !(connectionFactory is ISqliteHostScalarFunctionCapableFactory))
+            {
+                return hostDefinition.SupportedFeatures;
+            }
+            var features = new List<string>(hostDefinition.SupportedFeatures);
+            features.Add("inlineFunctions");
+            return features;
         }
 
         public SqliteHostRunResult Run(SqliteHostScript script)
@@ -97,6 +120,7 @@ namespace SqliteHost
                     StatementIndex = -1,
                     Method = null,
                     ExecutedCallCount = state.ExecutedCallCount,
+                    InlineCallCount = state.InlineCallCount,
                     Calls = state.Calls
                 };
             }
@@ -119,6 +143,12 @@ namespace SqliteHost
                     return versionFailure;
                 }
                 _sqliteVersionChecked = true;
+            }
+
+            SqliteHostRunResult registrationFailure = RegisterInlineFunctions(connection, state);
+            if (registrationFailure != null)
+            {
+                return registrationFailure;
             }
 
             try
@@ -175,8 +205,7 @@ namespace SqliteHost
                     }
                     catch (Exception ex)
                     {
-                        return WithSqliteErrorCode(StatementFailure(
-                            state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, step.Id, statementIndex), ex);
+                        return MapStatementException(state, step.Id, statementIndex, ex);
                     }
 
                     // Statement-granular control check (docs/workspace-schema.md):
@@ -237,6 +266,7 @@ namespace SqliteHost
                         Halted = true,
                         HaltMessage = haltMessage,
                         ExecutedCallCount = state.ExecutedCallCount,
+                        InlineCallCount = state.InlineCallCount,
                         Calls = state.Calls
                     };
                 }
@@ -251,6 +281,7 @@ namespace SqliteHost
                 StatementIndex = -1,
                 Method = null,
                 ExecutedCallCount = state.ExecutedCallCount,
+                InlineCallCount = state.InlineCallCount,
                 Calls = state.Calls
             };
             return completed;
@@ -277,6 +308,100 @@ namespace SqliteHost
             return rows.Count > 0 ? rows[0] : null;
         }
 
+        /// <summary>
+        /// Registers every inline scalar function on the workspace, before
+        /// any schema DDL runs, when the definition exposes inline methods
+        /// and the connection can register functions. Returns null on
+        /// success (or nothing to do); a FailedSchema/
+        /// inline-registration-error result otherwise.
+        /// </summary>
+        private SqliteHostRunResult RegisterInlineFunctions(ISqliteHostConnection connection, RunState state)
+        {
+            if (!_hostDefinition.HasInlineFunctions)
+            {
+                return null;
+            }
+            var functionConnection = connection as ISqliteHostScalarFunctionConnection;
+            if (functionConnection == null)
+            {
+                return null;
+            }
+            try
+            {
+                foreach (IRuntimeHostMethodSpec<THandlers> spec in _hostDefinition.RuntimeSpecs)
+                {
+                    if (spec.InlineFunction == null)
+                    {
+                        continue;
+                    }
+                    functionConnection.RegisterScalarFunction(
+                        spec.CreateInlineFunction(_handlers, state.CountInlineHandlerInvocation));
+                }
+            }
+            catch (Exception ex)
+            {
+                return WithSqliteErrorCode(Failure(
+                    state, SqliteHostRunStatus.FailedSchema, "inline-registration-error",
+                    ex.Message, null, null), ex);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Maps a failed script statement to its result: when the adapter's
+        /// error text carries the SQLITEHOST_HANDLER_ERROR: marker the
+        /// failure happened inside an inline scalar function and becomes
+        /// FailedHandler/handler-error (Method resolved from the function
+        /// name when derivable); otherwise plain FailedSql/sql-error.
+        /// </summary>
+        private SqliteHostRunResult MapStatementException(
+            RunState state,
+            string stepId,
+            int statementIndex,
+            Exception exception)
+        {
+            for (Exception current = exception; current != null; current = current.InnerException)
+            {
+                string message = current.Message;
+                int markerIndex = message == null
+                    ? -1
+                    : message.IndexOf(SqliteHostScalarFunction.HandlerErrorMarker, StringComparison.Ordinal);
+                if (markerIndex < 0)
+                {
+                    continue;
+                }
+                SqliteHostRunResult failure = StatementFailure(
+                    state, SqliteHostRunStatus.FailedHandler, "handler-error",
+                    exception.Message, stepId, statementIndex);
+                failure.Method = ResolveInlineMethod(
+                    message, markerIndex + SqliteHostScalarFunction.HandlerErrorMarker.Length);
+                return WithSqliteErrorCode(failure, exception);
+            }
+            return WithSqliteErrorCode(StatementFailure(
+                state, SqliteHostRunStatus.FailedSql, "sql-error",
+                exception.Message, stepId, statementIndex), exception);
+        }
+
+        /// <summary>
+        /// Resolves the method whose inline function reported the error:
+        /// the runtime's invocation wrapper prefixes every message with
+        /// "&lt;functionName&gt;: ", so the text right after the marker names
+        /// the function. Null when not derivable.
+        /// </summary>
+        private string ResolveInlineMethod(string message, int afterMarkerIndex)
+        {
+            string remainder = message.Substring(afterMarkerIndex).TrimStart();
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in _hostDefinition.RuntimeSpecs)
+            {
+                if (spec.InlineFunction != null
+                    && remainder.StartsWith(spec.InlineFunction.FunctionName + ":", StringComparison.Ordinal))
+                {
+                    return spec.MethodName;
+                }
+            }
+            return null;
+        }
+
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
         {
             if (script == null)
@@ -299,7 +424,7 @@ namespace SqliteHost
             {
                 foreach (string feature in script.RequiredFeatures)
                 {
-                    if (!ContainsOrdinal(_hostDefinition.SupportedFeatures, feature))
+                    if (!ContainsOrdinal(_supportedFeatures, feature))
                     {
                         return Failure(state, SqliteHostRunStatus.SkippedUnsupported, "missing-feature",
                             "Required feature '" + feature + "' is not supported.", null, null);
@@ -783,6 +908,7 @@ namespace SqliteHost
                 StatementIndex = -1,
                 Method = method,
                 ExecutedCallCount = state.ExecutedCallCount,
+                InlineCallCount = state.InlineCallCount,
                 Calls = state.Calls
             };
         }
@@ -792,11 +918,22 @@ namespace SqliteHost
             public RunState(bool enableDiagnostics)
             {
                 ExecutedCallCount = 0;
+                InlineCallCount = 0;
                 Calls = enableDiagnostics ? new List<SqliteHostCallDiagnostic>() : null;
                 DrainedListCalls = new List<DrainedListCall>();
             }
 
             public int ExecutedCallCount { get; set; }
+
+            /// <summary>Handler invocations made through inline scalar functions.</summary>
+            public int InlineCallCount { get; set; }
+
+            /// <summary>Passed into every inline function wrapper (single-threaded runs by contract).</summary>
+            public void CountInlineHandlerInvocation()
+            {
+                InlineCallCount++;
+            }
+
             public List<SqliteHostCallDiagnostic> Calls { get; }
 
             /// <summary>Drained calls with input list fields, for list-child-after-drain detection.</summary>

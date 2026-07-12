@@ -129,6 +129,80 @@ namespace SqliteHost
             }
             ValidateWorkspaceTableNames(naming, _runtimeSpecs);
             ValidateColumnNames(naming, columns, _runtimeSpecs);
+            ValidateInlineFunctionNames(naming, _runtimeSpecs);
+            HasInlineFunctions = ComputeHasInlineFunctions(_runtimeSpecs);
+        }
+
+        private static bool ComputeHasInlineFunctions(List<IRuntimeHostMethodSpec<THandlers>> specs)
+        {
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
+            {
+                if (spec.InlineFunction != null)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Inline function naming (docs/naming.md): the FunctionPrefix must
+        /// be non-empty, and inline function names must be mutually
+        /// distinct and must not collide with any workspace or derived
+        /// call/result/child table name. Fails loud at definition build
+        /// time.
+        /// </summary>
+        private static void ValidateInlineFunctionNames(
+            SqliteHostNaming naming,
+            List<IRuntimeHostMethodSpec<THandlers>> specs)
+        {
+            if (string.IsNullOrEmpty(naming.FunctionPrefix))
+            {
+                throw new ArgumentException("Naming FunctionPrefix must be non-empty.", nameof(naming));
+            }
+            var tableNames = new HashSet<string>(StringComparer.Ordinal)
+            {
+                naming.QueueTable,
+                naming.InputsTable,
+                naming.VarsTable,
+                naming.ControlTable
+            };
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                tableNames.Add(NamingDerivation.CallTable(naming, model.MethodName));
+                tableNames.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                foreach (SchemaListFieldModel listField in model.InputListFields)
+                {
+                    tableNames.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                }
+                foreach (SchemaListFieldModel listField in model.ResultListFields)
+                {
+                    tableNames.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                }
+            }
+            var functionNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (IRuntimeHostMethodSpec<THandlers> spec in specs)
+            {
+                if (spec.InlineFunction == null)
+                {
+                    continue;
+                }
+                string functionName = spec.InlineFunction.FunctionName;
+                if (tableNames.Contains(functionName))
+                {
+                    throw new ArgumentException(
+                        "Inline function name '" + functionName + "' of method '" + spec.MethodName
+                        + "' collides with a workspace or derived table name.",
+                        "methods");
+                }
+                if (!functionNames.Add(functionName))
+                {
+                    throw new ArgumentException(
+                        "Inline function name '" + functionName + "' is used by more than one method.",
+                        "methods");
+                }
+            }
         }
 
         /// <summary>
@@ -315,6 +389,15 @@ namespace SqliteHost
         public IReadOnlyList<IHostMethodSpec<THandlers>> Methods
         {
             get { return _methods; }
+        }
+
+        /// <summary>True when at least one method is exposed as an inline scalar function.</summary>
+        internal bool HasInlineFunctions { get; }
+
+        /// <summary>The registered specs with their runtime-internal surface (inline metadata, schema models).</summary>
+        internal IReadOnlyList<IRuntimeHostMethodSpec<THandlers>> RuntimeSpecs
+        {
+            get { return _runtimeSpecs; }
         }
 
         /// <summary>Protocol v1 features: typedNamedBindings, splitResultTables, scriptInputs, scriptVars, scriptControl.</summary>

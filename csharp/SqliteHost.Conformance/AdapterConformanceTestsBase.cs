@@ -449,6 +449,188 @@ namespace SqliteHost.Conformance
             Assert.Equal(new[] { "g-1" }, callIds);
         }
 
+        // ---- optional capability: inline scalar functions ----------------
+        // Runs only against adapters implementing
+        // ISqliteHostScalarFunctionConnection; skipped with a reason
+        // everywhere else (docs/adapter-contract.md).
+
+        /// <summary>
+        /// Opens a workspace and returns its scalar-function surface;
+        /// skips the test when the adapter does not implement the optional
+        /// capability.
+        /// </summary>
+        private ISqliteHostScalarFunctionConnection OpenFunctionCapable()
+        {
+            ISqliteHostConnection connection = Open();
+            var functions = connection as ISqliteHostScalarFunctionConnection;
+            if (functions == null)
+            {
+                connection.Dispose();
+                Skip.If(true, "Adapter does not implement ISqliteHostScalarFunctionConnection (optional capability).");
+            }
+            return functions;
+        }
+
+        private static SqliteHostScalarFunction Constant(
+            string name, SqliteHostBindingValue result)
+        {
+            return new SqliteHostScalarFunction(name, 0, 0, args => result);
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_ResultRoundTrip_EveryBindingType()
+        {
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            connection.RegisterScalarFunction(Constant("fn_i32", SqliteHostBindingValue.Int32(-12)));
+            connection.RegisterScalarFunction(Constant("fn_i64", SqliteHostBindingValue.Int64(5_000_000_123L)));
+            connection.RegisterScalarFunction(Constant("fn_true", SqliteHostBindingValue.Bool(true)));
+            connection.RegisterScalarFunction(Constant("fn_false", SqliteHostBindingValue.Bool(false)));
+            connection.RegisterScalarFunction(Constant("fn_text", SqliteHostBindingValue.Text("değer 🎮")));
+            connection.RegisterScalarFunction(Constant("fn_blob", SqliteHostBindingValue.Blob(new byte[] { 0xDE, 0xAD })));
+            connection.RegisterScalarFunction(Constant("fn_f32", SqliteHostBindingValue.Float32(0.75f)));
+            connection.RegisterScalarFunction(Constant("fn_f64", SqliteHostBindingValue.Float64(-98.5)));
+            connection.RegisterScalarFunction(Constant("fn_nil", SqliteHostBindingValue.Null()));
+
+            AssertSingleRow(connection, "SELECT fn_i32(), typeof(fn_i32())",
+                row => row.GetInt32(0) + "|" + row.GetText(1), "-12|integer");
+            AssertSingleRow(connection, "SELECT fn_i64(), typeof(fn_i64())",
+                row => row.GetInt64(0) + "|" + row.GetText(1), "5000000123|integer");
+            AssertSingleRow(connection, "SELECT fn_true(), fn_false(), typeof(fn_true())",
+                row => row.GetInt64(0) + "|" + row.GetInt64(1) + "|" + row.GetText(2), "1|0|integer");
+            AssertSingleRow(connection, "SELECT fn_text(), typeof(fn_text())",
+                row => row.GetText(0) + "|" + row.GetText(1), "değer 🎮|text");
+            AssertSingleRow(connection, "SELECT hex(fn_blob()), typeof(fn_blob())",
+                row => row.GetText(0) + "|" + row.GetText(1), "DEAD|blob");
+            var f32 = connection.Query("SELECT fn_f32(), typeof(fn_f32())", null,
+                row => new { Value = row.GetFloat32(0), Type = row.GetText(1) });
+            var f32Row = Assert.Single(f32);
+            Assert.Equal(0.75f, f32Row.Value);
+            Assert.Equal("real", f32Row.Type);
+            var f64 = connection.Query("SELECT fn_f64(), typeof(fn_f64())", null,
+                row => new { Value = row.GetFloat64(0), Type = row.GetText(1) });
+            var f64Row = Assert.Single(f64);
+            Assert.Equal(-98.5, f64Row.Value);
+            Assert.Equal("real", f64Row.Type);
+            AssertSingleRow(connection, "SELECT typeof(fn_nil())",
+                row => row.GetText(0), "null");
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_ArgumentsArriveDynamicallyTyped()
+        {
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            var received = new List<SqliteHostBindingValue[]>();
+            connection.RegisterScalarFunction(new SqliteHostScalarFunction(
+                "fn_probe", 5, 5,
+                args => { received.Add(args); return SqliteHostBindingValue.Int64(1); }));
+
+            connection.Query(
+                "SELECT fn_probe(12, 2.5, 'metin', x'0102', NULL)", null, row => row.GetInt64(0));
+
+            var args0 = Assert.Single(received);
+            Assert.Equal(5, args0.Length);
+            Assert.Equal(SqliteHostBindingType.Int64, args0[0].Type);
+            Assert.Equal(12L, args0[0].Int64Value);
+            Assert.Equal(SqliteHostBindingType.Float64, args0[1].Type);
+            Assert.Equal(2.5, args0[1].Float64Value);
+            Assert.Equal(SqliteHostBindingType.Text, args0[2].Type);
+            Assert.Equal("metin", args0[2].TextValue);
+            Assert.Equal(SqliteHostBindingType.Blob, args0[3].Type);
+            Assert.Equal(new byte[] { 0x01, 0x02 }, args0[3].BlobValue);
+            Assert.Equal(SqliteHostBindingType.Null, args0[4].Type);
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_ArityRange_RegistersEveryArity_OmittedTrailingReadsAsNull()
+        {
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            connection.RegisterScalarFunction(new SqliteHostScalarFunction(
+                "fn_arity", 1, 3,
+                args =>
+                {
+                    // The invoked arity arrives as args.Length; the consumer
+                    // treats omitted trailing args exactly like SQL NULLs.
+                    var parts = new List<string>();
+                    foreach (SqliteHostBindingValue arg in args)
+                    {
+                        parts.Add(arg.Type == SqliteHostBindingType.Text ? arg.TextValue : "-");
+                    }
+                    return SqliteHostBindingValue.Text(args.Length + ":" + string.Join("|", parts));
+                }));
+
+            AssertSingleRow(connection, "SELECT fn_arity('a')", row => row.GetText(0), "1:a");
+            AssertSingleRow(connection, "SELECT fn_arity('a', 'b')", row => row.GetText(0), "2:a|b");
+            AssertSingleRow(connection, "SELECT fn_arity('a', NULL)", row => row.GetText(0), "2:a|-");
+            AssertSingleRow(connection, "SELECT fn_arity('a', 'b', 'c')", row => row.GetText(0), "3:a|b|c");
+
+            // Arities outside MinArgs..MaxArgs are NOT registered.
+            Assert.ThrowsAny<Exception>(
+                () => connection.Query("SELECT fn_arity()", null, row => row.GetText(0)));
+            Assert.ThrowsAny<Exception>(
+                () => connection.Query("SELECT fn_arity('a', 'b', 'c', 'd')", null, row => row.GetText(0)));
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_UnicodeArguments_RoundTrip()
+        {
+            const string turkish = "İstanbul'da şöğüçı ĞÜŞİÖÇ";
+            const string emoji = "🎮 sqlite host 🚀✨";
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            connection.RegisterScalarFunction(new SqliteHostScalarFunction(
+                "fn_echo", 1, 1, args => args[0]));
+
+            AssertSingleRow(connection,
+                "SELECT fn_echo('" + turkish.Replace("'", "''") + "')", row => row.GetText(0), turkish);
+            AssertSingleRow(connection,
+                "SELECT fn_echo('" + emoji + "')", row => row.GetText(0), emoji);
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_InvokeThrow_FailsTheStatementWithMarker_NeverCrashes()
+        {
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            connection.RegisterScalarFunction(new SqliteHostScalarFunction(
+                "fn_boom", 1, 1,
+                args => throw new InvalidOperationException("kaboom")));
+
+            var ex = Assert.ThrowsAny<Exception>(
+                () => connection.Query("SELECT fn_boom(1)", null, row => row.GetInt64(0)));
+            Assert.Contains(SqliteHostScalarFunction.HandlerErrorMarker, ex.Message);
+            Assert.Contains("kaboom", ex.Message);
+
+            // The exception traveled through the SQL error channel, never
+            // across the native frames: the connection stays fully usable.
+            var rows = connection.Query("SELECT 41 + 1", null, row => row.GetInt64(0));
+            Assert.Equal(new[] { 42L }, rows);
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_NullForRequiredArg_FailsAsHandlerError_ThroughTheRuntime()
+        {
+            SkipIfSuiteDisabled();
+            using (ISqliteHostConnection probe = OpenAdapterConnection())
+            {
+                Skip.If(!(probe is ISqliteHostScalarFunctionConnection),
+                    "Adapter does not implement ISqliteHostScalarFunctionConnection (optional capability).");
+            }
+            var handlers = new RecordingProbeHandlers();
+
+            SqliteHostRunResult result = RunScript(
+                NewScript(
+                    Step("only",
+                        Statement(
+                            "INSERT INTO call_get_value (call_id, input_key)"
+                            + " SELECT 'c-1', 'k' WHERE fn_get_value(NULL) <> 0"))),
+                handlers);
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("getValue", result.Method);
+            Assert.Contains("required", result.ErrorMessage);
+            Assert.Empty(handlers.Log);   // the handler itself never ran
+            Assert.Equal(0, result.InlineCallCount);
+        }
+
         // ---- minimal probe host (self-contained; public fluent API) ------
 
         private sealed class ProbeInput
@@ -481,7 +663,10 @@ namespace SqliteHost.Conformance
         /// <summary>
         /// Single-method host ("getValue": text key in, long value out).
         /// Schema tables: call_get_value / result_get_value plus the
-        /// engine-level pending_host_calls and script_inputs.
+        /// engine-level pending_host_calls and script_inputs. The method is
+        /// also inline-exposed as fn_get_value; on adapters without the
+        /// optional scalar-function capability the runtime simply skips the
+        /// registration.
         /// </summary>
         private static SqliteHostDefinition<IProbeHandlers> BuildProbeHost()
         {
@@ -495,6 +680,7 @@ namespace SqliteHost.Conformance
                         .ApiLevel(1)
                         .Inputs(i => i.Text("key", (x, v) => x.Key = v))
                         .Results(r => r.Long("value", x => x.Value))
+                        .Inline("fn_get_value")
                         .Handler((handlers, input) => handlers.GetValue(input))
                         .Build()
                 });

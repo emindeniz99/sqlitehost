@@ -16,6 +16,16 @@ namespace SqliteHost
         IHostMethodSpecBuilder<THandlers, TInput, TResult> Handler(
             Func<THandlers, TInput, TResult> handler);
 
+        /// <summary>
+        /// Exposes the method as an inline scalar function (feature
+        /// inlineFunctions; generated code emits this between .Results and
+        /// .Handler). Build() re-checks the shape rules fail-loud:
+        /// scalar-only input, exactly one scalar result, no lists, optional
+        /// input fields trailing. mutates:false semantics are the
+        /// generator's duty.
+        /// </summary>
+        IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName);
+
         IHostMethodSpec<THandlers> Build();
     }
 }

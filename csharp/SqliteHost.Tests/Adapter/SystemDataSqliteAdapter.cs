@@ -16,7 +16,7 @@ namespace SqliteHost.Tests.Adapter
     /// native SQLite — it is NOT governed by the SQLITEHOST_NATIVE_SQLITE
     /// dynamic-provider override (which only affects SQLitePCLRaw users).
     /// </summary>
-    public sealed class SystemDataSqliteConnection : ISqliteHostConnection
+    public sealed class SystemDataSqliteConnection : ISqliteHostScalarFunctionConnection
     {
         private readonly SQLiteConnection _connection;
 
@@ -65,6 +65,108 @@ namespace SqliteHost.Tests.Adapter
             catch (SQLiteException ex)
             {
                 throw Wrap(ex);
+            }
+        }
+
+        /// <summary>
+        /// Optional capability (docs/adapter-contract.md): binds one
+        /// SQLiteFunction per arity in MinArgs..MaxArgs via BindFunction
+        /// with a per-arity SQLiteFunctionAttribute (no SQLITE_DETERMINISTIC
+        /// flags in v1).
+        /// </summary>
+        public void RegisterScalarFunction(SqliteHostScalarFunction function)
+        {
+            if (function == null)
+            {
+                throw new ArgumentNullException(nameof(function));
+            }
+            for (int arity = function.MinArgs; arity <= function.MaxArgs; arity++)
+            {
+                _connection.BindFunction(
+                    new SQLiteFunctionAttribute(function.Name, arity, FunctionType.Scalar),
+                    new ScalarFunctionBinding(function));
+            }
+        }
+
+        /// <summary>
+        /// System.Data.SQLite SWALLOWS exceptions thrown out of
+        /// SQLiteFunction.Invoke (the statement then sees a NULL result) —
+        /// verified behavior. Its supported error channel is RETURNING an
+        /// Exception object, which SetReturnValue turns into
+        /// sqlite3_result_error with the exception's message; that carries
+        /// the SQLITEHOST_HANDLER_ERROR: marker into the statement's
+        /// SQLiteException text.
+        /// </summary>
+        private sealed class ScalarFunctionBinding : SQLiteFunction
+        {
+            private readonly SqliteHostScalarFunction _function;
+
+            public ScalarFunctionBinding(SqliteHostScalarFunction function)
+            {
+                _function = function;
+            }
+
+            public override object Invoke(object[] args)
+            {
+                try
+                {
+                    var values = new SqliteHostBindingValue[args.Length];
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        values[i] = FromFunctionArgument(args[i]);
+                    }
+                    SqliteHostBindingValue result = _function.Invoke(values) ?? SqliteHostBindingValue.Null();
+                    return ToFunctionResult(result);
+                }
+                catch (Exception ex)
+                {
+                    return new InvalidOperationException(
+                        SqliteHostScalarFunction.HandlerErrorMarker + " " + ex.Message);
+                }
+            }
+        }
+
+        private static SqliteHostBindingValue FromFunctionArgument(object value)
+        {
+            switch (value)
+            {
+                case null:
+                case DBNull _:
+                    return SqliteHostBindingValue.Null();
+                case long int64:
+                    return SqliteHostBindingValue.Int64(int64);
+                case double float64:
+                    return SqliteHostBindingValue.Float64(float64);
+                case string text:
+                    return SqliteHostBindingValue.Text(text);
+                case byte[] blob:
+                    return SqliteHostBindingValue.Blob(blob);
+                default:
+                    throw new InvalidOperationException(
+                        "Unexpected scalar function argument type " + value.GetType().Name + ".");
+            }
+        }
+
+        private static object ToFunctionResult(SqliteHostBindingValue value)
+        {
+            switch (value.Type)
+            {
+                case SqliteHostBindingType.Int32:
+                    return (long)value.Int32Value;
+                case SqliteHostBindingType.Int64:
+                    return value.Int64Value;
+                case SqliteHostBindingType.Bool:
+                    return value.BoolValue ? 1L : 0L;
+                case SqliteHostBindingType.Text:
+                    return value.TextValue;
+                case SqliteHostBindingType.Blob:
+                    return value.BlobValue;
+                case SqliteHostBindingType.Float32:
+                    return (double)value.Float32Value;
+                case SqliteHostBindingType.Float64:
+                    return value.Float64Value;
+                default:
+                    return DBNull.Value;
             }
         }
 
@@ -137,8 +239,8 @@ namespace SqliteHost.Tests.Adapter
         public double GetFloat64(int index) => _reader.GetDouble(index);
     }
 
-    /// <summary>In-memory workspace factory over the System.Data.SQLite adapter.</summary>
-    public sealed class SystemDataSqliteWorkspaceFactory : ISqliteHostConnectionFactory
+    /// <summary>In-memory workspace factory over the System.Data.SQLite adapter (scalar-function capable).</summary>
+    public sealed class SystemDataSqliteWorkspaceFactory : ISqliteHostScalarFunctionCapableFactory
     {
         public ISqliteHostConnection OpenWorkspace() => SystemDataSqliteConnection.OpenInMemory();
     }

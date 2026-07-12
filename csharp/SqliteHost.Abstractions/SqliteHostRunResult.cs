@@ -41,6 +41,13 @@ namespace SqliteHost
         /// <summary>Successfully completed handler invocations.</summary>
         public int ExecutedCallCount { get; set; }
 
+        /// <summary>
+        /// Handler invocations made through inline scalar functions
+        /// (informational — the SQLite planner may evaluate a function
+        /// 0..N times per row).
+        /// </summary>
+        public int InlineCallCount { get; set; }
+
         /// <summary>Populated when <see cref="SqliteHostRuntimeOptions"/> EnableDiagnostics is on.</summary>
         public List<SqliteHostCallDiagnostic> Calls { get; set; }
     }
