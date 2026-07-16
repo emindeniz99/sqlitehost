@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <RootNamespace>Example.Game.Generated.Ultra</RootNamespace>
+    <AssemblyName>SqliteHost.Generated.Sample.Ultra</AssemblyName>
+    <Description>Generated-style sample host for the sample-host manifest (golden target of the C# emitter, --profile ultra).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
+    <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -35,6 +35,8 @@
     <ProjectReference Include="../SqliteHost.Conformance/SqliteHost.Conformance.csproj" />
     <ProjectReference Include="../SqliteHost.Adapters.Native/SqliteHost.Adapters.Native.csproj" />
     <ProjectReference Include="../SqliteHost.Generated.Sample/SqliteHost.Generated.Sample.csproj" />
+    <ProjectReference Include="../SqliteHost.Generated.Sample.Compact/SqliteHost.Generated.Sample.Compact.csproj" />
+    <ProjectReference Include="../SqliteHost.Generated.Sample.Ultra/SqliteHost.Generated.Sample.Ultra.csproj" />
   </ItemGroup>
 
 </Project>
