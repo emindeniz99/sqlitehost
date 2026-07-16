@@ -268,9 +268,18 @@ Argument shapes (from each CLI's usage string):
 | CLI (bin name) | Usage |
 |---|---|
 | `sqlite-host-emit-manifest` | `<entrypoint.tsp> <out-dir> [--base-name <name>]` |
-| *(no bin — run `codegen/csharp-emitter/dist/cli.js`)* | `<manifest.json> <out-dir>` |
+| *(no bin — run `codegen/csharp-emitter/dist/cli.js`)* | `<manifest.json> <out-dir> [--profile classic\|compact\|ultra] [--namespace <ns>]` |
 | `sqlite-host-emit-java` | `<manifest.json> <out-dir>` |
 | `sqlite-host-emit-typescript` | `<manifest.json> <out-dir> [--base-name <name>]` |
+
+C#-only: `--profile` picks the generated-code **size profile** —
+`classic` (default; typed fluent style), `compact` (same typed
+DTOs/handlers, static pre-erased accessors: ~8× smaller per-method
+AOT/IL2CPP footprint), or `ultra` (no DTOs, name-keyed call/result
+surface: smallest). Behavior is identical across profiles; pick by
+app-size budget (measured numbers: `docs/compatibility.md`, App
+size). `--namespace` overrides the generated namespace (default
+`<tsp namespace>.Generated`).
 
 `--base-name` defaults to `sample-host` — pass your own. The bin
 names come from each emitter's `package.json` and matter once the

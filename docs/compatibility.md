@@ -106,6 +106,51 @@ that is sample-only; see `docs/guides/unity-2021-spike.md`.) If a
 future implementation ever introduces reflection-based mapping,
 Preserve/link.xml guidance becomes mandatory at that point.
 
+## App size (measured; NativeAOT proxy for IL2CPP)
+
+For download-cap-constrained games (App Store cellular threshold:
+compressed download size) the runtime's footprint was measured
+empirically, not estimated. Method: a "game-like" baseline app that
+heavily exercises the BCL (collections, interface dispatch, delegates,
+StringBuilder + invariant parse/format, base64/UTF8, sorting, custom
+exceptions) is published with .NET 8 **NativeAOT**
+(`-p:PublishAot -p:StripSymbols -p:InvariantGlobalization`,
+linux-x64), then the same app is republished with SqliteHost actually
+executing a script. The delta is the honest marginal cost; gzip -9 of
+the binary is the download proxy. NativeAOT is a *proxy* for IL2CPP
+(both AOT + whole-program trim) — magnitudes transfer, exact bytes
+don't; the Unity spike (ROADMAP) will pin the IL2CPP numbers.
+
+Measured deltas over the game-like baseline (managed core is ~80 KB of
+IL; the multiplier is AOT type metadata + EH tables, **not** string
+literals — total SQL-ish literal bytes in the binary measured under
+0.5 KB, and the unreferenced `GeneratedSchemaSql` constant strips):
+
+| Stack | raw Δ | gzip Δ (download) |
+|---|---|---|
+| classic profile, 5 methods | 464 KB | 211 KB |
+| classic profile, 50 methods | 914 KB | 411 KB |
+| **compact profile, 50 methods** | **474 KB** | **204 KB** |
+| **ultra profile, 50 methods** | **446 KB** | **198 KB** |
+
+Per additional method: classic ≈ 10 KB raw / 4.6 KB gzip — the cost of
+the per-method generic instantiations and lambda display classes the
+classic fluent surface creates (each unique type ≈ 700–900 B of AOT
+metadata). The compact profile (typed DTOs kept, accessors pre-erased
+static methods) cuts that to ≈ 1.2 KB raw / ≈ 0.3 KB gzip; ultra
+(no DTOs) to ≈ 0.7 KB raw / ≈ 0.2 KB gzip. At 50 methods the whole
+compact stack costs less download than the 5-method classic stack.
+
+Guidance: size-critical games generate with `--profile compact`
+(identical typed public API, identical behavior — pinned by the
+profile-equivalence tests); `--profile ultra` only when the last
+~100 KB matter more than compile-time payload typing. The engine
+itself can cost zero additional bytes on iOS/Android by consuming the
+system libsqlite3 through `SqliteHost.Adapters.Native`. Reflection-free
+NativeAOT (`IlcDisableReflection=true`) builds and runs the full
+runtime — consistent with the no-reflection source guard — so maximum
+managed stripping settings are safe.
+
 ## Java — 17+
 
 Generated/handwritten Java targets release 17 (records allowed,

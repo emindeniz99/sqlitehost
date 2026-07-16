@@ -423,6 +423,139 @@ public interface IListItemResultFieldsBuilder<TItem>
 }
 ```
 
+DTO types must be **classes**: the erased execution core passes DTOs
+around boxed, so `HostMethod.For<...>` and the `List<TItem>` field
+builders reject value-type DTO/item types fail-loud
+(`ArgumentException`, "must be classes") at registration time.
+
+### Compact descriptor API (size profile `compact`)
+
+Same typed DTOs and handler interface as classic; only the registration
+plumbing differs — every accessor is a pre-erased delegate (generated
+code passes static method groups), so a method registration adds **no
+lambdas, no display classes, and no generic instantiations**. Runtime
+behavior is identical to classic by construction (both lower to the
+same erased core; pinned by the profile-equivalence tests). Measured
+footprint: `docs/compatibility.md`, App size.
+
+```csharp
+public static class CompactHostMethod
+{
+    public static ICompactHostMethodBuilder<THandlers> For<THandlers>(string methodName);
+}
+
+public interface ICompactHostMethodBuilder<THandlers>
+{
+    ICompactHostMethodBuilder<THandlers> ApiLevel(int apiLevel);
+    ICompactHostMethodBuilder<THandlers> CreateInput(Func<object> factory);   // required
+    // 14 scalar input kinds mirroring IInputFieldsBuilder, erased setters:
+    //   InputInt(string, Action<object, int>), InputLong, InputBool,
+    //   InputText, InputBlob, InputFloat, InputDouble,
+    //   InputOptionalInt(string, Action<object, int?>), ... InputOptionalDouble
+    ICompactHostMethodBuilder<THandlers> InputList(
+        string sqlName,
+        Func<object> createItem,
+        Action<object, IReadOnlyList<object>> assignItems,
+        Action<ICompactListItemFieldsBuilder> configureItem);
+    // 14 scalar result kinds mirroring IResultFieldsBuilder, erased getters:
+    //   ResultInt(string, Func<object, int>), ... ResultOptionalDouble
+    ICompactHostMethodBuilder<THandlers> ResultList(
+        string sqlName,
+        Func<object, IReadOnlyList<object>> getItems,
+        Action<ICompactListItemResultFieldsBuilder> configureItem);
+    ICompactHostMethodBuilder<THandlers> Handler(Func<object, object, object> handler); // required
+    ICompactHostMethodBuilder<THandlers> Inline(string functionName);
+    IHostMethodSpec<THandlers> Build();
+}
+
+// Item builders: the same 14 scalar kinds with erased accessors.
+public interface ICompactListItemFieldsBuilder { /* Int(string, Action<object,int>) ... OptionalDouble */ }
+public interface ICompactListItemResultFieldsBuilder { /* Int(string, Func<object,int>) ... OptionalDouble */ }
+```
+
+`Build()` enforces the classic preconditions with the same messages
+(missing `Handler`, inline shape rules) plus "has no input factory"
+when `CreateInput` was not called.
+
+### Ultra descriptor API (size profile `ultra`)
+
+No DTO types at all: the declaration carries field names and kinds
+only, handlers work against a name-keyed value surface. The trade is
+compile-time typing of per-method payloads — in exchange the declared
+shape is enforced **fail-loud after every handler invocation**
+(unset/mistyped/undeclared result fields surface as `FailedHandler`).
+Wire contract, DDL, and runtime behavior stay identical to the other
+profiles.
+
+```csharp
+public static class UltraHostMethod
+{
+    public static IUltraHostMethodBuilder<THandlers> For<THandlers>(string methodName);
+}
+
+public interface IUltraHostMethodBuilder<THandlers>
+{
+    IUltraHostMethodBuilder<THandlers> ApiLevel(int apiLevel);
+    // 14 scalar input kinds, declaration-only: InputInt(string), InputLong,
+    //   ..., InputOptionalDouble(string)
+    IUltraHostMethodBuilder<THandlers> InputList(
+        string sqlName, Action<IUltraListItemFieldsBuilder> configureItem);
+    // 14 scalar result kinds, declaration-only: ResultInt(string), ...,
+    //   ResultOptionalDouble(string)
+    IUltraHostMethodBuilder<THandlers> ResultList(
+        string sqlName, Action<IUltraListItemFieldsBuilder> configureItem);
+    IUltraHostMethodBuilder<THandlers> Handler(
+        Func<object, SqliteHostUltraCall, SqliteHostUltraResult> handler);   // required
+    IUltraHostMethodBuilder<THandlers> Inline(string functionName);
+    IHostMethodSpec<THandlers> Build();
+}
+
+public interface IUltraListItemFieldsBuilder { /* Int(string) ... OptionalDouble(string), shared by input and result lists */ }
+
+public sealed class SqliteHostUltraCall
+{
+    public bool IsNull(string fieldName);
+    public int GetInt32(string fieldName);
+    public long GetInt64(string fieldName);
+    public bool GetBool(string fieldName);
+    public string GetText(string fieldName);
+    public byte[] GetBlob(string fieldName);
+    public float GetFloat32(string fieldName);
+    public double GetFloat64(string fieldName);
+    public IReadOnlyList<SqliteHostUltraRow> GetList(string listName);
+}
+
+public sealed class SqliteHostUltraResult
+{
+    public SqliteHostUltraResult SetInt32(string fieldName, int value);      // + SetInt64,
+    // SetBool, SetText, SetBlob, SetFloat32, SetFloat64 — all chainable
+    public SqliteHostUltraResult SetNull(string fieldName);
+    public SqliteHostUltraRow AddRow(string listName);
+}
+
+public sealed class SqliteHostUltraRow
+{
+    // read side (input list rows): IsNull + the same 7 Get* as SqliteHostUltraCall
+    // write side (result list rows): the same 7 Set* + SetNull as
+    // SqliteHostUltraResult, chainable, returning SqliteHostUltraRow
+}
+```
+
+Pinned ultra read/write semantics:
+
+- Declared-but-NULL input fields answer `IsNull` true; `Get*` on a NULL
+  or missing field fails loud (undeclared names are never silently
+  null).
+- `GetList` on a declared list with no queued rows returns an empty
+  list; undeclared list names fail loud.
+- After the handler returns, the result is validated against the
+  declaration: unset required fields, undeclared fields/lists, and
+  type-mismatched values are handler errors (`FailedHandler` /
+  `handler-error`); unset optional fields write NULL. A null string or
+  blob on a required text/blob field passes the shape layer and is
+  rejected by the NOT NULL result column (`FailedSql`) — classic
+  parity.
+
 ### Runtime
 
 ```csharp
@@ -484,7 +617,11 @@ arguments): `connectionFactory`, `hostDefinition`, `handlers`,
 
 ## Generated code shape (target of the C# emitter)
 
-Namespace: `Example.Game.Generated` for the sample. Files:
+Namespace: `Example.Game.Generated` for the sample. The emitter takes
+`--profile classic|compact|ultra` (default `classic` — existing output
+unchanged) and an optional `--namespace <ns>` override (used by the
+repo's committed profile samples; also lets consumers run two profiles
+side by side). Classic files:
 
 | File | Contents |
 |---|---|
@@ -493,5 +630,19 @@ Namespace: `Example.Game.Generated` for the sample. Files:
 | `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API |
 | `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` per plan §11 — the `.Naming(...)` block always emits all nine naming values explicitly (six prefixes + queue/inputs/vars table names) |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
+
+Profile deltas (committed goldens:
+`csharp/SqliteHost.Generated.Sample.Compact/`,
+`csharp/SqliteHost.Generated.Sample.Ultra/`):
+
+- **compact** — same DTOs, handler interface, definition, and schema
+  files; `GeneratedHostMethodSpecs.g.cs` registers through
+  `CompactHostMethod` with one private static accessor method per
+  create/set/read/invoke (no lambdas anywhere in the file).
+- **ultra** — no `HostMethodDtos.g.cs`; the handler interface methods
+  are `SqliteHostUltraResult GetValue(SqliteHostUltraCall call);`;
+  `GeneratedHostMethodSpecs.g.cs` registers through `UltraHostMethod`
+  with declaration-only field calls plus one static `Invoke<Op>` per
+  method.
 
 Every generated file starts with the header line `// <auto-generated />`.
