@@ -6,13 +6,40 @@ runtime is only as trustworthy as its adapter, so the contract below is
 normative and enforced by a reusable conformance suite. **Silent
 failure is a conformance violation.**
 
+## The Query contract (and a pre-release breaking change)
+
+An adapter implements exactly two data operations:
+
+```csharp
+void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings);
+IReadOnlyList<object> QueryRows(
+    string sql,
+    IReadOnlyList<SqliteHostBinding> bindings,
+    Func<ISqliteHostRow, object> mapper);
+```
+
+`QueryRows` is non-generic **by contract**: a generic interface method
+(generic virtual method) forces AOT compilers (NativeAOT, IL2CPP) to
+carry their dynamic type loader — measured at ~250 KB. Call the mapper
+once per row, in row order, and return the mapped values. Typed reads
+stay ergonomic for everyone else through the `Query<T>` extension
+method on `ISqliteHostConnection` (SqliteHost.Abstractions).
+
+**Migration (pre-release breaking change):** earlier revisions declared
+`IReadOnlyList<T> Query<T>(...)` on the interface. To update an
+adapter: rename the method to `QueryRows`, replace `T` with `object`,
+and change `new List<T>()` to `new List<object>()` — the body is
+otherwise unchanged. Consumers *calling* `Query<T>(...)` need no
+changes (the extension method has the old name and shape). The
+conformance suite verifies the new contract.
+
 ## Error surfacing (the core rule)
 
 Adapters must never swallow SQL, prepare, step, schema, or binding
 failures:
 
-- `Execute` and `Query` must surface prepare/step/schema failures as
-  exceptions (preferably `SqliteHostAdapterException`, carrying the
+- `Execute` and `QueryRows` must surface prepare/step/schema failures
+  as exceptions (preferably `SqliteHostAdapterException`, carrying the
   native SQLite error code when available). The runtime maps them to
   `sql-error` / `FailedSql` and copies the code into
   `SqliteHostRunResult.SqliteErrorCode`.

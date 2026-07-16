@@ -66,7 +66,18 @@ public interface ISqliteHostRow
 public interface ISqliteHostConnection : IDisposable
 {
     void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings);
-    IReadOnlyList<T> Query<T>(
+    IReadOnlyList<object> QueryRows(
+        string sql,
+        IReadOnlyList<SqliteHostBinding> bindings,
+        Func<ISqliteHostRow, object> mapper);
+}
+
+// Typed convenience over QueryRows (adapter consumers and tests keep
+// the ergonomic shape; adapters implement only QueryRows).
+public static class SqliteHostConnectionExtensions
+{
+    public static IReadOnlyList<T> Query<T>(
+        this ISqliteHostConnection connection,
         string sql,
         IReadOnlyList<SqliteHostBinding> bindings,
         Func<ISqliteHostRow, T> mapper);
@@ -87,6 +98,17 @@ public interface ISqliteHostPreparedStatement : IDisposable
     IReadOnlyList<string> ParameterNames { get; }
 }
 ```
+
+`QueryRows` is deliberately **non-generic**. A generic method on an
+interface is a *generic virtual method*; calling one forces AOT
+compilers to keep the whole dynamic type loader alive (measured under
+NativeAOT: ~250 KB raw across code + metadata + EH — see
+`docs/compatibility.md`, App size). The runtime only ever calls
+`QueryRows`; the `Query<T>` extension exists for adapter consumers and
+is trimmed when unused. History: pre-release versions declared
+`Query<T>` on the interface itself — adapters written against that
+shape change the method name and erase `T` to `object` (see
+`docs/adapter-contract.md`, migration note).
 
 ### Script envelope DTOs (protocol v1, generated-then-vendored)
 
@@ -590,6 +612,21 @@ public sealed class SqliteHostRuntime<THandlers>
 Constructor parameter **names** are pinned (callers use named
 arguments): `connectionFactory`, `hostDefinition`, `handlers`,
 `options`. `options` may be null → defaults.
+
+### SQLITEHOST_SLIM (size-critical vendoring builds)
+
+Compiling `SqliteHost.Runtime` with the `SQLITEHOST_SLIM` define
+(`-p:SqliteHostSlim=true` on dotnet builds; a Scripting Define Symbol
+for Unity-vendored sources) strips the optional strict checks:
+registration-time naming/shape validation, the value-type DTO guards,
+lexical binding validation (`ValidateBindings` remains settable but is
+ignored; `missing-binding`/`unused-binding` never fire), ultra
+result-shape enforcement, and list-child-after-drain probing.
+Functional semantics — schema creation, execution, drain order, the
+version gate, halt/control, error mapping — are identical; measured
+savings in `docs/compatibility.md`. Use it only for final size-critical
+builds and keep CI/dev builds full: the stripped checks are the
+fail-loud layer that catches authoring bugs.
 
 ### Runtime lifecycle (pinned semantics, plan §18)
 

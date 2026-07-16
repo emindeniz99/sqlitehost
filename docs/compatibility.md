@@ -122,31 +122,42 @@ the binary is the download proxy. NativeAOT is a *proxy* for IL2CPP
 don't; the Unity spike (ROADMAP) will pin the IL2CPP numbers.
 
 Measured deltas over the game-like baseline (managed core is ~80 KB of
-IL; the multiplier is AOT type metadata + EH tables, **not** string
-literals — total SQL-ish literal bytes in the binary measured under
-0.5 KB, and the unreferenced `GeneratedSchemaSql` constant strips):
+IL; the cost is AOT type metadata + EH tables, **not** string literals
+— total SQL-ish literal bytes in the binary measured under 0.5 KB, and
+the unreferenced `GeneratedSchemaSql` constant strips):
 
 | Stack | raw Δ | gzip Δ (download) |
 |---|---|---|
-| classic profile, 5 methods | 464 KB | 211 KB |
-| classic profile, 50 methods | 914 KB | 411 KB |
-| **compact profile, 50 methods** | **474 KB** | **204 KB** |
-| **ultra profile, 50 methods** | **446 KB** | **198 KB** |
+| classic profile, 5 methods | 434 KB | 194 KB |
+| **compact profile, 50 methods** | **215 KB** | **88 KB** |
+| compact + `SQLITEHOST_SLIM`, 50 methods | 187 KB | 75 KB |
+| ultra profile, 50 methods | 188 KB | 81 KB |
+| **ultra + `SQLITEHOST_SLIM`, 50 methods** | **159 KB** | **66 KB** |
 
-Per additional method: classic ≈ 10 KB raw / 4.6 KB gzip — the cost of
-the per-method generic instantiations and lambda display classes the
-classic fluent surface creates (each unique type ≈ 700–900 B of AOT
-metadata). The compact profile (typed DTOs kept, accessors pre-erased
-static methods) cuts that to ≈ 1.2 KB raw / ≈ 0.3 KB gzip; ultra
-(no DTOs) to ≈ 0.7 KB raw / ≈ 0.2 KB gzip. At 50 methods the whole
-compact stack costs less download than the 5-method classic stack.
+Two structural findings drove the architecture here (an earlier
+revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
+
+1. **No generic virtual methods, anywhere on the hot path.** A generic
+   method on an interface forces AOT compilers to carry their dynamic
+   type loader; combined with generic runtime/definition types it cost
+   ~250 KB (super-additive: removing either alone recovered ~8 KB,
+   removing both collapsed the type-loader machinery to the
+   baseline stub — 2898 → 296 symbols). Hence
+   `ISqliteHostConnection.QueryRows` is non-generic by contract and the
+   runtime/definition cores are non-generic internally (thin typed
+   wrappers only).
+2. **Per-method cost is type count.** Each unique generic
+   instantiation/lambda class ≈ 700–900 B of AOT metadata: classic
+   ≈ 10 KB raw / 4.6 KB gzip per method, compact ≈ 1.2 / 0.3, ultra
+   ≈ 0.7 / 0.2.
 
 Guidance: size-critical games generate with `--profile compact`
 (identical typed public API, identical behavior — pinned by the
-profile-equivalence tests); `--profile ultra` only when the last
-~100 KB matter more than compile-time payload typing. The engine
-itself can cost zero additional bytes on iOS/Android by consuming the
-system libsqlite3 through `SqliteHost.Adapters.Native`. Reflection-free
+profile-equivalence tests); `--profile ultra` when the last tens of KB
+matter more than compile-time payload typing; add `SQLITEHOST_SLIM`
+(see `docs/csharp-api.md`) on final builds only. The engine itself can
+cost zero additional bytes on iOS/Android by consuming the system
+libsqlite3 through `SqliteHost.Adapters.Native`. Reflection-free
 NativeAOT (`IlcDisableReflection=true`) builds and runs the full
 runtime — consistent with the no-reflection source guard — so maximum
 managed stripping settings are safe.
