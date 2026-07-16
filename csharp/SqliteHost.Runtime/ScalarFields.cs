@@ -2,242 +2,180 @@ using System;
 
 namespace SqliteHost
 {
-    /// <summary>Shared factories for scalar read/write fields (one place for type mapping rules).</summary>
+    /// <summary>
+    /// Typed wrappers for the classic fluent API: each factory erases the
+    /// DTO type and lowers to <see cref="ErasedScalarFields"/>, which owns
+    /// the actual read/write and null-handling rules. The boxed-DTO cast is
+    /// safe because the spec builders reject value-type DTOs fail-loud.
+    /// </summary>
     internal static class ScalarFields
     {
-        public static ScalarReadField<T> Int<T>(string sqlName, Action<T, int> setter)
+        public static ErasedReadField Int<T>(string sqlName, Action<T, int> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Int32, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetInt32(index)); });
+            return ErasedScalarFields.Int(sqlName,
+                delegate(object dto, int value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Long<T>(string sqlName, Action<T, long> setter)
+        public static ErasedReadField Long<T>(string sqlName, Action<T, long> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Int64, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetInt64(index)); });
+            return ErasedScalarFields.Long(sqlName,
+                delegate(object dto, long value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Bool<T>(string sqlName, Action<T, bool> setter)
+        public static ErasedReadField Bool<T>(string sqlName, Action<T, bool> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Boolean, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetBool(index)); });
+            return ErasedScalarFields.Bool(sqlName,
+                delegate(object dto, bool value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Text<T>(string sqlName, Action<T, string> setter)
+        public static ErasedReadField Text<T>(string sqlName, Action<T, string> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.String, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetText(index)); });
+            return ErasedScalarFields.Text(sqlName,
+                delegate(object dto, string value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Blob<T>(string sqlName, Action<T, byte[]> setter)
+        public static ErasedReadField Blob<T>(string sqlName, Action<T, byte[]> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Bytes, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetBlob(index)); });
+            return ErasedScalarFields.Blob(sqlName,
+                delegate(object dto, byte[] value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Float<T>(string sqlName, Action<T, float> setter)
+        public static ErasedReadField Float<T>(string sqlName, Action<T, float> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Float32, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat32(index)); });
+            return ErasedScalarFields.Float(sqlName,
+                delegate(object dto, float value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> Double<T>(string sqlName, Action<T, double> setter)
+        public static ErasedReadField Double<T>(string sqlName, Action<T, double> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Float64, false,
-                delegate(T dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat64(index)); });
+            return ErasedScalarFields.Double(sqlName,
+                delegate(object dto, double value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalInt<T>(string sqlName, Action<T, int?> setter)
+        public static ErasedReadField OptionalInt<T>(string sqlName, Action<T, int?> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Int32, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? (int?)null : row.GetInt32(index));
-                });
+            return ErasedScalarFields.OptionalInt(sqlName,
+                delegate(object dto, int? value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalLong<T>(string sqlName, Action<T, long?> setter)
+        public static ErasedReadField OptionalLong<T>(string sqlName, Action<T, long?> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Int64, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? (long?)null : row.GetInt64(index));
-                });
+            return ErasedScalarFields.OptionalLong(sqlName,
+                delegate(object dto, long? value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalBool<T>(string sqlName, Action<T, bool?> setter)
+        public static ErasedReadField OptionalBool<T>(string sqlName, Action<T, bool?> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Boolean, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? (bool?)null : row.GetBool(index));
-                });
+            return ErasedScalarFields.OptionalBool(sqlName,
+                delegate(object dto, bool? value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalText<T>(string sqlName, Action<T, string> setter)
+        public static ErasedReadField OptionalText<T>(string sqlName, Action<T, string> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.String, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? null : row.GetText(index));
-                });
+            return ErasedScalarFields.OptionalText(sqlName,
+                delegate(object dto, string value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalBlob<T>(string sqlName, Action<T, byte[]> setter)
+        public static ErasedReadField OptionalBlob<T>(string sqlName, Action<T, byte[]> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Bytes, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? null : row.GetBlob(index));
-                });
+            return ErasedScalarFields.OptionalBlob(sqlName,
+                delegate(object dto, byte[] value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalFloat<T>(string sqlName, Action<T, float?> setter)
+        public static ErasedReadField OptionalFloat<T>(string sqlName, Action<T, float?> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Float32, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? (float?)null : row.GetFloat32(index));
-                });
+            return ErasedScalarFields.OptionalFloat(sqlName,
+                delegate(object dto, float? value) { setter((T)dto, value); });
         }
 
-        public static ScalarReadField<T> OptionalDouble<T>(string sqlName, Action<T, double?> setter)
+        public static ErasedReadField OptionalDouble<T>(string sqlName, Action<T, double?> setter)
         {
-            return new ScalarReadField<T>(sqlName, HostScalarType.Float64, true,
-                delegate(T dto, ISqliteHostRow row, int index)
-                {
-                    setter(dto, row.IsNull(index) ? (double?)null : row.GetFloat64(index));
-                });
+            return ErasedScalarFields.OptionalDouble(sqlName,
+                delegate(object dto, double? value) { setter((T)dto, value); });
         }
 
-        public static ScalarWriteField<T> WriteInt<T>(string sqlName, Func<T, int> getter)
+        public static ErasedWriteField WriteInt<T>(string sqlName, Func<T, int> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Int32, false,
-                delegate(T value) { return SqliteHostBindingValue.Int32(getter(value)); });
+            return ErasedScalarFields.WriteInt(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteLong<T>(string sqlName, Func<T, long> getter)
+        public static ErasedWriteField WriteLong<T>(string sqlName, Func<T, long> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Int64, false,
-                delegate(T value) { return SqliteHostBindingValue.Int64(getter(value)); });
+            return ErasedScalarFields.WriteLong(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteBool<T>(string sqlName, Func<T, bool> getter)
+        public static ErasedWriteField WriteBool<T>(string sqlName, Func<T, bool> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Boolean, false,
-                delegate(T value) { return SqliteHostBindingValue.Bool(getter(value)); });
+            return ErasedScalarFields.WriteBool(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteText<T>(string sqlName, Func<T, string> getter)
+        public static ErasedWriteField WriteText<T>(string sqlName, Func<T, string> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.String, false,
-                delegate(T value)
-                {
-                    string text = getter(value);
-                    return text == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Text(text);
-                });
+            return ErasedScalarFields.WriteText(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteBlob<T>(string sqlName, Func<T, byte[]> getter)
+        public static ErasedWriteField WriteBlob<T>(string sqlName, Func<T, byte[]> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Bytes, false,
-                delegate(T value)
-                {
-                    byte[] blob = getter(value);
-                    return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
-                });
+            return ErasedScalarFields.WriteBlob(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteFloat<T>(string sqlName, Func<T, float> getter)
+        public static ErasedWriteField WriteFloat<T>(string sqlName, Func<T, float> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Float32, false,
-                delegate(T value) { return SqliteHostBindingValue.Float32(getter(value)); });
+            return ErasedScalarFields.WriteFloat(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteDouble<T>(string sqlName, Func<T, double> getter)
+        public static ErasedWriteField WriteDouble<T>(string sqlName, Func<T, double> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Float64, false,
-                delegate(T value) { return SqliteHostBindingValue.Float64(getter(value)); });
+            return ErasedScalarFields.WriteDouble(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalInt<T>(string sqlName, Func<T, int?> getter)
+        public static ErasedWriteField WriteOptionalInt<T>(string sqlName, Func<T, int?> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Int32, true,
-                delegate(T value)
-                {
-                    int? number = getter(value);
-                    return number.HasValue
-                        ? SqliteHostBindingValue.Int32(number.Value)
-                        : SqliteHostBindingValue.Null();
-                });
+            return ErasedScalarFields.WriteOptionalInt(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalLong<T>(string sqlName, Func<T, long?> getter)
+        public static ErasedWriteField WriteOptionalLong<T>(string sqlName, Func<T, long?> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Int64, true,
-                delegate(T value)
-                {
-                    long? number = getter(value);
-                    return number.HasValue
-                        ? SqliteHostBindingValue.Int64(number.Value)
-                        : SqliteHostBindingValue.Null();
-                });
+            return ErasedScalarFields.WriteOptionalLong(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalBool<T>(string sqlName, Func<T, bool?> getter)
+        public static ErasedWriteField WriteOptionalBool<T>(string sqlName, Func<T, bool?> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Boolean, true,
-                delegate(T value)
-                {
-                    bool? flag = getter(value);
-                    return flag.HasValue
-                        ? SqliteHostBindingValue.Bool(flag.Value)
-                        : SqliteHostBindingValue.Null();
-                });
+            return ErasedScalarFields.WriteOptionalBool(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalText<T>(string sqlName, Func<T, string> getter)
+        public static ErasedWriteField WriteOptionalText<T>(string sqlName, Func<T, string> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.String, true,
-                delegate(T value)
-                {
-                    string text = getter(value);
-                    return text == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Text(text);
-                });
+            return ErasedScalarFields.WriteOptionalText(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalBlob<T>(string sqlName, Func<T, byte[]> getter)
+        public static ErasedWriteField WriteOptionalBlob<T>(string sqlName, Func<T, byte[]> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Bytes, true,
-                delegate(T value)
-                {
-                    byte[] blob = getter(value);
-                    return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
-                });
+            return ErasedScalarFields.WriteOptionalBlob(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalFloat<T>(string sqlName, Func<T, float?> getter)
+        public static ErasedWriteField WriteOptionalFloat<T>(string sqlName, Func<T, float?> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Float32, true,
-                delegate(T value)
-                {
-                    float? number = getter(value);
-                    return number.HasValue
-                        ? SqliteHostBindingValue.Float32(number.Value)
-                        : SqliteHostBindingValue.Null();
-                });
+            return ErasedScalarFields.WriteOptionalFloat(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
 
-        public static ScalarWriteField<T> WriteOptionalDouble<T>(string sqlName, Func<T, double?> getter)
+        public static ErasedWriteField WriteOptionalDouble<T>(string sqlName, Func<T, double?> getter)
         {
-            return new ScalarWriteField<T>(sqlName, HostScalarType.Float64, true,
-                delegate(T value)
-                {
-                    double? number = getter(value);
-                    return number.HasValue
-                        ? SqliteHostBindingValue.Float64(number.Value)
-                        : SqliteHostBindingValue.Null();
-                });
+            return ErasedScalarFields.WriteOptionalDouble(sqlName,
+                delegate(object value) { return getter((T)value); });
         }
     }
 }

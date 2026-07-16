@@ -20,6 +20,7 @@ namespace SqliteHost
             {
                 throw new ArgumentException("methodName must be non-empty.", nameof(methodName));
             }
+            SpecGuards.RequireReferenceDtoTypes(typeof(TInput), typeof(TResult), methodName);
             _methodName = methodName;
         }
 
@@ -69,67 +70,23 @@ namespace SqliteHost
                 throw new InvalidOperationException(
                     "Method '" + _methodName + "' has no handler; call Handler(...) before Build().");
             }
-            return new HostMethodSpec<THandlers, TInput, TResult>(
+            Func<THandlers, TInput, TResult> handler = _handler;
+            return new ErasedSpecAdapter<THandlers>(new ErasedHostMethodSpec(
                 _methodName,
                 _apiLevel,
+                delegate { return (object)new TInput(); },
                 _inputs.Fields,
                 _inputs.ListFields,
                 _results.Fields,
                 _results.ListFields,
-                _handler,
-                BuildInlineModel());
-        }
-
-        /// <summary>
-        /// Re-checks the inline eligibility shape rules
-        /// (docs/proposals/inline-host-functions.md) fail-loud: scalar-only
-        /// input, exactly one scalar result, no lists, optional input
-        /// fields trailing. Null when the method is not inline-exposed.
-        /// </summary>
-        private InlineFunctionModel BuildInlineModel()
-        {
-            if (_inlineFunctionName == null)
-            {
-                return null;
-            }
-            if (_inputs.ListFields.Count > 0)
-            {
-                throw new InvalidOperationException(
-                    "Method '" + _methodName + "' cannot be exposed as inline function '"
-                    + _inlineFunctionName + "': the input must have scalar fields only (no lists).");
-            }
-            if (_results.ListFields.Count > 0)
-            {
-                throw new InvalidOperationException(
-                    "Method '" + _methodName + "' cannot be exposed as inline function '"
-                    + _inlineFunctionName + "': the result must have scalar fields only (no lists).");
-            }
-            if (_results.Fields.Count != 1)
-            {
-                throw new InvalidOperationException(
-                    "Method '" + _methodName + "' cannot be exposed as inline function '"
-                    + _inlineFunctionName + "': the result must have exactly one scalar field (found "
-                    + _results.Fields.Count + ").");
-            }
-            int requiredCount = 0;
-            bool sawOptional = false;
-            foreach (ScalarReadField<TInput> field in _inputs.Fields)
-            {
-                if (field.Optional)
-                {
-                    sawOptional = true;
-                    continue;
-                }
-                if (sawOptional)
-                {
-                    throw new InvalidOperationException(
-                        "Method '" + _methodName + "' cannot be exposed as inline function '"
-                        + _inlineFunctionName + "': required input field '" + field.SqlName
-                        + "' is declared after an optional field (optional fields must be trailing).");
-                }
-                requiredCount++;
-            }
-            return new InlineFunctionModel(_inlineFunctionName, requiredCount, _inputs.Fields.Count);
+                delegate(object handlers, object input) { return handler((THandlers)handlers, (TInput)input); },
+                InlineShapeRules.BuildModel(
+                    _methodName,
+                    _inlineFunctionName,
+                    _inputs.Fields,
+                    _inputs.ListFields.Count,
+                    _results.Fields.Count,
+                    _results.ListFields.Count)));
         }
     }
 }

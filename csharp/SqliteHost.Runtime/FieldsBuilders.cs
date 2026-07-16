@@ -5,8 +5,8 @@ namespace SqliteHost
 {
     internal sealed class InputFieldsBuilder<TInput> : IInputFieldsBuilder<TInput>
     {
-        public List<ScalarReadField<TInput>> Fields { get; } = new List<ScalarReadField<TInput>>();
-        public List<InputListField<TInput>> ListFields { get; } = new List<InputListField<TInput>>();
+        public List<ErasedReadField> Fields { get; } = new List<ErasedReadField>();
+        public List<ErasedInputListField> ListFields { get; } = new List<ErasedInputListField>();
 
         public IInputFieldsBuilder<TInput> Int(string sqlName, Action<TInput, int> setter)
         {
@@ -97,43 +97,30 @@ namespace SqliteHost
             Action<TInput, List<TItem>> setter,
             Action<IListItemFieldsBuilder<TItem>> configureItem) where TItem : new()
         {
+            SpecGuards.RequireReferenceItemType(typeof(TItem), sqlName);
             var itemBuilder = new ListItemFieldsBuilder<TItem>();
             configureItem(itemBuilder);
-            List<ScalarReadField<TItem>> itemFields = itemBuilder.Fields;
+            List<ErasedReadField> itemFields = itemBuilder.Fields;
 
             var itemSchemaFields = new List<SchemaFieldModel>();
-            foreach (ScalarReadField<TItem> field in itemFields)
+            foreach (ErasedReadField field in itemFields)
             {
                 itemSchemaFields.Add(field.ToSchemaField());
             }
 
-            ListFields.Add(new InputListField<TInput>(
+            ListFields.Add(new ErasedInputListField(
                 sqlName,
                 itemSchemaFields,
-                delegate(TInput dto, ISqliteHostConnection connection, SqliteHostNaming naming, SqliteHostColumns hostColumns, string methodName, string callId)
+                delegate { return (object)new TItem(); },
+                itemFields,
+                delegate(object dto, IReadOnlyList<object> items)
                 {
-                    string childTable = NamingDerivation.InputListTable(naming, methodName, sqlName);
-                    var columns = new List<string>();
-                    foreach (ScalarReadField<TItem> field in itemFields)
+                    var typedItems = new List<TItem>(items.Count);
+                    for (int i = 0; i < items.Count; i++)
                     {
-                        columns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                        typedItems.Add((TItem)items[i]);
                     }
-                    string sql = "SELECT " + string.Join(", ", columns)
-                        + " FROM " + childTable
-                        + " WHERE " + hostColumns.CallId + " = :callId ORDER BY " + hostColumns.ItemIndex;
-                    IReadOnlyList<TItem> items = connection.Query(
-                        sql,
-                        RuntimeSql.CallIdBindings(callId),
-                        delegate(ISqliteHostRow row)
-                        {
-                            var item = new TItem();
-                            for (int i = 0; i < itemFields.Count; i++)
-                            {
-                                itemFields[i].Apply(item, row, i);
-                            }
-                            return item;
-                        });
-                    setter(dto, new List<TItem>(items));
+                    setter((TInput)dto, typedItems);
                 }));
             return this;
         }
@@ -141,7 +128,7 @@ namespace SqliteHost
 
     internal sealed class ListItemFieldsBuilder<TItem> : IListItemFieldsBuilder<TItem>
     {
-        public List<ScalarReadField<TItem>> Fields { get; } = new List<ScalarReadField<TItem>>();
+        public List<ErasedReadField> Fields { get; } = new List<ErasedReadField>();
 
         public IListItemFieldsBuilder<TItem> Int(string sqlName, Action<TItem, int> setter)
         {
@@ -230,8 +217,8 @@ namespace SqliteHost
 
     internal sealed class ResultFieldsBuilder<TResult> : IResultFieldsBuilder<TResult>
     {
-        public List<ScalarWriteField<TResult>> Fields { get; } = new List<ScalarWriteField<TResult>>();
-        public List<ResultListField<TResult>> ListFields { get; } = new List<ResultListField<TResult>>();
+        public List<ErasedWriteField> Fields { get; } = new List<ErasedWriteField>();
+        public List<ErasedResultListField> ListFields { get; } = new List<ErasedResultListField>();
 
         public IResultFieldsBuilder<TResult> Int(string sqlName, Func<TResult, int> getter)
         {
@@ -322,58 +309,42 @@ namespace SqliteHost
             Func<TResult, List<TItem>> getter,
             Action<IListItemResultFieldsBuilder<TItem>> configureItem)
         {
+            SpecGuards.RequireReferenceItemType(typeof(TItem), sqlName);
             var itemBuilder = new ListItemResultFieldsBuilder<TItem>();
             configureItem(itemBuilder);
-            List<ScalarWriteField<TItem>> itemFields = itemBuilder.Fields;
+            List<ErasedWriteField> itemFields = itemBuilder.Fields;
 
             var itemSchemaFields = new List<SchemaFieldModel>();
-            foreach (ScalarWriteField<TItem> field in itemFields)
+            foreach (ErasedWriteField field in itemFields)
             {
                 itemSchemaFields.Add(field.ToSchemaField());
             }
 
-            ListFields.Add(new ResultListField<TResult>(
+            ListFields.Add(new ErasedResultListField(
                 sqlName,
                 itemSchemaFields,
-                delegate(TResult result, ISqliteHostConnection connection, SqliteHostNaming naming, SqliteHostColumns hostColumns, string methodName, string callId)
+                delegate(object result)
                 {
-                    List<TItem> items = getter(result);
-                    if (items == null || items.Count == 0)
+                    List<TItem> items = getter((TResult)result);
+                    if (items == null)
                     {
-                        return;
+                        return null;
                     }
-                    string childTable = NamingDerivation.ResultListTable(naming, methodName, sqlName);
-                    var columns = new List<string> { hostColumns.CallId, hostColumns.ItemIndex };
-                    var placeholders = new List<string> { ":callId", ":itemIndex" };
-                    for (int i = 0; i < itemFields.Count; i++)
+                    var boxedItems = new List<object>(items.Count);
+                    for (int i = 0; i < items.Count; i++)
                     {
-                        columns.Add(NamingDerivation.ResultColumn(naming, itemFields[i].SqlName));
-                        placeholders.Add(":v" + i);
+                        boxedItems.Add(items[i]);
                     }
-                    string sql = "INSERT INTO " + childTable
-                        + " (" + string.Join(", ", columns) + ")"
-                        + " VALUES (" + string.Join(", ", placeholders) + ")";
-                    for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
-                    {
-                        var bindings = new List<SqliteHostBinding>
-                        {
-                            new SqliteHostBinding("callId", SqliteHostBindingValue.Text(callId)),
-                            new SqliteHostBinding("itemIndex", SqliteHostBindingValue.Int32(itemIndex))
-                        };
-                        for (int i = 0; i < itemFields.Count; i++)
-                        {
-                            bindings.Add(new SqliteHostBinding("v" + i, itemFields[i].Read(items[itemIndex])));
-                        }
-                        connection.Execute(sql, bindings);
-                    }
-                }));
+                    return boxedItems;
+                },
+                itemFields));
             return this;
         }
     }
 
     internal sealed class ListItemResultFieldsBuilder<TItem> : IListItemResultFieldsBuilder<TItem>
     {
-        public List<ScalarWriteField<TItem>> Fields { get; } = new List<ScalarWriteField<TItem>>();
+        public List<ErasedWriteField> Fields { get; } = new List<ErasedWriteField>();
 
         public IListItemResultFieldsBuilder<TItem> Int(string sqlName, Func<TItem, int> getter)
         {
