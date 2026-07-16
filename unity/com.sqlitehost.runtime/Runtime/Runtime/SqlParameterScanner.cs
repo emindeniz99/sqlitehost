@@ -1,3 +1,4 @@
+#if !SQLITEHOST_SLIM
 using System.Collections.Generic;
 
 namespace SqliteHost
@@ -143,3 +144,4 @@ namespace SqliteHost
         }
     }
 }
+#endif

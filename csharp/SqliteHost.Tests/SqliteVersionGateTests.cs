@@ -215,17 +215,17 @@ namespace SqliteHost.Tests
             public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
                 => ExecutedSql.Add(sql);
 
-            public IReadOnlyList<T> Query<T>(
+            public IReadOnlyList<object> QueryRows(
                 string sql,
                 IReadOnlyList<SqliteHostBinding> bindings,
-                Func<ISqliteHostRow, T> mapper)
+                Func<ISqliteHostRow, object> mapper)
             {
                 if (sql.Contains("sqlite_version()"))
                 {
                     _factory.VersionQueryCount++;
-                    return new List<T> { mapper(new FakeVersionRow(_versionString)) };
+                    return new List<object> { mapper(new FakeVersionRow(_versionString)) };
                 }
-                return new List<T>();   // e.g. the pending_host_calls drain query
+                return new List<object>();   // e.g. the pending_host_calls drain query
             }
 
             public void Dispose() => IsDisposed = true;

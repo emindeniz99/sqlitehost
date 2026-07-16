@@ -157,7 +157,7 @@ namespace SqliteHost
 
             IReadOnlyList<ErasedReadField> inputFields = _inputFields;
             Func<object> createInput = _createInput;
-            IReadOnlyList<object> rows = connection.Query(
+            IReadOnlyList<object> rows = connection.QueryRows(
                 sql,
                 RuntimeSql.CallIdBindings(callId),
                 delegate(ISqliteHostRow row)
@@ -203,7 +203,7 @@ namespace SqliteHost
                 + " FROM " + childTable
                 + " WHERE " + hostColumns.CallId + " = :callId ORDER BY " + hostColumns.ItemIndex;
             Func<object> createItem = listField.CreateItem;
-            IReadOnlyList<object> items = connection.Query(
+            IReadOnlyList<object> items = connection.QueryRows(
                 sql,
                 RuntimeSql.CallIdBindings(callId),
                 delegate(ISqliteHostRow row)
@@ -314,53 +314,42 @@ namespace SqliteHost
     }
 
     /// <summary>
-    /// Binds an <see cref="ErasedHostMethodSpec"/> to the typed
-    /// <see cref="IRuntimeHostMethodSpec{THandlers}"/> contract the runtime
-    /// consumes. One generic instantiation per handlers type — shared by
-    /// every method of the host, never per method.
+    /// Non-generic carrier base: lets the definition core reach the erased
+    /// spec behind any <see cref="IHostMethodSpec{THandlers}"/> built by the
+    /// descriptor builders without knowing the handlers type.
     /// </summary>
-    internal sealed class ErasedSpecAdapter<THandlers> : IRuntimeHostMethodSpec<THandlers>
+    internal abstract class ErasedSpecCarrier
     {
-        private readonly ErasedHostMethodSpec _spec;
-
-        public ErasedSpecAdapter(ErasedHostMethodSpec spec)
+        protected ErasedSpecCarrier(ErasedHostMethodSpec spec)
         {
-            _spec = spec;
+            Spec = spec;
+        }
+
+        public ErasedHostMethodSpec Spec { get; }
+    }
+
+    /// <summary>
+    /// Minimal generic carrier binding an <see cref="ErasedHostMethodSpec"/>
+    /// to the public <see cref="IHostMethodSpec{THandlers}"/> contract
+    /// generated code returns. One tiny instantiation per handlers type —
+    /// API typing only; the runtime and definition cores consume the erased
+    /// spec directly through <see cref="ErasedSpecCarrier"/>.
+    /// </summary>
+    internal sealed class ErasedSpecAdapter<THandlers> : ErasedSpecCarrier, IHostMethodSpec<THandlers>
+    {
+        public ErasedSpecAdapter(ErasedHostMethodSpec spec)
+            : base(spec)
+        {
         }
 
         public string MethodName
         {
-            get { return _spec.MethodName; }
+            get { return Spec.MethodName; }
         }
 
         public int ApiLevel
         {
-            get { return _spec.ApiLevel; }
-        }
-
-        public SchemaMethodModel SchemaModel
-        {
-            get { return _spec.SchemaModel; }
-        }
-
-        public InlineFunctionModel InlineFunction
-        {
-            get { return _spec.InlineFunction; }
-        }
-
-        public SqliteHostScalarFunction CreateInlineFunction(THandlers handlers, Action onHandlerInvocation)
-        {
-            return _spec.CreateInlineFunction(handlers, onHandlerInvocation);
-        }
-
-        public void ExecuteCall(
-            ISqliteHostConnection connection,
-            SqliteHostNaming naming,
-            SqliteHostColumns columns,
-            THandlers handlers,
-            string callId)
-        {
-            _spec.ExecuteCall(connection, naming, columns, handlers, callId);
+            get { return Spec.ApiLevel; }
         }
     }
 }

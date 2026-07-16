@@ -45,17 +45,17 @@ namespace SqliteHost.Tests.Adapter
             }
         }
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
+            Func<ISqliteHostRow, object> mapper)
         {
             using var command = CreateCommand(sql, bindings);
             try
             {
                 using var reader = command.ExecuteReader();
                 var row = new SystemDataSqliteRow(reader);
-                var results = new List<T>();
+                var results = new List<object>();
                 while (reader.Read())
                 {
                     results.Add(mapper(row));

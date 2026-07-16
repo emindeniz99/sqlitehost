@@ -29,11 +29,11 @@ namespace SqliteHost.Conformance
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
             => _inner.Execute(sql, bindings);
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
-            => _inner.Query(sql, bindings, mapper);
+            Func<ISqliteHostRow, object> mapper)
+            => _inner.QueryRows(sql, bindings, mapper);
 
         public void Dispose()
         {
@@ -57,11 +57,11 @@ namespace SqliteHost.Conformance
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
             => _inner.Execute(sql, bindings);
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
-            => _inner.Query(sql, bindings, mapper);
+            Func<ISqliteHostRow, object> mapper)
+            => _inner.QueryRows(sql, bindings, mapper);
 
         public void RegisterScalarFunction(SqliteHostScalarFunction function)
             => _inner.RegisterScalarFunction(function);

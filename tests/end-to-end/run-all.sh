@@ -18,6 +18,10 @@ fi
 echo "==> C# (dotnet test)"
 (cd "$ROOT/csharp" && "$DOTNET" test --nologo)
 
+echo "==> C# slim-build smoke (SQLITEHOST_SLIM compiles)"
+(cd "$ROOT/csharp" && "$DOTNET" build SqliteHost.Runtime/SqliteHost.Runtime.csproj \
+  -c Release --nologo -v q -p:SqliteHostSlim=true)
+
 echo "==> Java (mvn test)"
 (cd "$ROOT/java" && mvn -q test)
 

@@ -11,6 +11,7 @@ namespace SqliteHost
     {
         public static void RequireReferenceDtoTypes(Type inputType, Type resultType, string methodName)
         {
+#if !SQLITEHOST_SLIM
             if (inputType.IsValueType || resultType.IsValueType)
             {
                 throw new ArgumentException(
@@ -18,10 +19,12 @@ namespace SqliteHost
                     + " (value-type DTOs are not supported).",
                     "methodName");
             }
+#endif
         }
 
         public static void RequireReferenceItemType(Type itemType, string sqlName)
         {
+#if !SQLITEHOST_SLIM
             if (itemType.IsValueType)
             {
                 throw new ArgumentException(
@@ -29,6 +32,7 @@ namespace SqliteHost
                     + " (value-type items are not supported).",
                     "sqlName");
             }
+#endif
         }
     }
 }

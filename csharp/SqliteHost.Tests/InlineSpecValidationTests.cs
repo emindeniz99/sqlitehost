@@ -54,14 +54,14 @@ namespace SqliteHost.Tests
         public void GeneratedGetValueSpec_CarriesInlineMetadata_MutatingSpecsDoNot()
         {
             var definition = GeneratedHostDefinition.Build();
-            var getValue = (IRuntimeHostMethodSpec<IGeneratedHostHandlers>)definition.Methods[0];
+            ErasedHostMethodSpec getValue = ((ErasedSpecCarrier)definition.Methods[0]).Spec;
             Assert.Equal("getValue", getValue.MethodName);
             Assert.NotNull(getValue.InlineFunction);
             Assert.Equal("fn_get_value", getValue.InlineFunction.FunctionName);
             Assert.Equal(1, getValue.InlineFunction.MinArgs);
             Assert.Equal(1, getValue.InlineFunction.MaxArgs);
 
-            var setValue = (IRuntimeHostMethodSpec<IGeneratedHostHandlers>)definition.Methods[1];
+            ErasedHostMethodSpec setValue = ((ErasedSpecCarrier)definition.Methods[1]).Spec;
             Assert.Equal("setValue", setValue.MethodName);
             Assert.Null(setValue.InlineFunction);
         }
@@ -151,7 +151,7 @@ namespace SqliteHost.Tests
         [Fact]
         public void Inline_OptionalTrailingFields_ComputeTheArityRange()
         {
-            var spec = (IRuntimeHostMethodSpec<object>)HostMethod
+            ErasedHostMethodSpec spec = ((ErasedSpecCarrier)HostMethod
                 .For<object, KeyInput, OneResult>("pick")
                 .Inputs(i => i
                     .Text("key", (x, v) => x.Key = v)
@@ -160,7 +160,7 @@ namespace SqliteHost.Tests
                 .Results(r => r.Long("value", x => x.Value))
                 .Inline("fn_pick")
                 .Handler((h, input) => new OneResult())
-                .Build();
+                .Build()).Spec;
             Assert.Equal(2, spec.InlineFunction.MinArgs);
             Assert.Equal(3, spec.InlineFunction.MaxArgs);
         }
@@ -181,7 +181,7 @@ namespace SqliteHost.Tests
                 .Handler((h, input) => new TwoResult())
                 .Build();
             Assert.Equal("getPair", spec.MethodName);
-            Assert.Null(((IRuntimeHostMethodSpec<object>)spec).InlineFunction);
+            Assert.Null(((ErasedSpecCarrier)spec).Spec.InlineFunction);
         }
 
         // ---- definition-level naming validation ---------------------------

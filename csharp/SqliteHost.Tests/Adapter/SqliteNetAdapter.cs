@@ -56,14 +56,14 @@ namespace SqliteHost.Tests.Adapter
             }
         }
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
+            Func<ISqliteHostRow, object> mapper)
         {
             using sqlite3_stmt statement = PrepareCore(sql, bindings);
             var row = new SqliteNetRow(statement);
-            var results = new List<T>();
+            var results = new List<object>();
             while (true)
             {
                 int rc = raw.sqlite3_step(statement);

@@ -160,6 +160,7 @@ namespace SqliteHost
 
         public void Validate(SqliteHostUltraResult result)
         {
+#if !SQLITEHOST_SLIM
             ValidateRow(result.ParentRow, _fields, _fieldsByName, "result field");
 
             foreach (KeyValuePair<string, List<SqliteHostUltraRow>> list in result.Lists)
@@ -181,6 +182,7 @@ namespace SqliteHost
                     ValidateRow(row, itemDecls, itemsByName, "field of result list '" + list.Key + "'");
                 }
             }
+#endif
         }
 
         private void ValidateRow(

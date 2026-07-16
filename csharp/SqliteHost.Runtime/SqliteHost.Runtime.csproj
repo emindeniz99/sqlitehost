@@ -8,6 +8,15 @@
     <Description>SqliteHost execution core: host definition, fluent method descriptors, schema generation, script execution, and queue draining (Unity-2021-safe).</Description>
   </PropertyGroup>
 
+  <!-- Size-critical vendoring builds: -p:SqliteHostSlim=true (or the
+       SQLITEHOST_SLIM define symbol in Unity) strips the optional strict
+       checks — registration-time naming/shape validation, lexical binding
+       validation, ultra result-shape enforcement, list-child-after-drain
+       probing. See docs/compatibility.md (App size). -->
+  <PropertyGroup Condition="'$(SqliteHostSlim)' == 'true'">
+    <DefineConstants>$(DefineConstants);SQLITEHOST_SLIM</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Label="NuGet pack metadata">
     <PackageId>SqliteHost.Runtime</PackageId>
     <Version>0.1.0-preview</Version>

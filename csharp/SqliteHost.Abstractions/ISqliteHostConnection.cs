@@ -11,9 +11,9 @@ namespace SqliteHost
     {
         void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings);
 
-        IReadOnlyList<T> Query<T>(
+        IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper);
+            Func<ISqliteHostRow, object> mapper);
     }
 }

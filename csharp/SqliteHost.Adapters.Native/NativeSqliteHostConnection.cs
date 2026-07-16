@@ -112,17 +112,17 @@ namespace SqliteHost.Adapters.Native
             }
         }
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
+            Func<ISqliteHostRow, object> mapper)
         {
             ThrowIfDisposed();
             IntPtr statement = PrepareAndBind(sql, bindings);
             var row = new NativeRow(statement);
             try
             {
-                var results = new List<T>();
+                var results = new List<object>();
                 while (true)
                 {
                     int rc = NativeMethods.sqlite3_step(statement);
