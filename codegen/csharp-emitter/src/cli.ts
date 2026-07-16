@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
  * sqlite-host-emit-csharp <manifest.json> <out-dir>
+ *     [--profile <classic|compact|ultra>] [--namespace <ns>]
  *
  * Reads a canonical host library manifest and writes the generated C#
  * sources into <out-dir> (the protocol envelope lands under
- * <out-dir>/envelope/). Prints each written path.
+ * <out-dir>/envelope/). Prints each written path. --profile selects the
+ * code-size profile (default classic); --namespace overrides the
+ * generated namespace in every emitted file.
  *
  * Multi-library compilations: the manifest emitter writes one manifest
  * per @hostLibrary interface; run this tool once per manifest (with a
@@ -14,10 +17,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseManifest } from "@sqlite-host/codegen-core";
-import { emitCSharp } from "./emit.js";
+import { emitCSharp, type CSharpProfile } from "./emit.js";
 
 function usage(): never {
-  console.error("usage: sqlite-host-emit-csharp <manifest.json> <out-dir>");
+  console.error(
+    "usage: sqlite-host-emit-csharp <manifest.json> <out-dir> [--profile <classic|compact|ultra>] [--namespace <ns>]",
+  );
   console.error(
     "  Takes one manifest per invocation. Multi-library compilations produce",
   );
@@ -29,13 +34,36 @@ function usage(): never {
 }
 
 const args = process.argv.slice(2);
-if (args.length !== 2 || args.some((arg) => arg.startsWith("-"))) {
+const positionals: string[] = [];
+let profile: CSharpProfile = "classic";
+let namespaceOverride: string | undefined;
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === "--profile") {
+    const value = args[++i];
+    if (value !== "classic" && value !== "compact" && value !== "ultra") {
+      usage();
+    }
+    profile = value;
+  } else if (arg === "--namespace") {
+    const value = args[++i];
+    if (value === undefined) {
+      usage();
+    }
+    namespaceOverride = value;
+  } else if (arg.startsWith("-")) {
+    usage();
+  } else {
+    positionals.push(arg);
+  }
+}
+if (positionals.length !== 2) {
   usage();
 }
-const [manifestPath, outDir] = args;
+const [manifestPath, outDir] = positionals;
 
 const ir = parseManifest(await readFile(manifestPath, "utf8"));
-for (const file of emitCSharp(ir)) {
+for (const file of emitCSharp(ir, { profile, namespaceOverride })) {
   const target = join(outDir, file.path);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, file.contents);

@@ -72,6 +72,46 @@ for (const file of csharpFiles) {
   });
 }
 
+// 3b. C# emitter, compact and ultra size profiles vs vendored sources
+//     (emitted with the namespace override the committed samples use;
+//     ultra has no DTO file).
+const csharpProfileGoldens = [
+  {
+    profile: "compact",
+    namespaceOverride: "Example.Game.Generated.Compact",
+    goldens: {
+      "HostMethodDtos.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/HostMethodDtos.g.cs",
+      "IGeneratedHostHandlers.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/IGeneratedHostHandlers.g.cs",
+      "GeneratedHostMethodSpecs.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/GeneratedHostMethodSpecs.g.cs",
+      "GeneratedHostDefinition.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/GeneratedHostDefinition.g.cs",
+      "GeneratedSchemaSql.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/GeneratedSchemaSql.g.cs",
+      "envelope/ScriptEnvelope.g.cs": "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+    },
+  },
+  {
+    profile: "ultra",
+    namespaceOverride: "Example.Game.Generated.Ultra",
+    goldens: {
+      "IGeneratedHostHandlers.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/IGeneratedHostHandlers.g.cs",
+      "GeneratedHostMethodSpecs.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedHostMethodSpecs.g.cs",
+      "GeneratedHostDefinition.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedHostDefinition.g.cs",
+      "GeneratedSchemaSql.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedSchemaSql.g.cs",
+      "envelope/ScriptEnvelope.g.cs": "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+    },
+  },
+];
+for (const { profile, namespaceOverride, goldens } of csharpProfileGoldens) {
+  const files = csharpEmitter.emitCSharp(compiled.ir, { profile, namespaceOverride });
+  check(`csharp emitter (${profile}): emits exactly the pinned file set`, () => {
+    assert.deepEqual(files.map((f) => f.path).sort(), Object.keys(goldens).sort());
+  });
+  for (const file of files) {
+    check(`csharp emitter (${profile}): ${file.path} byte-identical`, () => {
+      assert.equal(file.contents, readFileSync(join(root, goldens[file.path]), "utf8"));
+    });
+  }
+}
+
 // 4. Java emitter vs vendored sources (envelope in main tree, generated
 //    sample package in the test tree).
 const javaMain = "java/sqlite-host-model/src/main/java";

@@ -98,6 +98,143 @@ test("CLI exits non-zero on bad usage", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Compact and ultra size profiles: the committed Sample.Compact and
+// Sample.Ultra sources are the byte-level goldens. Both sample projects
+// are emitted with a namespace override so the three profiles coexist
+// in the same solution.
+// ---------------------------------------------------------------------------
+
+const compactOptions = {
+  profile: "compact",
+  namespaceOverride: "Example.Game.Generated.Compact",
+} as const;
+
+const compactGoldenByEmitPath: Record<string, string> = {
+  "HostMethodDtos.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Compact/HostMethodDtos.g.cs",
+  "IGeneratedHostHandlers.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Compact/IGeneratedHostHandlers.g.cs",
+  "GeneratedHostMethodSpecs.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Compact/GeneratedHostMethodSpecs.g.cs",
+  "GeneratedHostDefinition.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Compact/GeneratedHostDefinition.g.cs",
+  "GeneratedSchemaSql.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Compact/GeneratedSchemaSql.g.cs",
+  "envelope/ScriptEnvelope.g.cs":
+    "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+};
+
+const ultraOptions = {
+  profile: "ultra",
+  namespaceOverride: "Example.Game.Generated.Ultra",
+} as const;
+
+const ultraGoldenByEmitPath: Record<string, string> = {
+  "IGeneratedHostHandlers.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Ultra/IGeneratedHostHandlers.g.cs",
+  "GeneratedHostMethodSpecs.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedHostMethodSpecs.g.cs",
+  "GeneratedHostDefinition.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedHostDefinition.g.cs",
+  "GeneratedSchemaSql.g.cs":
+    "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedSchemaSql.g.cs",
+  "envelope/ScriptEnvelope.g.cs":
+    "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+};
+
+test("explicit classic profile emits the same bytes as the default options", () => {
+  assert.deepEqual(
+    emitCSharp(sampleIr(), { profile: "classic" }),
+    emitCSharp(sampleIr()),
+  );
+});
+
+test("compact profile emits exactly the six expected files", () => {
+  const files = emitCSharp(sampleIr(), compactOptions);
+  assert.deepEqual(
+    files.map((f) => f.path),
+    Object.keys(compactGoldenByEmitPath),
+  );
+});
+
+for (const [emitPath, goldenPath] of Object.entries(compactGoldenByEmitPath)) {
+  test(`compact ${emitPath} is byte-identical to the committed ${goldenPath}`, () => {
+    const files = emitCSharp(sampleIr(), compactOptions);
+    const file = files.find((f) => f.path === emitPath);
+    assert.ok(file, `emitCSharp did not emit ${emitPath}`);
+    const golden = readFileSync(join(projectRoot, goldenPath), "utf8");
+    assert.equal(file!.contents, golden);
+  });
+}
+
+test("ultra profile emits no HostMethodDtos.g.cs", () => {
+  const files = emitCSharp(sampleIr(), ultraOptions);
+  assert.ok(
+    files.every((f) => f.path !== "HostMethodDtos.g.cs"),
+    "ultra emitted a DTO file",
+  );
+  assert.deepEqual(
+    files.map((f) => f.path),
+    Object.keys(ultraGoldenByEmitPath),
+  );
+});
+
+for (const [emitPath, goldenPath] of Object.entries(ultraGoldenByEmitPath)) {
+  test(`ultra ${emitPath} is byte-identical to the committed ${goldenPath}`, () => {
+    const files = emitCSharp(sampleIr(), ultraOptions);
+    const file = files.find((f) => f.path === emitPath);
+    assert.ok(file, `emitCSharp did not emit ${emitPath}`);
+    const golden = readFileSync(join(projectRoot, goldenPath), "utf8");
+    assert.equal(file!.contents, golden);
+  });
+}
+
+test("CLI --profile/--namespace flags write the compact goldens", () => {
+  const outDir = join(scratchRoot, `cli-compact-${process.pid}`);
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(outDir, { recursive: true });
+  const run = spawnSync(
+    process.execPath,
+    [
+      join(packageRoot, "dist/cli.js"),
+      manifestPath,
+      outDir,
+      "--profile",
+      "compact",
+      "--namespace",
+      "Example.Game.Generated.Compact",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 0, `stderr: ${run.stderr}`);
+  for (const [emitPath, goldenPath] of Object.entries(
+    compactGoldenByEmitPath,
+  )) {
+    assert.equal(
+      readFileSync(join(outDir, emitPath), "utf8"),
+      readFileSync(join(projectRoot, goldenPath), "utf8"),
+    );
+  }
+  rmSync(outDir, { recursive: true, force: true });
+});
+
+test("CLI exits non-zero on an unknown profile", () => {
+  const run = spawnSync(
+    process.execPath,
+    [
+      join(packageRoot, "dist/cli.js"),
+      manifestPath,
+      join(scratchRoot, "unused"),
+      "--profile",
+      "tiny",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /usage/);
+});
+
+// ---------------------------------------------------------------------------
 // Non-sample smoke IR: different naming prefixes, custom shared workspace
 // table names, fully renamed shared columns, optional bytes field, + one
 // inline-exposed method under a custom functionPrefix.

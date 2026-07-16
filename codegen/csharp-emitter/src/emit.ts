@@ -2,9 +2,12 @@
  * C# code emission from the SqliteHost IR. Maps a host library IR to the
  * generated C# sources: DTO classes, handler interface, fluent method
  * specs, host definition, schema SQL constant, and the protocol script
- * envelope DTOs (vendored into SqliteHost.Abstractions). Output is
- * byte-identical to the committed sources under csharp/ — the repo files
- * are the goldens (docs/csharp-api.md "Generated code shape").
+ * envelope DTOs (vendored into SqliteHost.Abstractions). Three size
+ * profiles are supported (docs/csharp-api.md "Profile deltas"): classic
+ * (typed fluent specs, the default), compact (pre-erased static accessor
+ * methods, no lambdas), and ultra (no DTOs; erased call/result handlers).
+ * Output is byte-identical to the committed sources under csharp/ — the
+ * repo files are the goldens (docs/csharp-api.md "Generated code shape").
  */
 
 import {
@@ -124,7 +127,10 @@ function builderMethod(field: ScalarFieldIr): string {
 // HostMethodDtos.g.cs
 // ---------------------------------------------------------------------------
 
-export function emitHostMethodDtos(ir: HostLibraryIr): string {
+export function emitHostMethodDtos(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
   const classes: string[] = [];
   const seen = new Set<string>();
 
@@ -173,7 +179,7 @@ export function emitHostMethodDtos(ir: HostLibraryIr): string {
     : [HEADER, ""];
   return [
     ...head,
-    `namespace ${generatedNamespace(ir)}`,
+    `namespace ${ns}`,
     "{",
     classes.join("\n\n"),
     "}",
@@ -185,11 +191,14 @@ export function emitHostMethodDtos(ir: HostLibraryIr): string {
 // IGeneratedHostHandlers.g.cs
 // ---------------------------------------------------------------------------
 
-export function emitHandlerInterface(ir: HostLibraryIr): string {
+export function emitHandlerInterface(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
   const lines = [
     HEADER,
     "",
-    `namespace ${generatedNamespace(ir)}`,
+    `namespace ${ns}`,
     "{",
     "    public interface IGeneratedHostHandlers",
     "    {",
@@ -197,6 +206,33 @@ export function emitHandlerInterface(ir: HostLibraryIr): string {
   for (const method of ir.methods) {
     lines.push(
       `        ${method.result.modelName} ${method.handlerName}(${method.input.modelName} input);`,
+    );
+  }
+  lines.push("    }", "}", "");
+  return lines.join("\n");
+}
+
+/**
+ * Ultra profile: no DTOs exist, so handlers take the erased
+ * SqliteHostUltraCall and return the erased SqliteHostUltraResult.
+ */
+export function emitUltraHandlerInterface(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
+  const lines = [
+    HEADER,
+    "",
+    "using SqliteHost;",
+    "",
+    `namespace ${ns}`,
+    "{",
+    "    public interface IGeneratedHostHandlers",
+    "    {",
+  ];
+  for (const method of ir.methods) {
+    lines.push(
+      `        SqliteHostUltraResult ${method.handlerName}(SqliteHostUltraCall call);`,
     );
   }
   lines.push("    }", "}", "");
@@ -291,8 +327,9 @@ function specMethod(method: HostMethodIr): string {
   return lines.join("\n");
 }
 
-export function emitMethodSpecs(ir: HostLibraryIr): string {
-  const buildAll = [
+/** The BuildAll() member — identical across the three profiles. */
+function buildAllMember(ir: HostLibraryIr): string {
+  return [
     "        public static IReadOnlyList<IHostMethodSpec<IGeneratedHostHandlers>> BuildAll()",
     "        {",
     "            return new IHostMethodSpec<IGeneratedHostHandlers>[]",
@@ -301,15 +338,17 @@ export function emitMethodSpecs(ir: HostLibraryIr): string {
     "            };",
     "        }",
   ].join("\n");
+}
 
-  const members = [buildAll, ...ir.methods.map(specMethod)];
+/** Shared GeneratedHostMethodSpecs.g.cs scaffolding around the members. */
+function specsFile(ns: string, members: string[]): string {
   return [
     HEADER,
     "",
     "using System.Collections.Generic;",
     "using SqliteHost;",
     "",
-    `namespace ${generatedNamespace(ir)}`,
+    `namespace ${ns}`,
     "{",
     "    public static class GeneratedHostMethodSpecs",
     "    {",
@@ -320,11 +359,367 @@ export function emitMethodSpecs(ir: HostLibraryIr): string {
   ].join("\n");
 }
 
+export function emitMethodSpecs(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
+  return specsFile(ns, [buildAllMember(ir), ...ir.methods.map(specMethod)]);
+}
+
+// ---------------------------------------------------------------------------
+// GeneratedHostMethodSpecs.g.cs (compact profile)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compact accessor naming contract (docs/csharp-api.md "Profile deltas"):
+ * Create{Op}Input / Set{Op}{Field} / Read{Op}{Field} for scalars,
+ * Create{Op}{List}Item + Configure{Op}{List}Item + Set{ItemDto}{Field} +
+ * Assign{Op}{List} for input lists, Read{Op}{List} +
+ * Configure{Op}{List}Item + Read{ItemDto}{Field} for result lists, and
+ * Invoke{Op} for the handler thunk. Item-DTO accessors are keyed by the
+ * item class, so they are emitted once per file even when lists share a
+ * DTO (mirrors the DTO dedup above).
+ */
+
+/** `private static void Set...(object input, T value)` property setter. */
+function compactSetterMember(
+  name: string,
+  modelName: string,
+  param: "input" | "item",
+  field: ScalarFieldIr,
+): string {
+  return [
+    `        private static void ${name}(object ${param}, ${propertyType(field)} value)`,
+    "        {",
+    `            ((${modelName})${param}).${pascalCase(field.propertyName)} = value;`,
+    "        }",
+  ].join("\n");
+}
+
+/** `private static T Read...(object result)` property reader. */
+function compactReaderMember(
+  name: string,
+  modelName: string,
+  param: "result" | "item",
+  field: ScalarFieldIr,
+): string {
+  return [
+    `        private static ${propertyType(field)} ${name}(object ${param})`,
+    "        {",
+    `            return ((${modelName})${param}).${pascalCase(field.propertyName)};`,
+    "        }",
+  ].join("\n");
+}
+
+/** `private static void Configure...Item(...)` with one field call per line. */
+function configureItemMember(
+  name: string,
+  builderType: string,
+  calls: string[],
+): string {
+  const chained = calls.map((call) => `                ${call}`);
+  // Close the statement on its last field call.
+  chained[chained.length - 1] += ";";
+  return [
+    `        private static void ${name}(${builderType} item)`,
+    "        {",
+    "            item",
+    ...chained,
+    "        }",
+  ].join("\n");
+}
+
+/**
+ * The Build{Op}Spec() member followed by its accessor statics, in spec
+ * chain order: create-input, input scalars, input lists (create item,
+ * configure, item setters, assign), result scalars, result lists (read,
+ * configure, item readers), invoke.
+ */
+function compactSpecMembers(
+  method: HostMethodIr,
+  seenItemAccessors: Set<string>,
+): string[] {
+  const op = method.operationName;
+  const members: string[] = [];
+
+  // Inline scalar-function exposure sits between the last Result* call
+  // and .Handler, exactly as in the classic profile.
+  const inline =
+    method.inline === null
+      ? []
+      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+  members.push(
+    [
+      `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,
+      "        {",
+      "            return CompactHostMethod",
+      `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
+      `                .ApiLevel(${method.apiLevel})`,
+      `                .CreateInput(Create${op}Input)`,
+      ...method.input.fields.map(
+        (field) =>
+          `                .Input${builderMethod(field)}(${csharpString(field.sqlName)}, Set${op}${pascalCase(field.propertyName)})`,
+      ),
+      ...method.input.listFields.map((listField) => {
+        const list = pascalCase(listField.propertyName);
+        return `                .InputList(${csharpString(listField.sqlName)}, Create${op}${list}Item, Assign${op}${list}, Configure${op}${list}Item)`;
+      }),
+      ...method.result.fields.map(
+        (field) =>
+          `                .Result${builderMethod(field)}(${csharpString(field.sqlName)}, Read${op}${pascalCase(field.propertyName)})`,
+      ),
+      ...method.result.listFields.map((listField) => {
+        const list = pascalCase(listField.propertyName);
+        return `                .ResultList(${csharpString(listField.sqlName)}, Read${op}${list}, Configure${op}${list}Item)`;
+      }),
+      ...inline,
+      `                .Handler(Invoke${op})`,
+      "                .Build();",
+      "        }",
+    ].join("\n"),
+  );
+
+  members.push(
+    [
+      `        private static object Create${op}Input()`,
+      "        {",
+      `            return new ${method.input.modelName}();`,
+      "        }",
+    ].join("\n"),
+  );
+
+  for (const field of method.input.fields) {
+    members.push(
+      compactSetterMember(
+        `Set${op}${pascalCase(field.propertyName)}`,
+        method.input.modelName,
+        "input",
+        field,
+      ),
+    );
+  }
+
+  for (const listField of method.input.listFields) {
+    const list = pascalCase(listField.propertyName);
+    const item = listField.itemModelName;
+    members.push(
+      [
+        `        private static object Create${op}${list}Item()`,
+        "        {",
+        `            return new ${item}();`,
+        "        }",
+      ].join("\n"),
+    );
+    members.push(
+      configureItemMember(
+        `Configure${op}${list}Item`,
+        "ICompactListItemFieldsBuilder",
+        listField.itemFields.map(
+          (field) =>
+            `.${builderMethod(field)}(${csharpString(field.sqlName)}, Set${item}${pascalCase(field.propertyName)})`,
+        ),
+      ),
+    );
+    if (!seenItemAccessors.has(`Set${item}`)) {
+      seenItemAccessors.add(`Set${item}`);
+      for (const field of listField.itemFields) {
+        members.push(
+          compactSetterMember(
+            `Set${item}${pascalCase(field.propertyName)}`,
+            item,
+            "item",
+            field,
+          ),
+        );
+      }
+    }
+    members.push(
+      [
+        `        private static void Assign${op}${list}(object input, IReadOnlyList<object> items)`,
+        "        {",
+        `            var list = new List<${item}>(items.Count);`,
+        "            for (int i = 0; i < items.Count; i++)",
+        "            {",
+        `                list.Add((${item})items[i]);`,
+        "            }",
+        `            ((${method.input.modelName})input).${list} = list;`,
+        "        }",
+      ].join("\n"),
+    );
+  }
+
+  for (const field of method.result.fields) {
+    members.push(
+      compactReaderMember(
+        `Read${op}${pascalCase(field.propertyName)}`,
+        method.result.modelName,
+        "result",
+        field,
+      ),
+    );
+  }
+
+  for (const listField of method.result.listFields) {
+    const list = pascalCase(listField.propertyName);
+    const item = listField.itemModelName;
+    members.push(
+      [
+        `        private static IReadOnlyList<object> Read${op}${list}(object result)`,
+        "        {",
+        `            List<${item}> items = ((${method.result.modelName})result).${list};`,
+        "            if (items == null)",
+        "            {",
+        "                return null;",
+        "            }",
+        "            var list = new List<object>(items.Count);",
+        "            for (int i = 0; i < items.Count; i++)",
+        "            {",
+        "                list.Add(items[i]);",
+        "            }",
+        "            return list;",
+        "        }",
+      ].join("\n"),
+    );
+    members.push(
+      configureItemMember(
+        `Configure${op}${list}Item`,
+        "ICompactListItemResultFieldsBuilder",
+        listField.itemFields.map(
+          (field) =>
+            `.${builderMethod(field)}(${csharpString(field.sqlName)}, Read${item}${pascalCase(field.propertyName)})`,
+        ),
+      ),
+    );
+    if (!seenItemAccessors.has(`Read${item}`)) {
+      seenItemAccessors.add(`Read${item}`);
+      for (const field of listField.itemFields) {
+        members.push(
+          compactReaderMember(
+            `Read${item}${pascalCase(field.propertyName)}`,
+            item,
+            "item",
+            field,
+          ),
+        );
+      }
+    }
+  }
+
+  members.push(
+    [
+      `        private static object Invoke${op}(object handlers, object input)`,
+      "        {",
+      `            return ((IGeneratedHostHandlers)handlers).${method.handlerName}((${method.input.modelName})input);`,
+      "        }",
+    ].join("\n"),
+  );
+
+  return members;
+}
+
+export function emitCompactMethodSpecs(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
+  const seenItemAccessors = new Set<string>();
+  return specsFile(ns, [
+    buildAllMember(ir),
+    ...ir.methods.flatMap((m) => compactSpecMembers(m, seenItemAccessors)),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// GeneratedHostMethodSpecs.g.cs (ultra profile)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Build{Op}Spec() member followed by its statics: declaration-only
+ * field calls need no accessors, so only Configure{Op}{List}Item (input
+ * lists then result lists) and the Invoke{Op} handler thunk remain.
+ */
+function ultraSpecMembers(method: HostMethodIr): string[] {
+  const op = method.operationName;
+  const members: string[] = [];
+
+  const inline =
+    method.inline === null
+      ? []
+      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+  members.push(
+    [
+      `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,
+      "        {",
+      "            return UltraHostMethod",
+      `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
+      `                .ApiLevel(${method.apiLevel})`,
+      ...method.input.fields.map(
+        (field) =>
+          `                .Input${builderMethod(field)}(${csharpString(field.sqlName)})`,
+      ),
+      ...method.input.listFields.map(
+        (listField) =>
+          `                .InputList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
+      ),
+      ...method.result.fields.map(
+        (field) =>
+          `                .Result${builderMethod(field)}(${csharpString(field.sqlName)})`,
+      ),
+      ...method.result.listFields.map(
+        (listField) =>
+          `                .ResultList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
+      ),
+      ...inline,
+      `                .Handler(Invoke${op})`,
+      "                .Build();",
+      "        }",
+    ].join("\n"),
+  );
+
+  for (const listField of [
+    ...method.input.listFields,
+    ...method.result.listFields,
+  ]) {
+    members.push(
+      configureItemMember(
+        `Configure${op}${pascalCase(listField.propertyName)}Item`,
+        "IUltraListItemFieldsBuilder",
+        listField.itemFields.map(
+          (field) => `.${builderMethod(field)}(${csharpString(field.sqlName)})`,
+        ),
+      ),
+    );
+  }
+
+  members.push(
+    [
+      `        private static SqliteHostUltraResult Invoke${op}(object handlers, SqliteHostUltraCall call)`,
+      "        {",
+      `            return ((IGeneratedHostHandlers)handlers).${method.handlerName}(call);`,
+      "        }",
+    ].join("\n"),
+  );
+
+  return members;
+}
+
+export function emitUltraMethodSpecs(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
+  return specsFile(ns, [
+    buildAllMember(ir),
+    ...ir.methods.flatMap(ultraSpecMembers),
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // GeneratedHostDefinition.g.cs
 // ---------------------------------------------------------------------------
 
-export function emitHostDefinition(ir: HostLibraryIr): string {
+export function emitHostDefinition(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
   const naming = ir.naming;
   const columns = ir.columns;
   return [
@@ -332,7 +727,7 @@ export function emitHostDefinition(ir: HostLibraryIr): string {
     "",
     "using SqliteHost;",
     "",
-    `namespace ${generatedNamespace(ir)}`,
+    `namespace ${ns}`,
     "{",
     "    public static class GeneratedHostDefinition",
     "    {",
@@ -383,7 +778,10 @@ export function emitHostDefinition(ir: HostLibraryIr): string {
 // GeneratedSchemaSql.g.cs
 // ---------------------------------------------------------------------------
 
-export function emitSchemaSql(ir: HostLibraryIr): string {
+export function emitSchemaSql(
+  ir: HostLibraryIr,
+  ns: string = generatedNamespace(ir),
+): string {
   const script = generateSchemaScript(ir);
   const scriptLines = script.split("\n");
   // generateSchemaScript output ends with "\n"; drop the empty tail.
@@ -396,7 +794,7 @@ export function emitSchemaSql(ir: HostLibraryIr): string {
   return [
     HEADER,
     "",
-    `namespace ${generatedNamespace(ir)}`,
+    `namespace ${ns}`,
     "{",
     "    public static class GeneratedSchemaSql",
     "    {",
@@ -457,14 +855,52 @@ export function emitScriptEnvelope(): string {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/** Code-size profile (docs/csharp-api.md "Profile deltas"). */
+export type CSharpProfile = "classic" | "compact" | "ultra";
+
+export interface EmitCSharpOptions {
+  /** Size profile to emit. Default "classic" — the original output. */
+  profile?: CSharpProfile;
+  /**
+   * Replaces the generated namespace (library namespace + ".Generated")
+   * in every emitted per-app file. The protocol envelope always stays
+   * in the fixed SqliteHost namespace.
+   */
+  namespaceOverride?: string;
+}
+
 /** Emit all generated C# sources for a host library IR. */
-export function emitCSharp(ir: HostLibraryIr): EmittedFile[] {
-  return [
-    { path: DTOS_FILE, contents: emitHostMethodDtos(ir) },
-    { path: HANDLERS_FILE, contents: emitHandlerInterface(ir) },
-    { path: SPECS_FILE, contents: emitMethodSpecs(ir) },
-    { path: DEFINITION_FILE, contents: emitHostDefinition(ir) },
-    { path: SCHEMA_FILE, contents: emitSchemaSql(ir) },
+export function emitCSharp(
+  ir: HostLibraryIr,
+  options: EmitCSharpOptions = {},
+): EmittedFile[] {
+  const profile = options.profile ?? "classic";
+  const ns = options.namespaceOverride ?? generatedNamespace(ir);
+  const files: EmittedFile[] = [];
+  // Ultra has no DTOs at all; classic and compact share the same file.
+  if (profile !== "ultra") {
+    files.push({ path: DTOS_FILE, contents: emitHostMethodDtos(ir, ns) });
+  }
+  files.push(
+    {
+      path: HANDLERS_FILE,
+      contents:
+        profile === "ultra"
+          ? emitUltraHandlerInterface(ir, ns)
+          : emitHandlerInterface(ir, ns),
+    },
+    {
+      path: SPECS_FILE,
+      contents:
+        profile === "classic"
+          ? emitMethodSpecs(ir, ns)
+          : profile === "compact"
+            ? emitCompactMethodSpecs(ir, ns)
+            : emitUltraMethodSpecs(ir, ns),
+    },
+    { path: DEFINITION_FILE, contents: emitHostDefinition(ir, ns) },
+    { path: SCHEMA_FILE, contents: emitSchemaSql(ir, ns) },
     { path: ENVELOPE_FILE, contents: emitScriptEnvelope() },
-  ];
+  );
+  return files;
 }
