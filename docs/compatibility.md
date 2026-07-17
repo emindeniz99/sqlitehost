@@ -180,7 +180,7 @@ keep their DX.
 Aggressive whole-app AOT flags (`StackTraceSupport=false`,
 `UseSystemResourceKeys=true`, `IlcOptimizationPreference=Size`,
 `IlcFoldIdenticalMethodBodies=true` — bundled in
-`build/SqliteHost.Publish.Nano.props` to import into your game's
+`csharp/SqliteHost.Publish.Nano.props` to import into your game's
 publish project) cut ~57 KB gzip off a real game binary — but only
 ~3 KB of that is SqliteHost's delta (66 → 63.5 KB gzip ultra+slim,
 75 → 72 KB compact+slim). The rest is the game's own exception/reflection
