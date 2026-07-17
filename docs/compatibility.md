@@ -162,6 +162,34 @@ NativeAOT (`IlcDisableReflection=true`) builds and runs the full
 runtime — consistent with the no-reflection source guard — so maximum
 managed stripping settings are safe.
 
+### At the floor: whole-app trim flags help the game, not us
+
+The compact/ultra + SLIM numbers above are the floor for *SqliteHost's
+own contribution*. A second empirical round confirmed there is no
+DX-neutral generated-code win left: converting DTO auto-properties to
+fields saved 0 bytes (already inlined), and data-driving the 50
+registration bodies **grew** the binary (in NativeAOT a delegate-array
+initializer is code, not data, and the near-identical fluent bodies
+were already almost free under gzip's window). The one remaining
+code-shape lever — collapsing the handler interface to a single
+ordinal `Invoke(int, …)` dispatch — saves ~4.8 KB gzip but changes the
+handler-authoring surface (you write a `switch` instead of named
+methods), so it is deliberately **not** shipped; the typed profiles
+keep their DX.
+
+Aggressive whole-app AOT flags (`StackTraceSupport=false`,
+`UseSystemResourceKeys=true`, `IlcOptimizationPreference=Size`,
+`IlcFoldIdenticalMethodBodies=true` — bundled in
+`build/SqliteHost.Publish.Nano.props` to import into your game's
+publish project) cut ~57 KB gzip off a real game binary — but only
+~3 KB of that is SqliteHost's delta (66 → 63.5 KB gzip ultra+slim,
+75 → 72 KB compact+slim). The rest is the game's own exception/reflection
+metadata. The takeaway is the honest one: **the runtime is already at
+its AOT floor** — it is reflection-free and lean enough that maximal
+stripping finds almost nothing more to remove from it. Those flags are
+worth setting for the whole app's sake, and SqliteHost is fully
+compatible with all of them; they are not a SqliteHost-specific win.
+
 ## Java — 17+
 
 Generated/handwritten Java targets release 17 (records allowed,
