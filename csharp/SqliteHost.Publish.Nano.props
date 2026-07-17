@@ -1,0 +1,42 @@
+<Project>
+
+  <!--
+    Optional whole-app NativeAOT size-trimming flags for size-critical
+    (download-cap-constrained) games. Import this into your GAME's publish
+    project — NOT into SqliteHost's library projects; these are
+    executable/publish-level switches:
+
+      <Import Project="path/to/SqliteHost.Publish.Nano.props" />
+
+    Measured effect (see docs/compatibility.md, App size): these flags cut
+    ~57 KB gzip off a real game binary's OWN code (exceptions metadata,
+    reflection tables, unshared method bodies). They shave only ~3 KB more
+    off SqliteHost's marginal contribution, because the runtime is already
+    reflection-free and lean — so the big win here is for YOUR app, and
+    SqliteHost is simply fully compatible with maximal stripping.
+
+    Trade-offs (all whole-app, not SqliteHost-specific):
+      - StackTraceSupport=false removes managed exception stack traces
+        (crash reports lose C# frames; the game still runs). Drop this one
+        if you need stack traces in the field.
+      - UseSystemResourceKeys=true replaces BCL exception message text with
+        short resource keys.
+      - IlcOptimizationPreference=Size / IlcFoldIdenticalMethodBodies trade
+        a little CPU for size (irrelevant to a game that isn't CPU-bound on
+        SqliteHost).
+
+    Pair with -p:SqliteHostSlim=true on SqliteHost.Runtime (see
+    docs/csharp-api.md) for the absolute floor.
+  -->
+
+  <PropertyGroup>
+    <PublishAot>true</PublishAot>
+    <StripSymbols>true</StripSymbols>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StackTraceSupport>false</StackTraceSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+  </PropertyGroup>
+
+</Project>
