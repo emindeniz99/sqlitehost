@@ -165,6 +165,19 @@ literals in `SqliteHost.Runtime` total **5,717 B** and
 **~3.3 KB**. Gating that behind `SQLITEHOST_SLIM` would touch ~87 throw
 sites for at most ~3 KB — rejected as not worth the churn.
 
+**E3 — `Il2CppSetOption(NullChecks/ArrayBoundsChecks=false)` on
+SqliteHost's types (row 13).** IL2CPP injects a null check per method
+and a bounds check per array access; the runtime is reflection-free and
+input-validating, so these are dead weight on its share. Annotated all
+179 vendored SqliteHost + generated type declarations (GameWork/Runner
+untouched, isolating the effect). Result: generated code genuinely
+shrank (`libil2cpp.so` **−10,584 B**) but the 358 attribute records
+cost **+6,992 B of metadata** — net **−3.6 KB raw / −7.0 KB gz**
+(−5.7% of SqliteHost's gz share). Verdict: real but **marginal**; a
+blanket emitter/runtime annotation pass isn't worth the churn. If ever
+revisited, annotate selectively (the few hottest/biggest types) so the
+attribute metadata doesn't eat the code win.
+
 (The third idea from the same round — DTO fields instead of
 auto-properties — was adopted upstream as the emitter's `--dto-fields`
 flag on the strength of the H-FIELDS measurement above.)
