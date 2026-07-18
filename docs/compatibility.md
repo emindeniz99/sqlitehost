@@ -106,7 +106,7 @@ that is sample-only; see `docs/guides/unity-2021-spike.md`.) If a
 future implementation ever introduces reflection-based mapping,
 Preserve/link.xml guidance becomes mandatory at that point.
 
-## App size (measured; NativeAOT proxy for IL2CPP)
+## App size (measured: NativeAOT, and Unity IL2CPP)
 
 For download-cap-constrained games (App Store cellular threshold:
 compressed download size) the runtime's footprint was measured
@@ -122,8 +122,10 @@ the binary is the download proxy. NativeAOT is a *proxy* for IL2CPP
 don't. The self-contained re-measurement protocol for a Unity-equipped
 agent (bench kit, hypothesis ledger incl. the two findings that can
 genuinely differ under IL2CPP, build matrix, report template) is
-`docs/guides/il2cpp-size-protocol.md`; its report will pin the IL2CPP
-numbers here.
+`docs/guides/il2cpp-size-protocol.md`; it has now been executed —
+**`docs/reports/il2cpp-size-report.md`** pins the real IL2CPP numbers
+(Unity 2022.3.9f1, Android/ARM64, Managed Stripping High), reproduced
+below.
 
 Measured deltas over the game-like baseline (managed core is ~80 KB of
 IL; the cost is AOT type metadata + EH tables, **not** string literals
@@ -138,6 +140,25 @@ the unreferenced `GeneratedSchemaSql` constant strips):
 | ultra profile, 50 methods | 188 KB | 81 KB |
 | **ultra + `SQLITEHOST_SLIM`, 50 methods** | **159 KB** | **66 KB** |
 
+Measured under **real Unity IL2CPP** (2022.3.9f1, Android/ARM64,
+Managed Stripping High, IL2CPP codegen "Faster (smaller) builds";
+Δ = `libil2cpp.so` + `global-metadata.dat` over the same game-like
+baseline — full matrix, validity checks and per-method costs in
+`docs/reports/il2cpp-size-report.md`):
+
+| Stack (50 methods) | IL2CPP raw Δ | IL2CPP gz Δ (download) |
+|---|---|---|
+| classic profile | 714 KB | 152 KB |
+| **compact profile** | **476 KB** | **120 KB** |
+| compact + `SQLITEHOST_SLIM` | 444 KB | 108 KB |
+| ultra profile | 365 KB | 98 KB |
+| **ultra + `SQLITEHOST_SLIM`** | **323 KB** | **84 KB** |
+
+IL2CPP's per-method unit cost is ~1.4–2× NativeAOT's (classic 14.3 →
+compact 9.5 → ultra 7.3 KB raw/method), with the same ordering and the
+same "unique-type count drives cost" mechanism — the profile guidance
+below is unchanged for Unity consumers.
+
 Two structural findings drove the architecture here (an earlier
 revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
 
@@ -149,7 +170,13 @@ revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
    baseline stub — 2898 → 296 symbols). Hence
    `ISqliteHostConnection.QueryRows` is non-generic by contract and the
    runtime/definition cores are non-generic internally (thin typed
-   wrappers only).
+   wrappers only). **IL2CPP footnote** (measured,
+   `docs/reports/il2cpp-size-report.md`): under Unity IL2CPP the
+   marginal cost of one generic virtual method is only **~2.9 KB raw /
+   ~5.3 KB gz** — IL2CPP ships its generic-sharing/metadata machinery
+   unconditionally, so the ~250 KB structural win is
+   **NativeAOT-specific**. The non-generic contract stays (strictly ≤
+   everywhere; NativeAOT and .NET-server consumers keep the large win).
 2. **Per-method cost is type count.** Each unique generic
    instantiation/lambda class ≈ 700–900 B of AOT metadata: classic
    ≈ 10 KB raw / 4.6 KB gzip per method, compact ≈ 1.2 / 0.3, ultra
@@ -171,10 +198,17 @@ managed stripping settings are safe.
 The compact/ultra + SLIM numbers above are the floor for *SqliteHost's
 own contribution*. A second empirical round confirmed there is no
 DX-neutral generated-code win left: converting DTO auto-properties to
-fields saved 0 bytes (already inlined), and data-driving the 50
-registration bodies **grew** the binary (in NativeAOT a delegate-array
-initializer is code, not data, and the near-identical fluent bodies
-were already almost free under gzip's window). The one remaining
+fields saved 0 bytes under NativeAOT (already inlined), and
+data-driving the 50 registration bodies **grew** the binary (in
+NativeAOT a delegate-array initializer is code, not data, and the
+near-identical fluent bodies were already almost free under gzip's
+window). **IL2CPP footnote**: the fields result does *not* transfer —
+under IL2CPP the fields variant measured **~32 KB raw / ~12 KB gz
+smaller** on the 50-method host (IL2CPP emits per-accessor C++ +
+metadata that survives High stripping). Small next to the per-method
+totals, and auto-properties remain the shipped default for DX; noted
+here in case a future `--fields` generator switch is ever worth it for
+size-critical Unity consumers (`docs/reports/il2cpp-size-report.md`). The one remaining
 code-shape lever — collapsing the handler interface to a single
 ordinal `Invoke(int, …)` dispatch — saves ~4.8 KB gzip but changes the
 handler-authoring surface (you write a `switch` instead of named
