@@ -656,9 +656,12 @@ fail-loud layer that catches authoring bugs.
 
 Namespace: `Example.Game.Generated` for the sample. The emitter takes
 `--profile classic|compact|ultra` (default `classic` — existing output
-unchanged) and an optional `--namespace <ns>` override (used by the
+unchanged), an optional `--namespace <ns>` override (used by the
 repo's committed profile samples; also lets consumers run two profiles
-side by side). Classic files:
+side by side), and `--dto-fields` (DTO members as public fields
+instead of auto-properties — recommended for Unity IL2CPP targets,
+where the accessors cost real bytes; measured in
+`docs/reports/il2cpp-size-report.md`, H-FIELDS). Classic files:
 
 | File | Contents |
 |---|---|

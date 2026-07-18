@@ -190,7 +190,11 @@ Guidance: size-critical games generate with `--profile compact`
 (identical typed public API, identical behavior — pinned by the
 profile-equivalence tests); `--profile ultra` when the last tens of KB
 matter more than compile-time payload typing; add `SQLITEHOST_SLIM`
-(see `docs/csharp-api.md`) on final builds only. The engine itself can
+(see `docs/csharp-api.md`) on final builds only. **Unity IL2CPP
+targets should additionally pass `--dto-fields`** (public fields
+instead of DTO auto-properties: ~32 KB raw / ~12 KB gz smaller on a
+50-method host under IL2CPP, free under NativeAOT, identical usage
+code). The engine itself can
 cost zero additional bytes on iOS/Android by consuming the system
 libsqlite3 through `SqliteHost.Adapters.Native`. Reflection-free
 NativeAOT (`IlcDisableReflection=true`) builds and runs the full
