@@ -119,7 +119,11 @@ linux-x64), then the same app is republished with SqliteHost actually
 executing a script. The delta is the honest marginal cost; gzip -9 of
 the binary is the download proxy. NativeAOT is a *proxy* for IL2CPP
 (both AOT + whole-program trim) — magnitudes transfer, exact bytes
-don't; the Unity spike (ROADMAP) will pin the IL2CPP numbers.
+don't. The self-contained re-measurement protocol for a Unity-equipped
+agent (bench kit, hypothesis ledger incl. the two findings that can
+genuinely differ under IL2CPP, build matrix, report template) is
+`docs/guides/il2cpp-size-protocol.md`; its report will pin the IL2CPP
+numbers here.
 
 Measured deltas over the game-like baseline (managed core is ~80 KB of
 IL; the cost is AOT type metadata + EH tables, **not** string literals

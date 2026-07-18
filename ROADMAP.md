@@ -9,6 +9,14 @@ entries when shipped.
   (set .NET Standard 2.0 API level, zero-compile-error gate, Play-mode
   smoke, record results in docs/compatibility.md). IL2CPP build is the
   stretch goal.
+- **IL2CPP size measurements (hand off to a Unity-equipped agent)**:
+  the full self-contained protocol — bench kit, hypothesis ledger with
+  the NativeAOT verdicts to re-test (H-GVM and H-FIELDS can genuinely
+  flip under IL2CPP), 9-row build matrix, report template, and a
+  copy-paste hand-off prompt — is
+  [docs/guides/il2cpp-size-protocol.md](./docs/guides/il2cpp-size-protocol.md).
+  Deliverable: `docs/reports/il2cpp-size-report.md` + patches to the
+  compatibility App size table.
 - **Execute the publishing checklist (manual/legal)**: accounts, 2FA,
   GPG key, `io.sqlitehost` namespace verification, `@sqlite-host` npm
   scope, license decision, and name/trademark signoff (note the SQLite
