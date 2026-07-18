@@ -130,9 +130,25 @@ function builderMethod(field: ScalarFieldIr): string {
 export function emitHostMethodDtos(
   ir: HostLibraryIr,
   ns: string = generatedNamespace(ir),
+  dtoFields = false,
 ): string {
   const classes: string[] = [];
   const seen = new Set<string>();
+  // --dto-fields: public fields instead of auto-properties. Usage code is
+  // identical (`x.Key = v`); under Unity IL2CPP the accessor methods cost
+  // real bytes that High stripping does not erase (measured ~32 KB raw /
+  // ~12 KB gz on a 50-method host — docs/reports/il2cpp-size-report.md),
+  // while under NativeAOT the two shapes compile byte-identically.
+  const scalarMember = (field: ScalarFieldIr): string =>
+    dtoFields
+      ? `        public ${propertyType(field)} ${pascalCase(field.propertyName)};`
+      : `        public ${propertyType(field)} ${pascalCase(field.propertyName)} { get; set; }`;
+  const listMember = (listField: ListFieldIr): string => {
+    const item = listField.itemModelName;
+    return dtoFields
+      ? `        public List<${item}> ${pascalCase(listField.propertyName)} = new List<${item}>();`
+      : `        public List<${item}> ${pascalCase(listField.propertyName)} { get; set; } = new List<${item}>();`;
+  };
 
   const addClass = (
     modelName: string,
@@ -145,15 +161,10 @@ export function emitHostMethodDtos(
     seen.add(modelName);
     const lines = [`    public class ${modelName}`, "    {"];
     for (const field of fields) {
-      lines.push(
-        `        public ${propertyType(field)} ${pascalCase(field.propertyName)} { get; set; }`,
-      );
+      lines.push(scalarMember(field));
     }
     for (const listField of listFields) {
-      const item = listField.itemModelName;
-      lines.push(
-        `        public List<${item}> ${pascalCase(listField.propertyName)} { get; set; } = new List<${item}>();`,
-      );
+      lines.push(listMember(listField));
     }
     lines.push("    }");
     classes.push(lines.join("\n"));
@@ -867,6 +878,14 @@ export interface EmitCSharpOptions {
    * in the fixed SqliteHost namespace.
    */
   namespaceOverride?: string;
+  /**
+   * Emit DTO members as public fields instead of auto-properties
+   * (recommended when targeting Unity IL2CPP: measured ~32 KB raw /
+   * ~12 KB gz smaller on a 50-method host, identical usage code —
+   * docs/reports/il2cpp-size-report.md, H-FIELDS). No effect on the
+   * ultra profile, which has no DTOs. Default false.
+   */
+  dtoFields?: boolean;
 }
 
 /** Emit all generated C# sources for a host library IR. */
@@ -879,7 +898,10 @@ export function emitCSharp(
   const files: EmittedFile[] = [];
   // Ultra has no DTOs at all; classic and compact share the same file.
   if (profile !== "ultra") {
-    files.push({ path: DTOS_FILE, contents: emitHostMethodDtos(ir, ns) });
+    files.push({
+      path: DTOS_FILE,
+      contents: emitHostMethodDtos(ir, ns, options.dtoFields ?? false),
+    });
   }
   files.push(
     {

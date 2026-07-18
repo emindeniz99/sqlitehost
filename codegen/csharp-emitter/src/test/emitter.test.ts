@@ -657,3 +657,80 @@ test("smoke IR: no emitted file mentions the default shared table or column name
 test("smoke IR: emission is deterministic", () => {
   assert.deepEqual(emitCSharp(smokeIr()), emitCSharp(smokeIr()));
 });
+
+// ---------------------------------------------------------------------------
+// --dto-fields (public fields instead of auto-properties; H-FIELDS,
+// docs/reports/il2cpp-size-report.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * The pinned relationship: the fields variant is the classic DTO golden
+ * with every auto-property turned into a public field (list initializers
+ * kept). Deriving the expectation from the committed golden keeps this
+ * byte-precise without a second committed sample project.
+ */
+function fieldsVariantOf(dtoSource: string): string {
+  return dtoSource
+    .replaceAll(" { get; set; } = ", " = ")
+    .replaceAll(" { get; set; }", ";");
+}
+
+test("--dto-fields: DTO file is the golden with fields instead of auto-properties", () => {
+  const golden = readFileSync(
+    join(projectRoot, goldenByEmitPath["HostMethodDtos.g.cs"]),
+    "utf8",
+  );
+  const files = emitCSharp(sampleIr(), { dtoFields: true });
+  const dtos = files.find((f) => f.path === "HostMethodDtos.g.cs");
+  assert.ok(dtos);
+  assert.equal(dtos.contents, fieldsVariantOf(golden));
+  assert.ok(!dtos.contents.includes("{ get; set; }"));
+});
+
+test("--dto-fields: every non-DTO file is byte-identical to the default output", () => {
+  const withFlag = emitCSharp(sampleIr(), { dtoFields: true });
+  const without = emitCSharp(sampleIr());
+  for (const file of without) {
+    if (file.path === "HostMethodDtos.g.cs") continue;
+    const other = withFlag.find((f) => f.path === file.path);
+    assert.ok(other, file.path);
+    assert.equal(other.contents, file.contents, file.path);
+  }
+});
+
+test("--dto-fields: compact profile shares the same fields DTO; ultra stays DTO-free", () => {
+  const compact = emitCSharp(sampleIr(), { profile: "compact", dtoFields: true });
+  const classic = emitCSharp(sampleIr(), { dtoFields: true });
+  assert.equal(
+    compact.find((f) => f.path === "HostMethodDtos.g.cs")?.contents,
+    classic.find((f) => f.path === "HostMethodDtos.g.cs")?.contents,
+  );
+  const ultra = emitCSharp(sampleIr(), { profile: "ultra", dtoFields: true });
+  assert.equal(ultra.find((f) => f.path === "HostMethodDtos.g.cs"), undefined);
+});
+
+test("--dto-fields: omitting the option matches dtoFields:false exactly", () => {
+  const a = emitCSharp(sampleIr());
+  const b = emitCSharp(sampleIr(), { dtoFields: false });
+  assert.deepEqual(a, b);
+});
+
+test("CLI accepts --dto-fields and writes the fields DTO variant", () => {
+  const outDir = join(scratchRoot, `cli-dto-fields-${process.pid}`);
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(outDir, { recursive: true });
+  const run = spawnSync(
+    process.execPath,
+    [join(packageRoot, "dist/cli.js"), manifestPath, outDir, "--dto-fields"],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  const golden = readFileSync(
+    join(projectRoot, goldenByEmitPath["HostMethodDtos.g.cs"]),
+    "utf8",
+  );
+  assert.equal(
+    readFileSync(join(outDir, "HostMethodDtos.g.cs"), "utf8"),
+    fieldsVariantOf(golden),
+  );
+});
