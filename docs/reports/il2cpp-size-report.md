@@ -27,7 +27,8 @@ editor's IL2CPP player log". This container has no Android device or
 emulator, so each row's code was executed **in the editor (Mono) in the
 same batch invocation that produced the build**, via reflection on the
 compiled `Assembly-CSharp` — the same sources the IL2CPP build compiled.
-Rows 1–6 must print `104006 / <ddl-len> / Completed / Completed`; rows
+Rows 1–6 must print `104006 / <ddl-len> / Completed / Completed` (5-method
+rows 9–11: same shape with DDL length `2771`); rows
 7–8 must print the same value as each other. Additionally, for rows 7–8
 the probe types' survival into the IL2CPP binary was verified via
 `global-metadata.dat` string inspection (§4.1).
@@ -45,18 +46,23 @@ the probe types' survival into the IL2CPP binary was verified via
 | 6 | compact50-fields | 17,293,368 | 3,848,996 | 5,671,571 | 1,171,183 | +365,112 | +90,660 | +111,645 |
 | 7 | probe-gvm | 16,909,640 | 3,755,332 | 5,577,993 | 1,146,284 | -18,616 | -3,004 | -6,832 |
 | 8 | probe-nogvm | 16,906,760 | 3,755,268 | 5,572,531 | 1,146,295 | -21,496 | -3,068 | -12,283 |
+| 9 | classic5 | 17,179,416 | 3,819,380 | 5,654,254 | 1,164,580 | +251,160 | +61,044 | +87,725 |
+| 10 | compact5 | 17,134,616 | 3,814,656 | 5,643,558 | 1,163,969 | +206,360 | +56,320 | +76,418 |
+| 11 | ultra5 | 17,161,784 | 3,815,808 | 5,655,181 | 1,164,997 | +233,528 | +57,472 | +89,069 |
 
 All sizes in bytes. `Δ` columns are vs row 0. Rows 7–8 are smaller than
 the baseline because the probes contain no `GameWork`; only their
 **pair delta** is meaningful (that is the H-GVM answer).
 
-Per-method cost of the 50-method host (Δ(so+md) / 50):
+Average cost of the 50-method host (Δ(so+md) / 50) and — using the
+5-method rows 9–11 — the **fixed-vs-marginal decomposition** the
+protocol asks for (**marginal = (Δ₅₀ − Δ₅) / 45**, fixed = Δ₅ − 5·marginal):
 
-| Profile | raw/method | gz/method | NativeAOT raw/method (ref) |
-|---|---|---|---|
-| classic | 14.28 KB | 3.05 KB | ≈10 KB |
-| compact | 9.52 KB | 2.41 KB | ≈1.2 KB |
-| ultra | 7.30 KB | 1.97 KB | ≈0.7 KB |
+| Profile | avg raw/method (50) | **marginal raw/method** | **fixed raw** | marginal gz/method | fixed gz | NativeAOT marginal (ref) |
+|---|---|---|---|---|---|---|
+| classic | 14.28 KB | **9.09 KB** | **259 KB** | 1.49 KB | 78 KB | ≈10 KB |
+| compact | 9.52 KB | **4.88 KB** | **232 KB** | 1.02 KB | 70 KB | ≈1.2 KB |
+| ultra | 7.30 KB | **1.80 KB** | **275 KB** | 0.25 KB | 86 KB | ≈0.7 KB |
 
 ## 3. Hypothesis verdicts
 
@@ -91,12 +97,25 @@ of the 9.52 KB/method compact cost).
 
 ### H-PROFILES — **CONFIRMED, higher unit costs**
 
-The profile ladder transfers: classic **14.28 KB** → compact
-**9.52 KB** → ultra **7.30 KB** raw/method (gz: **3.05 / 2.41 /
-1.97 KB**). IL2CPP's absolute per-method unit cost is ~1.4–2× the
-NativeAOT raw cost, but the ordering and the "unique-type count drives
-cost" mechanism are identical — the compact/ultra guidance stands
-unchanged for Unity consumers.
+The 50-method averages transfer the NativeAOT ordering (classic
+14.28 → compact 9.52 → ultra 7.30 KB raw/method), but the 5/50 pair
+separates what the averages blur:
+
+- **Marginal per-method slope**: classic **9.09 KB** → compact
+  **4.88 KB** → ultra **1.80 KB** raw (gz: 1.49 / 1.02 / 0.25 KB).
+  The mechanism ("unique-type count drives cost") is identical to
+  NativeAOT; compact's marginal cost is ~4× its NativeAOT value
+  because IL2CPP materializes per-instantiation C++ + metadata that
+  NativeAOT folds away.
+- **Fixed intercept**: classic 259 KB / compact 232 KB / **ultra
+  275 KB** raw. Ultra buys its tiny slope with the LARGEST fixed
+  runtime — under IL2CPP **ultra only beats compact above ~14 methods
+  raw (~21 methods gzipped)**; at 5 methods compact is the smallest
+  profile.
+
+Unity-specific guidance nuance (now footnoted in
+`docs/compatibility.md`): small hosts (≲15 methods) should prefer
+**compact** under IL2CPP; ultra's win materializes on larger hosts.
 
 ### H-SLIM — **CONFIRMED, transfers directly**
 
@@ -255,6 +274,49 @@ SB_VALIDATE_END
 /home/user/zen-bench/out/row8.apk 12225693
 SB_VALIDATE_BEGIN
 8
+SB_VALIDATE_END
+```
+
+**Row 9 — classic5**
+```
+/home/user/zen-bench/out/row9/lib/arm64-v8a/libil2cpp.so 17179416
+/home/user/zen-bench/out/row9/assets/bin/Data/Managed/Metadata/global-metadata.dat 3819380
+/home/user/zen-bench/out/row9/libil2cpp.so.gz 5654254
+/home/user/zen-bench/out/row9/global-metadata.dat.gz 1164580
+/home/user/zen-bench/out/row9.apk 12321285
+SB_VALIDATE_BEGIN
+104006
+2771
+Completed
+Completed
+SB_VALIDATE_END
+```
+**Row 10 — compact5**
+```
+/home/user/zen-bench/out/row10/lib/arm64-v8a/libil2cpp.so 17134616
+/home/user/zen-bench/out/row10/assets/bin/Data/Managed/Metadata/global-metadata.dat 3814656
+/home/user/zen-bench/out/row10/libil2cpp.so.gz 5643558
+/home/user/zen-bench/out/row10/global-metadata.dat.gz 1163969
+/home/user/zen-bench/out/row10.apk 12314272
+SB_VALIDATE_BEGIN
+104006
+2771
+Completed
+Completed
+SB_VALIDATE_END
+```
+**Row 11 — ultra5**
+```
+/home/user/zen-bench/out/row11/lib/arm64-v8a/libil2cpp.so 17161784
+/home/user/zen-bench/out/row11/assets/bin/Data/Managed/Metadata/global-metadata.dat 3815808
+/home/user/zen-bench/out/row11/libil2cpp.so.gz 5655181
+/home/user/zen-bench/out/row11/global-metadata.dat.gz 1164997
+/home/user/zen-bench/out/row11.apk 12320988
+SB_VALIDATE_BEGIN
+104006
+2771
+Completed
+Completed
 SB_VALIDATE_END
 ```
 

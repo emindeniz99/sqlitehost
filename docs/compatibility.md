@@ -154,10 +154,14 @@ baseline — full matrix, validity checks and per-method costs in
 | ultra profile | 365 KB | 98 KB |
 | **ultra + `SQLITEHOST_SLIM`** | **323 KB** | **84 KB** |
 
-IL2CPP's per-method unit cost is ~1.4–2× NativeAOT's (classic 14.3 →
-compact 9.5 → ultra 7.3 KB raw/method), with the same ordering and the
-same "unique-type count drives cost" mechanism — the profile guidance
-below is unchanged for Unity consumers.
+The 5/50-method pair separates fixed cost from marginal cost under
+IL2CPP: marginal per-method is classic **9.1 KB** → compact **4.9 KB**
+→ ultra **1.8 KB** raw (fixed runtime: 259 / 232 / 275 KB). Same
+"unique-type count drives cost" mechanism as NativeAOT — but note the
+crossover: **ultra's fixed cost is the largest, so under IL2CPP it only
+beats compact above ~14 methods raw (~21 gzipped); small hosts
+(≲15 methods) should prefer compact**. Full decomposition in
+`docs/reports/il2cpp-size-report.md`.
 
 Two structural findings drove the architecture here (an earlier
 revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
