@@ -204,13 +204,13 @@ function generateHost(methods, tag /* "" for 50, "5" for 5 */) {
 generateHost(50, "");
 generateHost(5, "5");
 
-// H-FIELDS variant: 50-method compact DTOs with public fields instead of
-// auto-properties.
-cpSync(join(OUT, "gen/compact"), join(OUT, "gen/compact-fields"), { recursive: true });
-{
-  const p = join(OUT, "gen/compact-fields/HostMethodDtos.g.cs");
-  writeFileSync(p, readFileSync(p, "utf8").replaceAll(" { get; set; }", ";"));
-}
+// H-FIELDS variant: 50-method compact with the emitter's --dto-fields flag
+// (public fields instead of auto-properties).
+execFileSync(node, [
+  join(ROOT, "codegen/csharp-emitter/dist/cli.js"),
+  join(OUT, "bench-host.manifest.json"), join(OUT, "gen/compact-fields"),
+  "--profile", "compact", "--dto-fields",
+], { stdio: "inherit" });
 
 // ---------- assemble NativeAOT bench projects ----------
 
