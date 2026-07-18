@@ -23,7 +23,7 @@ what the Unity run must establish.
 | # | Hypothesis | NativeAOT result | Why IL2CPP may differ | IL2CPP test |
 |---|---|---|---|---|
 | H-GVM | A generic virtual method (generic method on an interface) drags in the AOT dynamic type loader | **CONFIRMED, huge**: one GVM in a minimal probe costs +283 KB raw / +127 KB gz; in the real runtime, GVM + generic core types together cost ~250 KB (super-additive; removing both collapsed S_P_TypeLoader 2898 → 296 symbols) | IL2CPP ships its generic-sharing + metadata machinery (`global-metadata.dat`, runtime metadata init) in **every** build, so the *marginal* cost of one GVM may be far smaller — possibly near zero. The architectural change (`QueryRows`) can't hurt (strictly ≤), but its measured win may be NativeAOT-specific | **MUST re-test** — build `probes/gvm` vs `probes/nogvm` as two minimal Unity IL2CPP builds; the pair's size delta IS the answer |
-| H-PROFILES | Per-method cost is unique-type count → compact/ultra profiles collapse it (classic ≈10 KB raw/method → compact ≈1.2 → ultra ≈0.7) | **CONFIRMED** (that is why the profiles exist) | Same mechanism exists (IL2CPP materializes per-instantiation metadata + generated C++), but the per-type unit cost differs | **MUST re-test** — build the 5-app matrix (§4) and compute per-method deltas |
+| H-PROFILES | Per-method cost is unique-type count → compact/ultra profiles collapse it (from this kit: classic ≈3.5 KB raw / 1.2 KB gz per method → compact ≈1.8 / 0.6 → ultra ≈0.7 / 0.25) | **CONFIRMED** (that is why the profiles exist). Note the crossover: ultra's value-bag machinery is a *fixed* cost, so ultra beats compact only above roughly a dozen methods | Same mechanism exists (IL2CPP materializes per-instantiation metadata + generated C++), but the per-type unit cost differs | **MUST re-test** — the matrix (§4) has each profile at BOTH 5 and 50 methods; marginal per-method = (Δ₅₀ − Δ₅) / 45 |
 | H-FIELDS | DTO auto-properties cost more than public fields | **REFUTED — exactly 0 bytes** (trivial accessors fully inlined; binaries byte-identical modulo build IDs) | IL2CPP generates C++ per method; its inliner (and the C++ compiler behind it) *usually* erases trivial accessors too, but that is an assumption, not a measurement | **MUST re-test** — `compact50-fields` vs `compact50` (kit generates both) |
 | H-DATA | Data-driving the 50 registration bodies (delegate tables + one loop) shrinks the binary | **REFUTED — it GREW** (+4.2 KB raw / +5.6 KB gz): in NativeAOT a delegate-array initializer is *code* (~92 B/element), and the 50 near-identical fluent bodies were nearly free under gzip's 32 KB window | IL2CPP compiles the array initializers to C++ the same way; expected to reproduce, but cheap to spot-check | Optional — low priority, expected same sign |
 | H-DISPATCH | Collapsing the handler interface to one `Invoke(int ordinal, object input)` slot | **CONFIRMED but unshipped**: −16.9 KB raw / −4.8 KB gz; rejected because it changes handler-authoring DX (switch instead of named methods) | Should transfer (fewer interface slots + thunks in any AOT) | Optional — measure only if the DX trade ever becomes tempting |
@@ -83,6 +83,9 @@ mirrors this):
 | compact50 + SLIM | 1,736,040 | 811,987 | 191,120 (187 KB) | 77,116 (75 KB) |
 | ultra50 | 1,729,200 | 817,711 | 184,280 (180 KB) | 82,840 (81 KB) |
 | ultra50 + SLIM | 1,699,728 | 802,718 | 154,808 (151 KB) | 67,847 (66 KB) |
+| classic5 | 1,691,864 | 802,741 | 146,944 (144 KB) | 67,870 (66 KB) |
+| compact5 | 1,678,984 | 797,172 | 134,064 (131 KB) | 62,301 (61 KB) |
+| ultra5 | 1,695,984 | 806,687 | 151,064 (148 KB) | 71,816 (70 KB) |
 | probe-gvm | 1,714,512 | 798,256 | — | — |
 | probe-nogvm | 1,424,576 | 667,021 | — | — |
 | **probe delta (one GVM)** | | | **289,936 (283 KB)** | **131,235 (128 KB)** |
@@ -90,6 +93,11 @@ mirrors this):
 (compact50-fields differing from compact50 by 8 raw / 40 gz bytes is
 build-ID noise — that IS the H-FIELDS zero-effect result under
 NativeAOT.)
+
+Marginal per-method cost, derived as (Δ₅₀ − Δ₅) / 45 from the rows
+above: classic 3,490 B raw / 1,217 B gz; compact 1,830 / 589; ultra
+738 / 245. The 5-method builds print DDL length **2771** instead of
+22231 — that is their expected second output line.
 
 The bench prints four lines (`104006`, DDL length, `Completed`,
 `Completed`); any build whose output differs is invalid — fix before
@@ -117,12 +125,20 @@ with only `GameWork.cs` + a MonoBehaviour logging
 | 6 compact50-fields | unity-src/compact with `HostMethodDtos.g.cs` fields variant (copy from `out/gen/compact-fields/`) | — |
 | 7 probe-gvm | ONLY `probes/gvm/Program.cs` body (drop `Main`, call from a MonoBehaviour) | no SqliteHost sources |
 | 8 probe-nogvm | ONLY `probes/nogvm/Program.cs` body (same wrapper) | no SqliteHost sources |
+| 9 classic5 | unity-src/classic-5 | — |
+| 10 compact5 | unity-src/compact-5 | — |
+| 11 ultra5 | unity-src/ultra-5 | — |
 
-Validity checks: rows 1–6 must log the four expected lines on device or
-in the editor's IL2CPP player log; rows 7–8 must log `12`... (any
-consistent number — the two probes must log the SAME value as each
-other). Keep every Unity setting identical across rows except the one
-the row varies; build twice if unsure a setting leaked.
+Rows 9–11 exist to separate fixed cost from per-method cost:
+**marginal per-method = (Δ₅₀ − Δ₅) / 45** per profile — without them
+only the total delta is knowable. Report both the fixed intercept and
+the per-method slope for each profile.
+
+Validity checks: rows 1–6 must log the four expected lines (second
+line `22231`); rows 9–11 likewise with second line `2771`; rows 7–8
+must log the SAME value as each other (any consistent number). Keep
+every Unity setting identical across rows except the one the row
+varies; build twice if unsure a setting leaked.
 
 Note for rows 7–8: IL2CPP may deprioritize dead branches differently —
 confirm with an IL2CPP build report or `libil2cpp.so` symbol dump that
@@ -154,7 +170,7 @@ Produce `docs/reports/il2cpp-size-report.md` (new folder is fine) with:
 > In the repo `emindeniz99/playground`, read
 > `projects/sqlitehost/docs/guides/il2cpp-size-protocol.md` and execute
 > it fully: regenerate the bench sources (`tests/app-size-bench/
-> generate.mjs`), build the 9-row Unity IL2CPP matrix in §4 on
+> generate.mjs`), build the 12-row Unity IL2CPP matrix in §4 on
 > Android/ARM64 with Unity 2022.3.39f1 (and 2021.3.55f1 if available),
 > measure per §2, and write the report described in §5 to
 > `projects/sqlitehost/docs/reports/il2cpp-size-report.md`, including

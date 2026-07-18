@@ -3,23 +3,28 @@
  * App-size bench generator (docs/guides/il2cpp-size-protocol.md).
  *
  * Produces, under out/ (gitignored), the exact source sets both toolchains
- * measure so NativeAOT and Unity IL2CPP numbers come from identical inputs:
+ * measure so NativeAOT and Unity IL2CPP numbers come from identical inputs.
+ * Hosts are generated at TWO sizes — 50 methods and 5 methods — because a
+ * single size can only measure the total delta; the pair separates the
+ * fixed runtime cost from the marginal per-method cost:
  *
- *   out/bench-host.tsp + bench-host.manifest.json   50-method synthetic host
- *                                                   (op0..op49: key text +
- *                                                   amount int64 -> ok bool),
- *                                                   generated through the
- *                                                   repo's own toolchain
- *   out/gen/{classic,compact,ultra}/                emitter output per profile
- *   out/gen/compact-fields/                         compact with DTO fields
- *                                                   instead of auto-properties
- *                                                   (hypothesis H-FIELDS)
- *   out/nativeaot/{gamebase,classic50,compact50,compact50-fields,ultra50}/
- *                                                   ready-to-publish .NET 8
- *                                                   NativeAOT console benches
- *   out/unity-src/{profile}/                        the same sources arranged
- *                                                   for vendoring into a Unity
- *                                                   project (see protocol doc)
+ *     per-method = (delta_50 - delta_5) / 45
+ *
+ *   out/bench-host.tsp / bench-host5.tsp          synthetic hosts (opN:
+ *     + *.manifest.json                           key text + amount int64
+ *                                                 -> ok bool), generated
+ *                                                 through the repo toolchain
+ *   out/gen/{classic,compact,ultra}/              emitter output, 50 methods
+ *   out/gen/{classic,compact,ultra}-5/            emitter output, 5 methods
+ *   out/gen/compact-fields/                       50-method compact with DTO
+ *                                                 fields instead of
+ *                                                 auto-properties (H-FIELDS)
+ *   out/nativeaot/{gamebase,classic50,compact50,compact50-fields,ultra50,
+ *                  classic5,compact5,ultra5}/     ready-to-publish .NET 8
+ *                                                 NativeAOT console benches
+ *   out/unity-src/{profile}[-5]/                  the same sources arranged
+ *                                                 for vendoring into a Unity
+ *                                                 project (see protocol doc)
  *
  * Usage: node generate.mjs        (from this directory; emitters must be
  *                                  built — pnpm -r build at the repo root)
@@ -33,57 +38,17 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");            // projects/sqlitehost
 const OUT = join(HERE, "out");
-const METHODS = 50;
+const node = process.execPath;
+const gameWork = readFileSync(join(HERE, "GameWork.cs"), "utf8");
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(join(OUT, "gen"), { recursive: true });
 
-// ---------- 1. author the 50-method bench host in TypeSpec ----------
-const tsp = [];
-tsp.push('import "@sqlite-host/typespec";', "", "using SqliteHost;", "", "namespace Bench.Host;", "");
-tsp.push("@hostLibrary({", "  apiLevel: 1", "})");
-tsp.push("interface BenchHostMethods {");
-for (let i = 0; i < METHODS; i++) {
-  tsp.push(`  @hostMethod({ name: "op${i}", handler: "Op${i}" })`);
-  tsp.push(`  op Op${i}(input: Op${i}Input): Op${i}Result;`);
-  tsp.push("");
-}
-tsp.push("}");
-tsp.push("");
-for (let i = 0; i < METHODS; i++) {
-  tsp.push(`model Op${i}Input {`, "  key: string;", "  amount: int64;", "}", "");
-  tsp.push(`model Op${i}Result {`, "  ok: boolean;", "}", "");
-}
-writeFileSync(join(OUT, "bench-host.tsp"), tsp.join("\n"));
+// ---------- shared source templates ----------
 
-// ---------- 2. tsp -> manifest -> C# per profile ----------
-const node = process.execPath;
-execFileSync(node, [
-  join(ROOT, "codegen/manifest-emitter/dist/cli.js"),
-  join(OUT, "bench-host.tsp"), OUT, "--base-name", "bench-host",
-], { stdio: "inherit" });
-
-for (const profile of ["classic", "compact", "ultra"]) {
-  execFileSync(node, [
-    join(ROOT, "codegen/csharp-emitter/dist/cli.js"),
-    join(OUT, "bench-host.manifest.json"), join(OUT, "gen", profile),
-    "--profile", profile,
-  ], { stdio: "inherit" });
-}
-
-// H-FIELDS variant: compact DTOs with public fields instead of auto-properties.
-cpSync(join(OUT, "gen/compact"), join(OUT, "gen/compact-fields"), { recursive: true });
-{
-  const p = join(OUT, "gen/compact-fields/HostMethodDtos.g.cs");
-  writeFileSync(p, readFileSync(p, "utf8").replaceAll(" { get; set; }", ";"));
-}
-
-// ---------- 3. shared bench sources ----------
-const gameWork = readFileSync(join(HERE, "GameWork.cs"), "utf8");
-
-function handlersClass(profile) {
+function handlersClass(profile, methods) {
   const lines = ["sealed class H : Bench.Host.Generated.IGeneratedHostHandlers", "{"];
-  for (let i = 0; i < METHODS; i++) {
+  for (let i = 0; i < methods; i++) {
     if (profile === "ultra") {
       lines.push(`    public SqliteHost.SqliteHostUltraResult Op${i}(SqliteHost.SqliteHostUltraCall call) { return new SqliteHost.SqliteHostUltraResult().SetBool("ok", true); }`);
     } else {
@@ -135,7 +100,7 @@ function benchEntry(withHost) {
             return DummyGame.GameWork.RunAll(seed).ToString();`;
   return `public static class BenchEntry
 {
-    // Expected output (50-method host): 104006 / <ddl length> / Completed / Completed
+    // Expected output: 104006 / <ddl length> / Completed / Completed
     public static string Run(int seed)
     {${body}
     }
@@ -200,8 +165,56 @@ const mainCs = `static class Program
     }
 }`;
 
-// ---------- 4. assemble NativeAOT bench projects ----------
-function writeBench(name, genDir /* null for gamebase */) {
+// ---------- per-size generation (tsp -> manifest -> C# per profile) ----------
+
+function generateHost(methods, tag /* "" for 50, "5" for 5 */) {
+  const baseName = tag ? `bench-host${tag}` : "bench-host";
+  const tsp = [];
+  tsp.push('import "@sqlite-host/typespec";', "", "using SqliteHost;", "", "namespace Bench.Host;", "");
+  tsp.push("@hostLibrary({", "  apiLevel: 1", "})");
+  tsp.push("interface BenchHostMethods {");
+  for (let i = 0; i < methods; i++) {
+    tsp.push(`  @hostMethod({ name: "op${i}", handler: "Op${i}" })`);
+    tsp.push(`  op Op${i}(input: Op${i}Input): Op${i}Result;`);
+    tsp.push("");
+  }
+  tsp.push("}");
+  tsp.push("");
+  for (let i = 0; i < methods; i++) {
+    tsp.push(`model Op${i}Input {`, "  key: string;", "  amount: int64;", "}", "");
+    tsp.push(`model Op${i}Result {`, "  ok: boolean;", "}", "");
+  }
+  writeFileSync(join(OUT, `${baseName}.tsp`), tsp.join("\n"));
+
+  execFileSync(node, [
+    join(ROOT, "codegen/manifest-emitter/dist/cli.js"),
+    join(OUT, `${baseName}.tsp`), OUT, "--base-name", baseName,
+  ], { stdio: "inherit" });
+
+  const dirSuffix = tag ? `-${tag}` : "";
+  for (const profile of ["classic", "compact", "ultra"]) {
+    execFileSync(node, [
+      join(ROOT, "codegen/csharp-emitter/dist/cli.js"),
+      join(OUT, `${baseName}.manifest.json`), join(OUT, "gen", profile + dirSuffix),
+      "--profile", profile,
+    ], { stdio: "inherit" });
+  }
+}
+
+generateHost(50, "");
+generateHost(5, "5");
+
+// H-FIELDS variant: 50-method compact DTOs with public fields instead of
+// auto-properties.
+cpSync(join(OUT, "gen/compact"), join(OUT, "gen/compact-fields"), { recursive: true });
+{
+  const p = join(OUT, "gen/compact-fields/HostMethodDtos.g.cs");
+  writeFileSync(p, readFileSync(p, "utf8").replaceAll(" { get; set; }", ";"));
+}
+
+// ---------- assemble NativeAOT bench projects ----------
+
+function writeBench(name, genDir /* null for gamebase */, profile, methods) {
   const dir = join(OUT, "nativeaot", name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "GameWork.cs"), gameWork);
@@ -210,34 +223,44 @@ function writeBench(name, genDir /* null for gamebase */) {
     for (const f of readdirSync(genDir)) {
       if (f.endsWith(".g.cs")) cpSync(join(genDir, f), join(dir, f));
     }
-    const profile = name.startsWith("ultra") ? "ultra" : "typed";
     writeFileSync(join(dir, "Bench.cs"),
-      [fakeAdapter, handlersClass(profile === "ultra" ? "ultra" : "classic"), benchEntry(true), mainCs].join("\n\n"));
+      [fakeAdapter, handlersClass(profile, methods), benchEntry(true), mainCs].join("\n\n"));
   } else {
     writeFileSync(join(dir, "Bench.cs"), [benchEntry(false), mainCs].join("\n\n"));
   }
 }
 
 writeBench("gamebase", null);
-writeBench("classic50", join(OUT, "gen/classic"));
-writeBench("compact50", join(OUT, "gen/compact"));
-writeBench("compact50-fields", join(OUT, "gen/compact-fields"));
-writeBench("ultra50", join(OUT, "gen/ultra"));
+writeBench("classic50", join(OUT, "gen/classic"), "classic", 50);
+writeBench("compact50", join(OUT, "gen/compact"), "classic", 50);
+writeBench("compact50-fields", join(OUT, "gen/compact-fields"), "classic", 50);
+writeBench("ultra50", join(OUT, "gen/ultra"), "ultra", 50);
+writeBench("classic5", join(OUT, "gen/classic-5"), "classic", 5);
+writeBench("compact5", join(OUT, "gen/compact-5"), "classic", 5);
+writeBench("ultra5", join(OUT, "gen/ultra-5"), "ultra", 5);
 
-// ---------- 5. Unity vendoring source sets ----------
-for (const profile of ["classic", "compact", "ultra"]) {
-  const dir = join(OUT, "unity-src", profile);
+// ---------- Unity vendoring source sets ----------
+
+function writeUnitySrc(name, genDir, profile, methods) {
+  const dir = join(OUT, "unity-src", name);
   mkdirSync(dir, { recursive: true });
-  for (const f of readdirSync(join(OUT, "gen", profile))) {
-    if (f.endsWith(".g.cs")) cpSync(join(OUT, "gen", profile, f), join(dir, f));
+  for (const f of readdirSync(genDir)) {
+    if (f.endsWith(".g.cs")) cpSync(join(genDir, f), join(dir, f));
   }
   writeFileSync(join(dir, "GameWork.cs"), gameWork);
   writeFileSync(join(dir, "Bench.cs"),
-    [fakeAdapter, handlersClass(profile === "ultra" ? "ultra" : "classic"), benchEntry(true)].join("\n\n"));
+    [fakeAdapter, handlersClass(profile, methods), benchEntry(true)].join("\n\n"));
   writeFileSync(join(dir, "README.txt"),
     "Vendor this folder + csharp/SqliteHost.Abstractions + csharp/SqliteHost.Runtime\n" +
     "into Assets/, add a MonoBehaviour that calls BenchEntry.Run(7) once and logs it,\n" +
     "then follow docs/guides/il2cpp-size-protocol.md.\n");
 }
+
+writeUnitySrc("classic", join(OUT, "gen/classic"), "classic", 50);
+writeUnitySrc("compact", join(OUT, "gen/compact"), "classic", 50);
+writeUnitySrc("ultra", join(OUT, "gen/ultra"), "ultra", 50);
+writeUnitySrc("classic-5", join(OUT, "gen/classic-5"), "classic", 5);
+writeUnitySrc("compact-5", join(OUT, "gen/compact-5"), "classic", 5);
+writeUnitySrc("ultra-5", join(OUT, "gen/ultra-5"), "ultra", 5);
 
 console.log("bench sources generated under", OUT);
