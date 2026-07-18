@@ -130,6 +130,45 @@ H-DATA, H-DISPATCH, H-STRINGS, H-NANO, H-ENGINE were optional per §1
 rows contradicts their NativeAOT verdicts.
 
 
+## 3.1 Follow-up experiments (negative results — recorded so they aren't retried)
+
+Two size ideas from the first round were tested; **both came back
+empty**, which is itself the finding: the current compact/ultra + SLIM
+floor is genuine.
+
+**E1 — precompiled schema (row 12).** Hypothesis: if the app applies
+the emitter's `GeneratedSchemaSql.SchemaScript` constant instead of
+calling `GenerateSchemaScript()`, the schema-generation machinery
+(`SchemaGenerator` + `SchemaModel`) strips out. Built as a compact50
+variant whose bench prints the constant's length (string kept alive via
+a static field; validity preserved — line 2 still `22231`, proving the
+constant is byte-equivalent in length to the generated DDL). Result:
+`libil2cpp.so` **−520 B**, metadata **+22,120 B** (the referenced
+constant now lives in the string heap; +1.3 KB gz total). The generator
+did NOT strip — root cause: `SqliteHostRuntimeCore` itself calls
+`GenerateSchemaStatements()` when provisioning the workspace on
+`Run()`, so the machinery is a genuine runtime dependency regardless of
+what the app calls. A real win here would need a runtime knob (e.g.
+`SQLITEHOST_PRECOMPILED_SCHEMA` routing workspace provisioning through
+supplied DDL) — and E1 bounds its upside as modest (the generator
+shares its models with the runtime; the caller-side dead code was worth
+only ~0.5 KB). Left as a design note for the maintainer, not
+implemented.
+
+**E2 — terse error messages under SLIM.** Hypothesis: the runtime's
+validation/error strings are a meaningful metadata cost worth gating.
+Measured from source (the only reliable attribution — string-heap diffs
+of `global-metadata.dat` mislead, because run boundaries shift between
+builds and make unrelated BCL string tables look "added"): ALL string
+literals in `SqliteHost.Runtime` total **5,717 B** and
+`SqliteHost.Abstractions` **527 B**, of which message-like text is
+**~3.3 KB**. Gating that behind `SQLITEHOST_SLIM` would touch ~87 throw
+sites for at most ~3 KB — rejected as not worth the churn.
+
+(The third idea from the same round — DTO fields instead of
+auto-properties — was adopted upstream as the emitter's `--dto-fields`
+flag on the strength of the H-FIELDS measurement above.)
+
 ## 4. Doc patches applied
 
 Applied in this branch (same commit):
