@@ -195,6 +195,66 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void EmptyStatementSql_FailsValidation_WorkspaceNeverOpened()
+        {
+            // The envelope validators (TS parse.ts, Java ValidationEngine)
+            // reject empty statement sql as an invalid envelope. The C#
+            // runtime has no envelope parser, so this structural decision
+            // cannot be delegated to the adapter (whose behavior for "" is
+            // adapter-dependent — throw, or silently no-op) or deferred past
+            // workspace open. factory.OpenCount == 0 is the load-bearing
+            // assertion: empty sql must fail as a validation error before
+            // OpenWorkspace, not surface as an adapter sql-error after a
+            // workspace already exists.
+            var (runtime, factory, handlers) = CreateRuntime();
+            SqliteHostScript script = ValidSingleCallScript();
+            script.Steps[0].Statements[0].Sql = "";
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+            Assert.Equal("invalid-script", result.ErrorCode);
+            Assert.Equal(0, factory.OpenCount);
+            Assert.Empty(handlers.Log);
+        }
+
+        [Fact]
+        public void NullOrEmptyNameInput_FailsValidation_WorkspaceNeverOpened()
+        {
+            // The C# runtime consumes parsed objects with no JSON-validation
+            // layer, so a structural invariant that the TS (parse.ts
+            // validateRuntimeInput) and Java (ValidationEngine.checkEnvelope)
+            // envelope parsers both reject as invalid-envelope must fail here
+            // as invalid-script BEFORE any workspace side effect. A null input
+            // entry in particular must not open a workspace, run schema DDL,
+            // then surface a NullReferenceException disguised as
+            // FailedSchema/input-insert-error (the pre-fix behavior); an empty
+            // name must not be silently inserted though the envelope requires
+            // non-empty input names. factory.OpenCount == 0 is the
+            // intent-encoding assertion — it fails if a regression moves the
+            // check back after OpenWorkspace.
+            var badInputs = new List<SqliteHostRuntimeInput>
+            {
+                null,
+                new SqliteHostRuntimeInput { Name = "", Value = SqliteHostBindingValue.Text("x") },
+                new SqliteHostRuntimeInput { Name = null, Value = SqliteHostBindingValue.Text("x") }
+            };
+            foreach (SqliteHostRuntimeInput badInput in badInputs)
+            {
+                var (runtime, factory, handlers) = CreateRuntime();
+                SqliteHostScript script = ValidSingleCallScript();
+                script.Inputs = new List<SqliteHostRuntimeInput> { badInput };
+
+                SqliteHostRunResult result = runtime.Run(script);
+
+                Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+                Assert.Equal("invalid-script", result.ErrorCode);
+                Assert.Equal(0, factory.OpenCount);
+                Assert.Empty(handlers.Log);
+            }
+        }
+
+        [Fact]
         public void DuplicateStepId_FailsValidation()
         {
             var (runtime, _, _) = CreateRuntime();

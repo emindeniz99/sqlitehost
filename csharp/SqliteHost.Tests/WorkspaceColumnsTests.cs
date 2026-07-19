@@ -310,6 +310,31 @@ namespace SqliteHost.Tests
         }
 
         [Theory]
+        [InlineData("pending")]
+        [InlineData("PENDING")]
+        [InlineData("Pending")]
+        public void DoneValueEqualToPending_ThrowsAtBuildTime(string doneValue)
+        {
+            // 'pending' is the reserved queued-status literal: the queue DDL
+            // defaults status to 'pending' (SchemaGenerator) and the drain
+            // selects WHERE status = 'pending'. A done row marked with it is
+            // indistinguishable from an un-drained row, so the queue drain
+            // would re-execute the call on every step and it would never
+            // complete — reject it at definition build time, not at runtime.
+            // SQLite's TEXT '=' is case-sensitive so only exact lowercase
+            // actually re-drains, but the guard rejects case-insensitively as
+            // a conservative superset; the assertion pins that all three
+            // variants fail (so a silent downgrade to a case-sensitive check
+            // would break this test).
+            var builder = SqliteHostDefinition
+                .ForHandlers<IColumnsHandlers>()
+                .Columns(c => c.DoneValue(doneValue));
+
+            var ex = Assert.Throws<ArgumentException>(() => builder.Methods(Specs()));
+            Assert.Contains("pending", ex.Message);
+        }
+
+        [Theory]
         [InlineData("qid", "qid", "method", "status")]        // queue-id vs call-id
         [InlineData("queue_id", "call_id", "shared", "shared")] // method vs status
         public void DuplicateColumnWithinQueueTable_ThrowsAtBuildTime(
@@ -384,6 +409,65 @@ namespace SqliteHost.Tests
             var ex = Assert.Throws<ArgumentException>(() => builder.Methods(Specs()));
             Assert.Contains("'input_k'", ex.Message);
             Assert.Contains("echoPairs", ex.Message);
+        }
+
+        [Fact]
+        public void DuplicateColumnWithinQueueTable_CaseInsensitively_ThrowsAtBuildTime()
+        {
+            // SQLite resolves column identifiers case-insensitively, so
+            // queue_id column "ID" and call_id column "id" are the same
+            // column at CREATE TABLE time — the definition must fail loud at
+            // registration rather than build cleanly and die with an opaque
+            // "duplicate column name" on the first Run. Mirrors the table-name
+            // case-insensitivity already enforced for workspace/derived tables
+            // (DerivedTableNameTests). A distinctness check on Ordinal would
+            // pass on this input, so this test fails pre-fix and would re-fail
+            // if the comparer regressed to case-sensitive.
+            var builder = SqliteHostDefinition
+                .ForHandlers<IColumnsHandlers>()
+                .Columns(c => c.QueueId("ID").CallId("id"));
+
+            var ex = Assert.Throws<ArgumentException>(() => builder.Methods(Specs()));
+            Assert.Contains("occurs more than once", ex.Message);
+            Assert.Contains("queue", ex.Message);
+        }
+
+        [Fact]
+        public void CallIdCollidingWithDerivedInputColumn_CaseInsensitively_ThrowsAtBuildTime()
+        {
+            // getValue's "key" input derives input_key; call_id column
+            // "INPUT_KEY" collides with it case-insensitively. Under the
+            // pre-fix Ordinal comparer "INPUT_KEY" would NOT match "input_key"
+            // and the definition would build (then die with an opaque
+            // "duplicate column name" on the first Run), so this test fails
+            // pre-fix. The preserved diagnostic reports the derived column
+            // (input_key) and the owning method.
+            var builder = SqliteHostDefinition
+                .ForHandlers<IColumnsHandlers>()
+                .Columns(c => c.CallId("INPUT_KEY"));
+
+            var ex = Assert.Throws<ArgumentException>(() => builder.Methods(Specs()));
+            Assert.Contains("CallId", ex.Message);
+            Assert.Contains("'input_key'", ex.Message);
+            Assert.Contains("getValue", ex.Message);
+        }
+
+        [Fact]
+        public void CallIdCollidingWithItemIndex_CaseInsensitively_ThrowsAtBuildTime()
+        {
+            // call_id "CID" and item_index "cid" case-collide within the list
+            // child table. The list-child distinctness guard must surface a
+            // domain "occurs more than once in the list child table" message
+            // rather than the raw ".NET same key" ArgumentException the
+            // (now case-insensitive) row-identity dictionary would otherwise
+            // throw.
+            var builder = SqliteHostDefinition
+                .ForHandlers<IColumnsHandlers>()
+                .Columns(c => c.CallId("CID").ItemIndex("cid"));
+
+            var ex = Assert.Throws<ArgumentException>(() => builder.Methods(Specs()));
+            Assert.Contains("occurs more than once", ex.Message);
+            Assert.Contains("list child", ex.Message);
         }
     }
 }

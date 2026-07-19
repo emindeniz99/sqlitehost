@@ -71,6 +71,7 @@ namespace SqliteHost
                 _specsByMethod.Add(spec.MethodName, spec);
                 _specs.Add(spec);
             }
+            ValidateMethodNames(_specs);
             ValidateWorkspaceTableNames(naming, _specs);
             ValidateDerivedTableNames(naming, _specs);
             ValidateListItemShapes(_specs);
@@ -156,6 +157,33 @@ namespace SqliteHost
                 {
                     throw new ArgumentException(
                         "Inline function name '" + functionName + "' is used by more than one method.",
+                        "methods");
+                }
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Method names (docs/naming.md): every registered method name must
+        /// be a valid protocol identifier ([A-Za-z][A-Za-z0-9_]*), mirroring
+        /// the canonical TypeSpec METHOD_NAME rule
+        /// (typespec/library/src/decorators.ts). The runtime interpolates the
+        /// derived call/result/trigger table names — and the raw method name
+        /// into a trigger string literal — unquoted, so a name like
+        /// 'get-value' otherwise registers cleanly and then fails every Run
+        /// at schema creation, far from the code that authored it. Fails loud
+        /// at definition build time.
+        /// </summary>
+        private static void ValidateMethodNames(List<ErasedHostMethodSpec> specs)
+        {
+#if !SQLITEHOST_SLIM
+            foreach (ErasedHostMethodSpec spec in specs)
+            {
+                if (!IsValidMethodName(spec.MethodName))
+                {
+                    throw new ArgumentException(
+                        "Method name '" + spec.MethodName
+                        + "' is not a valid identifier ([A-Za-z][A-Za-z0-9_]*).",
                         "methods");
                 }
             }
@@ -326,6 +354,21 @@ namespace SqliteHost
             RequireNonEmpty(columns.ItemIndex, "ItemIndex");
             RequireNonEmpty(columns.Status, "Status");
             RequireNonEmpty(columns.DoneValue, "DoneValue");
+            if (string.Equals(columns.DoneValue, "pending", StringComparison.OrdinalIgnoreCase))
+            {
+                // 'pending' is the reserved queued-status literal: the queue
+                // DDL defaults status to 'pending' (SchemaGenerator) and the
+                // drain selects WHERE status = 'pending'. A done row marked
+                // with it stays indistinguishable from an un-drained row, so
+                // the queue drain re-executes the call on every step and it
+                // never completes. SQLite's default TEXT '=' is
+                // case-sensitive so only exact lowercase collides at runtime,
+                // but reject case-insensitively to also stop confusing
+                // variants (matches the SqliteBuiltinFunctions guard).
+                throw new ArgumentException(
+                    "Done literal DoneValue must not be 'pending'; 'pending' is the reserved queued-status literal, so a done row written with it would be re-drained every step and never complete.",
+                    "columns");
+            }
             RequireNonEmpty(columns.QueueId, "QueueId");
             RequireNonEmpty(columns.Method, "Method");
             RequireNonEmpty(columns.Name, "Name");
@@ -344,8 +387,15 @@ namespace SqliteHost
                 columns.RealValue, columns.TextValue, columns.BlobValue);
             RequireDistinctWithinTable("control",
                 columns.Action, columns.Message);
+            // List child tables carry CallId + ItemIndex; mirror TypeSpec's
+            // list-child distinctness check (validate.ts) so a CallId/ItemIndex
+            // collision throws a domain message here instead of a raw
+            // "same key" ArgumentException from the row-identity dictionary
+            // below (which is keyed OrdinalIgnoreCase).
+            RequireDistinctWithinTable("list child",
+                columns.CallId, columns.ItemIndex);
 
-            var rowIdentityColumns = new Dictionary<string, string>(StringComparer.Ordinal)
+            var rowIdentityColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { columns.CallId, "CallId" },
                 { columns.ItemIndex, "ItemIndex" },
@@ -464,6 +514,37 @@ namespace SqliteHost
                 "zeroblob"
             };
 
+        /// <summary>
+        /// Hand-rolled match of the TypeSpec METHOD_NAME regex
+        /// /^[A-Za-z][A-Za-z0-9_]*$/. The runtime carries zero
+        /// System.Text.RegularExpressions usage (ToSnakeCase and the
+        /// parameter scanner hand-roll their char scans on the
+        /// netstandard2.0/Unity target), so this stays a char scan for
+        /// convention parity rather than pulling in a Regex dependency.
+        /// </summary>
+        private static bool IsValidMethodName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+            char first = name[0];
+            if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z')))
+            {
+                return false;
+            }
+            for (int i = 1; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9') || c == '_'))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private static void RequireNonEmpty(string value, string columnProperty)
         {
             if (string.IsNullOrEmpty(value))
@@ -476,7 +557,11 @@ namespace SqliteHost
 
         private static void RequireDistinctWithinTable(string table, params string[] names)
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            // SQLite resolves column identifiers case-insensitively, so a
+            // case-only difference is a real duplicate at CREATE TABLE time.
+            // Mirror the case-insensitive comparer already used for the
+            // workspace/derived table and inline-function name checks.
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string name in names)
             {
                 if (!seen.Add(name))

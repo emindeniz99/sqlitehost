@@ -27,7 +27,7 @@ host application decides logging/telemetry policy.
 | `unsupported-api-level` | SkippedUnsupported | `requiredApiLevel` > host apiLevel |
 | `missing-feature` | SkippedUnsupported | a `requiredFeatures` entry not supported |
 | `missing-method` | SkippedUnsupported | a `requiredMethods` entry not registered |
-| `invalid-script` | FailedValidation | null/empty steps, empty step id, null statement sql, step with an empty/missing statements list, `requiredApiLevel` < 1 |
+| `invalid-script` | FailedValidation | null/empty steps, empty step id, null or empty statement sql, step with an empty/missing statements list, null input entry, empty input name, `requiredApiLevel` < 1 |
 | `duplicate-input-name` | FailedValidation | two runtime `inputs` entries share a name |
 | `duplicate-step-id` | FailedValidation | two steps share an id |
 | `max-statements-exceeded` | FailedValidation | total statements > `MaxStatementsPerRun` |

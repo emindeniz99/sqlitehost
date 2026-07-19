@@ -458,7 +458,12 @@ namespace SqliteHost
                 var inputNames = new HashSet<string>(StringComparer.Ordinal);
                 foreach (SqliteHostRuntimeInput input in script.Inputs)
                 {
-                    if (input != null && input.Name != null && !inputNames.Add(input.Name))
+                    if (input == null || string.IsNullOrEmpty(input.Name))
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
+                            "A runtime input is null or has an empty name.", null, null);
+                    }
+                    if (!inputNames.Add(input.Name))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "duplicate-input-name",
                             "Runtime input name '" + input.Name + "' occurs more than once.", null, null);
@@ -492,10 +497,10 @@ namespace SqliteHost
                 }
                 foreach (SqliteHostStatement statement in step.Statements)
                 {
-                    if (statement == null || statement.Sql == null)
+                    if (statement == null || string.IsNullOrEmpty(statement.Sql))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                            "A statement in step '" + step.Id + "' is null or has null sql.", step.Id, null);
+                            "A statement in step '" + step.Id + "' is null or has null or empty sql.", step.Id, null);
                     }
                     statementCount++;
                 }
