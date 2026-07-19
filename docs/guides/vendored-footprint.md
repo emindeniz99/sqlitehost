@@ -75,10 +75,14 @@ Delete the files for the profiles you do **not** use:
 | **compact** | `UltraHostMethod.cs`, `UltraFields.cs`, `SqliteHostUltraValues.cs`, `HostMethod.cs`, `HostMethodSpecBuilder.cs`, `ScalarFields.cs`, `FieldsBuilders.cs` |
 | **classic** | `UltraHostMethod.cs`, `UltraFields.cs`, `SqliteHostUltraValues.cs`, `CompactHostMethod.cs` |
 
-Each of these three trimmed sets was compiled as a single assembly
-(mirroring the UPM package's `SqliteHost.asmdef`) and builds with **0
-warnings, 0 errors**. A single-profile source tree is ~5.2k–5.8k lines
-instead of ~7.1k.
+Or let the tool do it — `node unity/vendor.mjs --profile ultra --out <dir>`
+copies the package with the other profiles dropped. A single-profile tree
+is ~5.2k–5.8k lines instead of ~7.1k.
+
+Each of these three trims is compiled as a single assembly (mirroring the
+UPM package's `SqliteHost.asmdef`) by `tests/vendor-trim` in the full gate
+(`tests/end-to-end/run-all.sh`), so the delete list stays verified — **0
+warnings, 0 errors** — as the runtime evolves, not asserted once.
 
 To also drop the optional validation, define `SQLITEHOST_SLIM` (Unity:
 Scripting Define Symbols) — it compiles out the registration/binding
