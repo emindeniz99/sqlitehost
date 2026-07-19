@@ -109,7 +109,7 @@ namespace SqliteHost
             {
                 throw new ArgumentException("Naming FunctionPrefix must be non-empty.", nameof(naming));
             }
-            var tableNames = new HashSet<string>(StringComparer.Ordinal)
+            var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 naming.QueueTable,
                 naming.InputsTable,
@@ -130,7 +130,7 @@ namespace SqliteHost
                     tableNames.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
                 }
             }
-            var functionNames = new HashSet<string>(StringComparer.Ordinal);
+            var functionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (ErasedHostMethodSpec spec in specs)
             {
                 if (spec.InlineFunction == null)
@@ -181,7 +181,7 @@ namespace SqliteHost
                     "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be non-empty.",
                     nameof(naming));
             }
-            var distinctTables = new HashSet<string>(StringComparer.Ordinal);
+            var distinctTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (!distinctTables.Add(naming.QueueTable)
                 || !distinctTables.Add(naming.InputsTable)
                 || !distinctTables.Add(naming.VarsTable)
@@ -191,7 +191,7 @@ namespace SqliteHost
                     "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be mutually distinct.",
                     nameof(naming));
             }
-            var workspaceTables = new HashSet<string>(StringComparer.Ordinal)
+            var workspaceTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 naming.QueueTable,
                 naming.InputsTable,
@@ -238,7 +238,7 @@ namespace SqliteHost
             List<ErasedHostMethodSpec> specs)
         {
 #if !SQLITEHOST_SLIM
-            var claimedTables = new Dictionary<string, string>(StringComparer.Ordinal);
+            var claimedTables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (ErasedHostMethodSpec spec in specs)
             {
                 SchemaMethodModel model = spec.SchemaModel;

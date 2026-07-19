@@ -396,6 +396,39 @@ test("rejects a shared table name colliding with a default-name workspace table"
   assertDiagnostic(result, "duplicate-shared-table-name");
 });
 
+test("rejects shared workspace table names that differ only by case", async () => {
+  // SQLite resolves table names case-insensitively: "Shared_KV" and
+  // "shared_kv" are the same table, so the second CREATE TABLE would
+  // fail before any script runs.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, inputsTable: "Shared_KV", varsTable: "shared_kv" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-shared-table-name");
+});
+
+test("rejects a shared table name colliding with a derived call table case-insensitively", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "CALL_GET_VALUE" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "shared-table-name-collision");
+});
+
 test("rejects a shared table name colliding with a derived call table", async () => {
   const result = await compileSource(
     shell(`

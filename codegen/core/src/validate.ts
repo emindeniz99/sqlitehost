@@ -219,8 +219,11 @@ export function validateHostLibraryInterface(
   }
 
   // Shared workspace table names: non-empty and mutually distinct
-  // (docs/naming.md). Collisions with derived tables are checked after
-  // the method loop, once every derived name is known.
+  // (docs/naming.md). SQLite resolves table names case-insensitively,
+  // so all distinctness/collision checks compare lowercased while
+  // diagnostics keep the configured casing. Collisions with derived
+  // tables are checked after the method loop, once every derived name
+  // is known.
   const shared: Array<[keyof SharedTableNames, string]> = [
     ["queueTable", sharedTables.queueTable],
     ["inputsTable", sharedTables.inputsTable],
@@ -233,20 +236,22 @@ export function validateHostLibraryInterface(
       error(ctx, "invalid-shared-table-name", { option }, iface);
       continue;
     }
-    if (seenShared.has(table)) {
+    const lower = table.toLowerCase();
+    if (seenShared.has(lower)) {
       error(ctx, "duplicate-shared-table-name", { table }, iface);
     } else {
-      seenShared.add(table);
+      seenShared.add(lower);
     }
   }
 
   validateColumns(ctx, columns, iface);
 
   const claimTable = (table: string, target: DiagnosticTarget) => {
-    if (tableNames.has(table)) {
+    const lower = table.toLowerCase();
+    if (tableNames.has(lower)) {
       error(ctx, "duplicate-table-name", { table }, target);
     } else {
-      tableNames.add(table);
+      tableNames.add(lower);
     }
   };
 
@@ -323,8 +328,8 @@ export function validateHostLibraryInterface(
 
   // Function-name collision checks (docs/naming.md) run once every
   // derived table name is known. SQLite resolves function names
-  // case-insensitively, so all comparisons are lowercased.
-  const tableNamesLower = new Set([...tableNames].map((t) => t.toLowerCase()));
+  // case-insensitively, so all comparisons are lowercased (tableNames
+  // already holds lowercased entries).
   const seenFunctions = new Set<string>();
   for (const [name, target] of functionClaims) {
     const lower = name.toLowerCase();
@@ -333,7 +338,7 @@ export function validateHostLibraryInterface(
     } else {
       seenFunctions.add(lower);
     }
-    if (tableNamesLower.has(lower)) {
+    if (tableNames.has(lower)) {
       error(ctx, "function-name-collision", { name }, target);
     }
     if (SQLITE_BUILTIN_FUNCTIONS.has(lower)) {
@@ -342,7 +347,7 @@ export function validateHostLibraryInterface(
   }
 
   for (const [option, table] of shared) {
-    if (tableNames.has(table)) {
+    if (tableNames.has(table.toLowerCase())) {
       error(ctx, "shared-table-name-collision", { option, table }, iface);
     }
   }

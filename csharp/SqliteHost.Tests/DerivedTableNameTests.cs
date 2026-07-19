@@ -74,6 +74,23 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void WorkspaceTableCollidingWithDerivedTable_CaseInsensitively_ThrowsAtBuildTime()
+        {
+            // SQLite resolves table names case-insensitively: a queue table
+            // named "CALL_GET_VALUE" and the derived call_get_value are the
+            // same table, so the definition must not build (mirrors the
+            // TypeSpec validator's lowercased comparisons).
+            var builder = SqliteHostDefinition
+                .ForHandlers<object>()
+                .Naming(n => n.QueueTable("CALL_GET_VALUE"));
+
+            var ex = Assert.Throws<ArgumentException>(
+                () => builder.Methods(new[] { ScalarSpec("getValue") }));
+            Assert.Contains("'call_get_value'", ex.Message);
+            Assert.Contains("getValue", ex.Message);
+        }
+
+        [Fact]
         public void MethodNameCollidingWithListChildTable_ThrowsAtBuildTime()
         {
             // List child tables share the table namespace: the call table
