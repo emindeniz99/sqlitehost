@@ -360,11 +360,15 @@ test("smoke IR: package, model names, and naming prefixes come from the IR", () 
   const runtimeInput = fileByName(files, "RuntimeInput.java");
   assert.match(runtimeInput.contents, /\{@code script_params\} table/);
 
-  // Float binding types produce enum members, factories, and accessors.
+  // Float binding types produce enum members, factories, and accessors;
+  // the factories guard finiteness (NaN/Infinity have no JSON
+  // representation, docs/script-envelope.md).
   const binding = fileByName(files, "BindingValue.java");
   assert.match(binding.contents, /FLOAT32\("float32"\),\n        FLOAT64\("float64"\);/);
   assert.match(binding.contents, /public static BindingValue float32\(float value\)/);
   assert.match(binding.contents, /public static BindingValue float64\(double value\)/);
+  assert.match(binding.contents, /float32 value must be finite/);
+  assert.match(binding.contents, /float64 value must be finite/);
   assert.match(binding.contents, /public float asFloat32\(\)/);
   assert.match(binding.contents, /public double asFloat64\(\)/);
 });

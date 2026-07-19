@@ -98,13 +98,29 @@ public final class BindingValue {
         return new BindingValue(Type.BLOB, 0L, 0.0, null, value.clone());
     }
 
-    /** A {@code float32} binding value. */
+    /**
+     * A {@code float32} binding value.
+     *
+     * @throws IllegalArgumentException when the value is not finite
+     *     (NaN/Infinity have no JSON representation, docs/script-envelope.md)
+     */
     public static BindingValue float32(float value) {
+        if (!Float.isFinite(value)) {
+            throw new IllegalArgumentException("float32 value must be finite: " + value);
+        }
         return new BindingValue(Type.FLOAT32, 0L, value, null, null);
     }
 
-    /** A {@code float64} binding value. */
+    /**
+     * A {@code float64} binding value.
+     *
+     * @throws IllegalArgumentException when the value is not finite
+     *     (NaN/Infinity have no JSON representation, docs/script-envelope.md)
+     */
     public static BindingValue float64(double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException("float64 value must be finite: " + value);
+        }
         return new BindingValue(Type.FLOAT64, 0L, value, null, null);
     }
 

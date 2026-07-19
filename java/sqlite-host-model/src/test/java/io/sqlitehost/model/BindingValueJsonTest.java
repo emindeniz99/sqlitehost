@@ -170,6 +170,27 @@ class BindingValueJsonTest {
     }
 
     @Test
+    void factoriesRejectNonFiniteFloats() {
+        // JSON has no NaN/Infinity literal (docs/script-envelope.md), so
+        // a non-finite value can never serialize; without this guard
+        // ScriptJsonWriter silently emits the banned string form ("NaN")
+        // that every conforming reader rejects.
+        assertThrows(IllegalArgumentException.class,
+                () -> BindingValue.float64(Double.NaN));
+        assertThrows(IllegalArgumentException.class,
+                () -> BindingValue.float64(Double.POSITIVE_INFINITY));
+        assertThrows(IllegalArgumentException.class,
+                () -> BindingValue.float32(Float.NaN));
+        assertThrows(IllegalArgumentException.class,
+                () -> BindingValue.float32(Float.NEGATIVE_INFINITY));
+        // Every finite value stays accepted, including signed zero and
+        // the extremes of each type's range.
+        assertEquals(-0.0, BindingValue.float64(-0.0).asFloat64());
+        assertEquals(Double.MAX_VALUE, BindingValue.float64(Double.MAX_VALUE).asFloat64());
+        assertEquals(Float.MAX_VALUE, BindingValue.float32(Float.MAX_VALUE).asFloat32());
+    }
+
+    @Test
     void unknownBindingTypeIsAReaderError() {
         JsonReadException e = assertThrows(JsonReadException.class,
                 () -> scriptWithBinding("{\"type\":\"float\",\"value\":1.0}"));

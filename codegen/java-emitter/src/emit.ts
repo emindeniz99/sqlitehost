@@ -284,8 +284,16 @@ function bindingTypeParts(wire: string): BindingTypeParts {
     case "float32":
     case "float64":
       return {
-        factory: `    /** A {@code ${wire}} binding value. */
+        factory: `    /**
+     * A {@code ${wire}} binding value.
+     *
+     * @throws IllegalArgumentException when the value is not finite
+     *     (NaN/Infinity have no JSON representation, docs/script-envelope.md)
+     */
     public static BindingValue ${wire}(${wire === "float32" ? "float" : "double"} value) {
+        if (!${wire === "float32" ? "Float" : "Double"}.isFinite(value)) {
+            throw new IllegalArgumentException("${wire} value must be finite: " + value);
+        }
         return new BindingValue(Type.${constName}, 0L, value, null, null);
     }`,
         accessor: `    /** @throws IllegalStateException when {@link #type()} is not {@code ${constName}} */
