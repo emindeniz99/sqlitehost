@@ -161,6 +161,17 @@
       "warnings": []
     },
     {
+      "payload": "invalid/positional-parameter.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "positional-parameter",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/unknown-column.json",
       "valid": false,
       "errors": [

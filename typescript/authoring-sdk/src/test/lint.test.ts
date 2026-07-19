@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   functionCalls,
+  isPublishable,
   lintScript,
   parseHostManifest,
   scanNamedParameters,
@@ -258,6 +259,43 @@ test("scanner retains the prefix of each parameter occurrence", () => {
     ],
   );
   assert.deepStrictEqual(scanNamedParameters("SELECT :v, $v, @w"), ["v", "w"]);
+});
+
+// -- positional parameters ---------------------------------------------------
+// Protocol v1 is named-parameters-only (docs/script-envelope.md).
+// Without this lint "SELECT ?" passes the named-only binding checks and
+// SQLite's grammar (prepare succeeds), then fails adapter-dependently at
+// runtime — so the v1-forbidden construct must block publish here.
+
+function bareStatementScript(sql: string): Record<string, unknown> {
+  return {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    steps: [{ id: "s1", statements: [{ sql, bindings: {} }] }],
+  };
+}
+
+test("positional-parameter: '?' is an error that blocks publish", () => {
+  const findings = lintScript(bareStatementScript("SELECT ?"), manifest);
+  const positional = findings.filter((f) => f.code === "positional-parameter");
+  assert.equal(positional.length, 1, JSON.stringify(findings));
+  assert.equal(positional[0].severity, "error");
+  assert.equal(positional[0].stepId, "s1");
+  assert.equal(positional[0].statementIndex, 0);
+  assert.ok(!isPublishable(findings));
+});
+
+test("positional-parameter: '?N' placeholders and repeats flag once per statement", () => {
+  // The scanner splits '?1' into '?' + '1' — the rule is about the
+  // placeholder, not the digit — and dedupes within the statement.
+  const findings = lintScript(bareStatementScript("SELECT ?1, ?"), manifest);
+  assert.equal(codes(findings).filter((c) => c === "positional-parameter").length, 1);
+});
+
+test("positional-parameter: '?' in literals and comments is data, not a parameter", () => {
+  // The check rides the shared lexical scanner, not a regex.
+  const findings = lintScript(bareStatementScript("SELECT 'a?b' -- ?"), manifest);
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
 });
 
 // -- custom column names -----------------------------------------------------

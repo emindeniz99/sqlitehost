@@ -20,6 +20,7 @@ public final class ValidationCodes {
     public static final String UNUSED_BINDING = "unused-binding";
     public static final String BINDING_TYPE_MISMATCH = "binding-type-mismatch";
     public static final String MIXED_PREFIX_BINDING = "mixed-prefix-binding";
+    public static final String POSITIONAL_PARAMETER = "positional-parameter";
 
     // Host-call usage
     public static final String IMPLICIT_COLUMN_LIST = "implicit-column-list";

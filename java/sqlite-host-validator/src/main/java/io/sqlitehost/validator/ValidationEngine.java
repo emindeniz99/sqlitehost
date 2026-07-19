@@ -199,6 +199,20 @@ public final class ValidationEngine {
             }
         }
 
+        // positional-parameter: '?' / '?N' placeholders are forbidden by
+        // protocol v1 (docs/script-envelope.md — named parameters only);
+        // the shared scanner lexes them as '?' punctuation, so one
+        // finding per statement on the first occurrence.
+        for (SqlToken token : tokens) {
+            if (token.kind() == SqlToken.Kind.PUNCT && "?".equals(token.text())) {
+                findings.add(ValidationFinding.error(ValidationCodes.POSITIONAL_PARAMETER,
+                        stepId, statementIndex,
+                        "SQL uses a positional parameter '?' — positional parameters are"
+                                + " not supported in v1; use a named parameter (':name')"));
+                break;
+            }
+        }
+
         // mixed-prefix-binding: the same bare name written through more
         // than one prefix form in this statement (supported — one
         // binding feeds all forms — but usually an authoring accident).

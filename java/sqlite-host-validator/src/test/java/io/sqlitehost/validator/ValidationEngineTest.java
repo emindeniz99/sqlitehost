@@ -454,6 +454,53 @@ class ValidationEngineTest {
         assertTrue(brokenCodes.contains(ValidationCodes.UNUSED_BINDING), brokenCodes.toString());
     }
 
+    /** Single-statement script with empty bindings around the given SQL. */
+    private static String bareStatementScript(String sql) {
+        return "{\"engine\":\"sqlite-host-v1\","
+                + "\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"" + sql + "\",\"bindings\":{}}]}]}";
+    }
+
+    @Test
+    void positionalParameterIsAnAuthoringErrorBecauseV1IsNamedOnly() throws IOException {
+        // Protocol v1 is named-parameters-only (docs/script-envelope.md).
+        // Without this lint 'SELECT ?' passes prepare-only validation
+        // (legal SQLite grammar) and the named-only binding checks, then
+        // fails adapter-dependently at runtime (Microsoft.Data.Sqlite
+        // throws, raw sqlite3 silently binds NULL).
+        ValidationReport report = validate(bareStatementScript("SELECT ?"));
+        assertEquals(List.of(ValidationCodes.POSITIONAL_PARAMETER), errorCodes(report),
+                report.findings().toString());
+        ValidationFinding finding = report.errors().get(0);
+        assertEquals("s", finding.stepId());
+        assertEquals(0, finding.statementIndex());
+    }
+
+    @Test
+    void numberedPositionalParameterIsAlsoFlagged() throws IOException {
+        // The tokenizer splits '?1' into '?' + '1' — the rule is about
+        // the placeholder, not the digit.
+        ValidationReport report = validate(bareStatementScript("SELECT ?1"));
+        assertEquals(List.of(ValidationCodes.POSITIONAL_PARAMETER), errorCodes(report),
+                report.findings().toString());
+    }
+
+    @Test
+    void questionMarkInLiteralsAndCommentsIsNotAPositionalParameter() throws IOException {
+        // The check rides the shared lexical scanner, not a regex: '?'
+        // inside a string literal or a comment is data, not a parameter.
+        ValidationReport report = validate(bareStatementScript("SELECT 'a?b' -- ?"));
+        assertTrue(report.isValid(), report.findings().toString());
+    }
+
+    @Test
+    void repeatedPositionalParametersAreReportedOncePerStatement() throws IOException {
+        ValidationReport report = validate(bareStatementScript("SELECT ?, ?"));
+        assertEquals(List.of(ValidationCodes.POSITIONAL_PARAMETER), errorCodes(report),
+                report.findings().toString());
+    }
+
     @Test
     void findingsCarryStatementContext() throws IOException {
         ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","

@@ -33,6 +33,7 @@ export type LintCode =
   | "missing-binding"
   | "unused-binding"
   | "mixed-prefix-binding"
+  | "positional-parameter"
   | "implicit-column-list"
   | "undeclared-method-use"
   | "unused-required-method"
@@ -205,6 +206,19 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
 
       const tokens = tokenizeSql(statement.sql);
+
+      // Positional "?" / "?N" placeholders are forbidden by protocol v1
+      // (docs/script-envelope.md — named parameters only); the shared
+      // scanner lexes them as "?" punctuation, so one finding per
+      // statement on the first occurrence (mirrors the Java engine).
+      if (tokens.some((token) => token.kind === "punct" && token.value === "?")) {
+        findings.push({
+          code: "positional-parameter",
+          severity: "error",
+          message: `SQL uses a positional parameter "?" — positional parameters are not supported in v1; use a named parameter (":name")`,
+          ...at,
+        });
+      }
 
       // Same bare name through more than one prefix form in one
       // statement: supported by the runtime, but usually an accident.
