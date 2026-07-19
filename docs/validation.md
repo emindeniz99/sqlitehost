@@ -10,7 +10,7 @@ unsupported top-level method shapes (input/output must be objects),
 unsupported scalar types, nested objects, nested lists, unions/maps,
 duplicate method names, duplicate SQL names, duplicate derived
 table/column names, missing/invalid api level, invalid handler names,
-invalid list item shapes.
+invalid or empty list item shapes.
 
 ## 2. Cross-language golden validation
 

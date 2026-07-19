@@ -153,6 +153,46 @@ test("rejects primitive lists", async () => {
   assertDiagnostic(result, "invalid-list-item");
 });
 
+test("rejects empty list item models", async () => {
+  // An empty item model must be rejected here — TypeSpec validation is
+  // the single choke point ahead of every emitter. If it slips through,
+  // the C# emitter leaves the list-field builder chain unterminated
+  // (shapeCalls closes the wrong paren) and the runtime issues a
+  // projection-less "SELECT  FROM" child-table read at drain time
+  // (ErasedHostMethodSpec.LoadInputListRows).
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model Item {}
+      model In { items: Item[]; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "empty-list-item");
+});
+
+test("rejects empty list item models on the result side", async () => {
+  // validateItemModel serves result shapes too; an empty item model on
+  // the output side emits the same broken C# builder chain.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model Item {}
+      model In { key: string; }
+      model Out { entries: Item[]; }
+    `),
+  );
+  assertDiagnostic(result, "empty-list-item");
+});
+
 test("rejects optional list fields", async () => {
   const result = await compileSource(
     shell(`

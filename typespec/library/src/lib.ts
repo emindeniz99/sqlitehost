@@ -100,6 +100,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`List field "${"field"}" must contain a named model of scalar fields (primitive lists are not supported in v1).`,
       },
     },
+    "empty-list-item": {
+      severity: "error",
+      messages: {
+        default: paramMessage`List field "${"field"}" item model "${"model"}" has no fields; list item models must declare at least one scalar field.`,
+      },
+    },
     "unsupported-field-type": {
       severity: "error",
       messages: {

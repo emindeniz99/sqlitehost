@@ -2,10 +2,10 @@
  * TypeSpec model validation (docs/validation.md §1, plan §24.1). Walks a
  * @hostLibrary interface and rejects unsupported shapes before the
  * frontend builds the IR: non-model top-level input/output, unsupported
- * scalars, nested models, nested lists, optional list fields, unions and
- * maps, duplicate method names, duplicate SQL names per shape, duplicate
- * derived table names, missing @hostMethod, and invalid shared table /
- * column name configuration (docs/naming.md). Diagnostics are reported
+ * scalars, nested models, nested lists, optional list fields, empty list
+ * item models, unions and maps, duplicate method names, duplicate SQL
+ * names per shape, duplicate derived table names, missing @hostMethod,
+ * and invalid shared table / column name configuration (docs/naming.md). Diagnostics are reported
  * with the codes declared by @sqlite-host/typespec.
  */
 
@@ -602,7 +602,7 @@ function validateField(
   return false;
 }
 
-/** List item models may contain only supported scalar fields. */
+/** List item models must declare at least one supported scalar field. */
 function validateItemModel(
   ctx: ValidationContext,
   model: Model,
@@ -610,6 +610,14 @@ function validateItemModel(
   deriveColumn: (sqlName: string) => string,
   fieldColumns: Set<string>,
 ): void {
+  if (model.properties.size === 0) {
+    error(
+      ctx,
+      "empty-list-item",
+      { field: listProp.name, model: model.name },
+      listProp,
+    );
+  }
   const sqlNames = new Set<string>();
   for (const prop of model.properties.values()) {
     const sqlName = getSqlName(ctx.program, prop) ?? toSnakeCase(prop.name);
