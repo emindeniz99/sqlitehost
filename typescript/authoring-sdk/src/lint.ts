@@ -154,20 +154,22 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   // never matches, so no identifier is ever flagged unknown-function.
   const functionPrefix = manifest.naming.functionPrefix ?? "";
   const functionPrefixLc = functionPrefix.toLowerCase();
+  // SQLite resolves table names case-insensitively, so table maps are
+  // keyed lowercased (mirrors the Java engine's ValidationEngine).
   for (const method of manifest.methods) {
-    callTables.set(method.callTable, method.methodName);
-    resultTables.set(method.resultTable, method.methodName);
+    callTables.set(method.callTable.toLowerCase(), method.methodName);
+    resultTables.set(method.resultTable.toLowerCase(), method.methodName);
     if (method.inline !== null && method.inline !== undefined) {
       inlineFunctions.set(method.inline.functionName.toLowerCase(), method);
     }
     for (const listField of method.input.listFields) {
-      inputChildTables.set(listField.childTable, {
+      inputChildTables.set(listField.childTable.toLowerCase(), {
         methodName: method.methodName,
-        callTable: method.callTable,
+        callTable: method.callTable.toLowerCase(),
       });
     }
     for (const listField of method.result.listFields) {
-      resultChildTables.set(listField.childTable, method.methodName);
+      resultChildTables.set(listField.childTable.toLowerCase(), method.methodName);
     }
   }
 
@@ -411,7 +413,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
     const method = methodsByName.get(methodName);
     if (method === undefined) continue; // already unknown-required-method
     if (
-      !inserts.some((insert) => insert.table === method.callTable) &&
+      !inserts.some((insert) => insert.table === method.callTable.toLowerCase()) &&
       !inlineInvokedMethods.has(methodName)
     ) {
       findings.push({

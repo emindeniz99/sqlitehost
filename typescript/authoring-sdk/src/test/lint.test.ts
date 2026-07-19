@@ -9,6 +9,7 @@ import {
   tokenizeSql,
   UNKNOWN_ARGS,
   type LintFinding,
+  type ManifestMethod,
 } from "../index.js";
 import { readFixture } from "./helpers.js";
 
@@ -367,6 +368,123 @@ test("custom call-id column: list child/parent matching uses cid", () => {
   // colocation rule must still see them and flag the later step.
   const findings = lintScript(payload, cidManifest());
   assert.ok(codes(findings).includes("list-child-later-step"), JSON.stringify(findings));
+});
+
+// -- manifest table-name casing ----------------------------------------------
+// SQLite resolves table names case-insensitively, so manifest casing
+// (e.g. `@hostLibrary({ callTablePrefix: "Call_" })` or a hand-written
+// manifest) must never disable publish-blocking checks — parity with
+// the Java ValidationEngine's lower()-keyed table maps.
+
+function upperManifest() {
+  const base = JSON.parse(readFixture("manifests/sample-host.manifest.json"));
+  const mangle = (table: string) =>
+    table.replace(/^call_/, "Call_").replace(/^result_/, "Result_");
+  return parseHostManifest({
+    ...base,
+    methods: base.methods.map((method: ManifestMethod) => ({
+      ...method,
+      callTable: mangle(method.callTable),
+      resultTable: mangle(method.resultTable),
+      input: {
+        ...method.input,
+        listFields: method.input.listFields.map((field) => ({
+          ...field,
+          childTable: mangle(field.childTable),
+        })),
+      },
+      result: {
+        ...method.result,
+        listFields: method.result.listFields.map((field) => ({
+          ...field,
+          childTable: mangle(field.childTable),
+        })),
+      },
+    })),
+  });
+}
+
+test("manifest table casing does not hide call-table writes", () => {
+  // SQLite executes `INSERT INTO call_get_value` against the host table
+  // Call_get_value as a genuine host call, so isPublishable must not
+  // approve a payload the Java validator rejects.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: [],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, upperManifest());
+  assert.ok(codes(findings).includes("undeclared-method-use"), JSON.stringify(findings));
+});
+
+test("case-differing required-method use is not reported unused", () => {
+  // A false unused-required-method warning would push authors to delete
+  // a genuinely required declaration.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, upperManifest());
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("manifest table casing does not disable result-read lineage", () => {
+  // Results only exist after the emitting step's drain — the ordering
+  // guarantee must survive manifest casing.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('r-1', 'k')" },
+          { sql: "SELECT result_value FROM result_get_value WHERE call_id = 'r-1'" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, upperManifest());
+  assert.ok(codes(findings).includes("result-read-not-after-call"), JSON.stringify(findings));
+});
+
+test("manifest table casing does not disable duplicate-call-id", () => {
+  // Two emits of one call id are one queue collision no matter how the
+  // manifest spells the table.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('d-1', 'a')" },
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('d-1', 'b')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, upperManifest());
+  assert.ok(codes(findings).includes("duplicate-call-id"), JSON.stringify(findings));
 });
 
 // -- inline functions ----------------------------------------------------------
