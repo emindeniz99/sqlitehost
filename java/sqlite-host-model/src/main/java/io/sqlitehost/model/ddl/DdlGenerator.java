@@ -87,8 +87,10 @@ public final class DdlGenerator {
         List<String> columnLines = new ArrayList<>();
         columnLines.add("    " + columns.callId() + " TEXT NOT NULL PRIMARY KEY");
         if (isResultTable) {
+            // doneValue is data, not an identifier: escape embedded quotes
+            // so a value like "do'ne" cannot break the generated literal.
             columnLines.add("    " + columns.status() + " TEXT NOT NULL DEFAULT '"
-                    + columns.doneValue() + "'");
+                    + columns.doneValue().replace("'", "''") + "'");
         }
         for (ScalarField field : scalarFields) {
             columnLines.add(scalarColumnLine(field));

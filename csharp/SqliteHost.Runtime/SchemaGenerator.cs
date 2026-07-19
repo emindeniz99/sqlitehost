@@ -169,7 +169,10 @@ namespace SqliteHost
             columnLines.Add("    " + columns.CallId + " TEXT NOT NULL PRIMARY KEY");
             if (isResultTable)
             {
-                columnLines.Add("    " + columns.Status + " TEXT NOT NULL DEFAULT '" + columns.DoneValue + "'");
+                // DoneValue is data, not an identifier: escape embedded
+                // quotes so a value like "do'ne" cannot break the literal.
+                columnLines.Add("    " + columns.Status + " TEXT NOT NULL DEFAULT '"
+                    + columns.DoneValue.Replace("'", "''") + "'");
             }
             columnLines.AddRange(scalarColumnLines);
             return "CREATE TABLE " + tableName + " (\n"

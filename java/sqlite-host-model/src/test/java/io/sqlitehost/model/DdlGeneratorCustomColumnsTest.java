@@ -126,4 +126,22 @@ class DdlGeneratorCustomColumnsTest {
                 "    VALUES (NEW.cid, 'getValues');",
                 "END;"), statements.get(7));
     }
+
+    @Test
+    void doneValueWithEmbeddedQuoteIsEscapedInDdl() throws IOException {
+        // doneValue is data, not an identifier — validators only require it
+        // non-empty, so an embedded quote must not break the generated
+        // DEFAULT '...' literal (the schema would fail before any script
+        // runs).
+        Manifest manifest = ManifestJsonReader.read(
+                customColumnsManifestJson().replace(
+                        "\"doneValue\":\"ok\"", "\"doneValue\":\"do'ne\""));
+        List<String> statements = DdlGenerator.generateSchemaStatements(manifest);
+        assertEquals(String.join("\n",
+                "CREATE TABLE result_get_values (",
+                "    cid TEXT NOT NULL PRIMARY KEY,",
+                "    state TEXT NOT NULL DEFAULT 'do''ne',",
+                "    result_total INTEGER NOT NULL",
+                ");"), statements.get(6));
+    }
 }

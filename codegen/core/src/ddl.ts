@@ -86,7 +86,11 @@ function parentTableDdl(
   lines.push(`CREATE TABLE ${tableName} (`);
   const columnLines: string[] = [`    ${c.callId} TEXT NOT NULL PRIMARY KEY`];
   if (isResultTable) {
-    columnLines.push(`    ${c.status} TEXT NOT NULL DEFAULT '${c.doneValue}'`);
+    // doneValue is data, not an identifier: escape embedded quotes so a
+    // value like "do'ne" cannot break the generated literal.
+    columnLines.push(
+      `    ${c.status} TEXT NOT NULL DEFAULT '${c.doneValue.replace(/'/g, "''")}'`,
+    );
   }
   for (const field of scalarFields) {
     columnLines.push(scalarColumnLine(field));

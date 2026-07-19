@@ -127,6 +127,23 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void DoneValueWithEmbeddedQuote_IsEscapedInDdl()
+        {
+            // DoneValue is data, not an identifier — validators only require
+            // it non-empty, so an embedded quote must not break the
+            // generated DEFAULT '...' literal (the schema would fail before
+            // any script runs).
+            var definition = SqliteHostDefinition
+                .ForHandlers<IColumnsHandlers>()
+                .ApiLevel(1)
+                .Columns(c => c.DoneValue("do'ne"))
+                .Methods(Specs());
+
+            string ddl = string.Join("\n", definition.GenerateSchemaStatements());
+            Assert.Contains("DEFAULT 'do''ne'", ddl);
+        }
+
+        [Fact]
         public void CustomColumns_AppearInEveryDdlStatement_DefaultsDoNot()
         {
             var definition = BuildCustomColumnsHost();

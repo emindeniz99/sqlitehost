@@ -464,6 +464,29 @@ test("column options resolve into ir.columns and every table's column list", asy
   assert.doesNotMatch(ddl, /DEFAULT 'done'/);
 });
 
+test("done status value with an embedded quote is escaped in the DDL", async () => {
+  // doneStatusValue is data, not an identifier — validators only require
+  // it non-empty, so an embedded quote must not break the generated
+  // DEFAULT '...' literal (the schema would fail before any script runs).
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, doneStatusValue: "do'ne" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  const ddl = generateSchemaScript(result.ir);
+  assert.match(ddl, /status TEXT NOT NULL DEFAULT 'do''ne'/);
+});
+
 // Two @hostLibrary interfaces in one compilation. Both declare a
 // "getValue" method deriving the same call_get_value/result_get_value
 // tables — that is FINE across libraries, because each library is an
