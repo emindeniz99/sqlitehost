@@ -6,8 +6,10 @@ namespace SqliteHost
     /// <summary>
     /// Lexical scanner for named SQL parameters (docs/errors.md "Binding
     /// validation"). Finds :name / @name / $name references while skipping
-    /// string literals ('…' with '' escapes), double-quoted identifiers
-    /// ("…" with "" escapes), line comments (--) and block comments
+    /// string literals ('…' with '' escapes) and quoted identifiers —
+    /// double-quoted ("…" with "" escapes), bracket ([…], ends at the
+    /// first ']', no escape) and backtick (`…` with `` escapes) — plus
+    /// line comments (--) and block comments
     /// (/* */). Per the pinned rule, '$' is also an identifier character
     /// in SQLite, so a '$' immediately preceded by an identifier character
     /// continues that identifier instead of starting a parameter; ':' and
@@ -35,6 +37,20 @@ namespace SqliteHost
                 else if (ch == '"')
                 {
                     i = SkipQuoted(sql, i, '"');
+                    previousIsIdentifierChar = false;
+                }
+                else if (ch == '`')
+                {
+                    // Backtick-quoted identifier (MySQL compat): doubled
+                    // backtick escapes, same shape as SkipQuoted.
+                    i = SkipQuoted(sql, i, '`');
+                    previousIsIdentifierChar = false;
+                }
+                else if (ch == '[')
+                {
+                    // Bracket-quoted identifier (MS Access/SQL Server
+                    // compat): no escape — ends at the first ']'.
+                    i = SkipBracket(sql, i);
                     previousIsIdentifierChar = false;
                 }
                 else if (ch == '-' && i + 1 < length && sql[i + 1] == '-')
@@ -100,6 +116,16 @@ namespace SqliteHost
                 i++;
             }
             return i;
+        }
+
+        private static int SkipBracket(string sql, int start)
+        {
+            int i = start + 1;
+            while (i < sql.Length && sql[i] != ']')
+            {
+                i++;
+            }
+            return i < sql.Length ? i + 1 : i;
         }
 
         private static int SkipLineComment(string sql, int start)

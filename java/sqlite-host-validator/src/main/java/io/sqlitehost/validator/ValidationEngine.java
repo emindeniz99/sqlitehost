@@ -302,6 +302,19 @@ public final class ValidationEngine {
                                 + callMethod.methodName()
                                 + "' which is not declared in requiredMethods"));
             }
+            // The script depends on this method's apiLevel: an
+            // under-declared requiredApiLevel would let an older host
+            // silently fail to clean-skip (mirrors checkCompatibility's
+            // required-api-level-too-high, but per method).
+            if (script.requiredApiLevel() != null
+                    && callMethod.apiLevel() > script.requiredApiLevel()) {
+                findings.add(ValidationFinding.error(ValidationCodes.METHOD_API_LEVEL_TOO_HIGH,
+                        stepId, statementIndex,
+                        "method '" + callMethod.methodName() + "' requires apiLevel "
+                                + callMethod.apiLevel()
+                                + " which exceeds the script's requiredApiLevel "
+                                + script.requiredApiLevel()));
+            }
             checkBindingTypes(schema, insert, tableLc, bindings,
                     stepId, statementIndex, findings);
             List<List<ValueExpr>> rows = insert.valueRows();
@@ -368,6 +381,21 @@ public final class ValidationEngine {
                         "inline function '" + call.name() + "' requires feature '"
                                 + FEATURE_INLINE_FUNCTIONS
                                 + "' which is not declared in requiredFeatures"));
+            }
+            // Inline invocation is not gated by requiredMethods, so the
+            // apiLevel dependency must be checked here too: a level-1 host
+            // that supports inlineFunctions but lacks this method would
+            // raise "no such function" at runtime instead of clean-skipping.
+            if (script.requiredApiLevel() != null
+                    && method.apiLevel() > script.requiredApiLevel()
+                    && reported.add(nameLc)) {
+                findings.add(ValidationFinding.error(ValidationCodes.METHOD_API_LEVEL_TOO_HIGH,
+                        stepId, statementIndex,
+                        "inline function '" + call.name() + "' (method '"
+                                + method.methodName() + "') requires apiLevel "
+                                + method.apiLevel()
+                                + " which exceeds the script's requiredApiLevel "
+                                + script.requiredApiLevel()));
             }
             InlineFunction inline = method.inline();
             if (call.argCount() != FunctionCall.UNKNOWN_ARGS

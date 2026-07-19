@@ -43,6 +43,7 @@ code (`java` = full engine, `typescript` = static authoring subset).
 | `invalid-envelope` | error | missing/empty required envelope fields (including a step whose `statements` list is empty or missing) |
 | `duplicate-step-id` | error | step ids must be unique |
 | `required-api-level-too-high` | error | `requiredApiLevel` > manifest apiLevel |
+| `method-api-level-too-high` | error | a used method (call-table INSERT or inline function invocation) has `apiLevel` > the script's `requiredApiLevel` — the script under-declares the API level it depends on |
 | `unknown-required-feature` | error | feature not in manifest `library.features` |
 | `unknown-required-method` | error | method not in manifest |
 | `duplicate-input-name` | error | two `inputs` entries share a name |

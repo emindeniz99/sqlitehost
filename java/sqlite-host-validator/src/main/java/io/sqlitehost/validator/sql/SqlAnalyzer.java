@@ -60,6 +60,19 @@ public final class SqlAnalyzer {
             pos += 2;
         }
 
+        // Optional `AS <alias>` between the table name and the column
+        // list (valid SQLite >= 3.24.0, e.g. INSERT INTO t AS c (...) …).
+        // Skip it so the explicit column list is still recognized. Only
+        // the `AS <ident>` form is handled — a bare alias is a syntax
+        // error for INSERT targets, and VALUES/SELECT/DEFAULT are idents
+        // that must not be swallowed.
+        if (pos < tokens.size() && tokens.get(pos).isIdent("as")) {
+            pos++;
+            if (pos < tokens.size() && tokens.get(pos).kind() == SqlToken.Kind.IDENT) {
+                pos++;
+            }
+        }
+
         List<String> columns = null;
         if (pos < tokens.size() && tokens.get(pos).isPunct("(")) {
             columns = new ArrayList<>();

@@ -1,0 +1,38 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-undeclared-method-use-bracket",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "read-current",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "write-value",
+      "statements": [
+        {
+          "sql": "INSERT INTO [call_set_value] (call_id, input_key, input_value) VALUES (:callId, 'example-key', 42)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

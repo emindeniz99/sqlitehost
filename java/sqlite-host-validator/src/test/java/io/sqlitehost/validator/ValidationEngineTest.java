@@ -1,5 +1,8 @@
 package io.sqlitehost.validator;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.sqlitehost.model.envelope.Script;
 import io.sqlitehost.model.json.ManifestJsonReader;
 import io.sqlitehost.model.json.ScriptJsonReader;
@@ -48,6 +51,82 @@ class ValidationEngineTest {
 
     private static List<String> errorCodes(ValidationReport report) {
         return report.errors().stream().map(ValidationFinding::code).toList();
+    }
+
+    private static ValidationReport validateWith(Manifest customManifest, String scriptJson)
+            throws IOException {
+        Script script = ScriptJsonReader.read(scriptJson);
+        return new ValidationEngine().validate(customManifest, script);
+    }
+
+    /** The sample manifest patched to library apiLevel 2 with getValue at apiLevel 2. */
+    private static Manifest level2Manifest() throws IOException {
+        Path dir = Paths.get("").toAbsolutePath();
+        while (dir != null && !Files.isRegularFile(
+                dir.resolve("fixtures/manifests/sample-host.manifest.json"))) {
+            dir = dir.getParent();
+        }
+        if (dir == null) {
+            throw new IllegalStateException("fixtures directory not found");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = (ObjectNode) mapper.readTree(Files.readString(
+                dir.resolve("fixtures/manifests/sample-host.manifest.json")));
+        ((ObjectNode) root.get("library")).put("apiLevel", 2);
+        for (JsonNode method : root.get("methods")) {
+            if ("getValue".equals(method.get("methodName").asText())) {
+                ((ObjectNode) method).put("apiLevel", 2);
+            }
+        }
+        return ManifestJsonReader.read(mapper.writeValueAsString(root));
+    }
+
+    @Test
+    void methodApiLevelTooHighOnCallTableInsert() throws IOException {
+        // WHY: the script under-declares the API level it depends on —
+        // requiredApiLevel 1 but getValue is apiLevel 2 — so an older
+        // level-1 host would fail to clean-skip instead of running.
+        ValidationReport report = validateWith(level2Manifest(),
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredMethods\":[\"getValue\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key) VALUES (:c, 'k')\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}");
+        assertTrue(errorCodes(report).contains(ValidationCodes.METHOD_API_LEVEL_TOO_HIGH),
+                errorCodes(report).toString());
+        assertFalse(report.isValid());
+    }
+
+    @Test
+    void methodApiLevelTooHighOnInlineInvocation() throws IOException {
+        // WHY: inline invocation is not gated by requiredMethods, so a
+        // level-1 host that supports inlineFunctions but lacks this method
+        // raises "no such function" at runtime instead of clean-skipping —
+        // exactly the case requiredApiLevel exists to fence off.
+        ValidationReport report = validateWith(level2Manifest(),
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredFeatures\":[\"inlineFunctions\"],\"requiredMethods\":[],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"SELECT fn_get_value('k')\",\"bindings\":{}}]}]}");
+        assertTrue(errorCodes(report).contains(ValidationCodes.METHOD_API_LEVEL_TOO_HIGH),
+                errorCodes(report).toString());
+    }
+
+    @Test
+    void methodApiLevelIsSilentWhenRequiredApiLevelCoversTheMethod() throws IOException {
+        // WHY: the check keys on the apiLevel relationship, not mere
+        // method presence — requiredApiLevel 2 covers getValue's apiLevel
+        // 2, so no finding fires (it cannot pass vacuously if the
+        // relationship is later broken).
+        ValidationReport report = validateWith(level2Manifest(),
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":2,"
+                + "\"requiredMethods\":[\"getValue\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"INSERT INTO call_get_value (call_id, input_key) VALUES (:c, 'k')\","
+                + "\"bindings\":{\"c\":{\"type\":\"text\",\"value\":\"r-1\"}}}]}]}");
+        assertFalse(errorCodes(report).contains(ValidationCodes.METHOD_API_LEVEL_TOO_HIGH),
+                errorCodes(report).toString());
+        assertTrue(report.isValid(), report.findings().toString());
     }
 
     @Test

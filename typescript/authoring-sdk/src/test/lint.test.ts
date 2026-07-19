@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  analyzeInsert,
   functionCalls,
   isPublishable,
   lintScript,
@@ -9,6 +10,7 @@ import {
   scanNamedParameters,
   tokenizeSql,
   UNKNOWN_ARGS,
+  type BindingValue,
   type LintFinding,
   type ManifestMethod,
 } from "../index.js";
@@ -707,4 +709,205 @@ test("findings carry step and statement locations", () => {
   const finding = lintScript(payload, manifest).find((f) => f.code === "missing-binding");
   assert.equal(finding?.stepId, "read");
   assert.equal(finding?.statementIndex, 0);
+});
+
+// -- bracket / backtick quoted identifiers -----------------------------------
+// SQLite accepts [id] (MS Access/SQL Server compat) and `id` (MySQL
+// compat) as identifiers. The shared tokenizer must lex them as the same
+// quoted-identifier kind as "id", so analyzeInsert/lineage/call-id checks
+// fire on quoted-form statements instead of being silently skipped
+// (docs/errors.md pins the shared scanner; the Java tokenizer mirrors it).
+
+test("tokenizer: bracket identifier is one quoted-identifier token, ends at first ]", () => {
+  assert.deepStrictEqual(tokenizeSql("[call_get_value]"), [
+    { kind: "quoted-identifier", value: "call_get_value" },
+  ]);
+  // No escape mechanism: the identifier ends at the FIRST ']'.
+  const tokens = tokenizeSql("[weird ]x]");
+  assert.deepStrictEqual(tokens[0], { kind: "quoted-identifier", value: "weird " });
+});
+
+test("tokenizer: backtick identifier unescapes doubled backticks", () => {
+  assert.deepStrictEqual(tokenizeSql("`call_get_value`"), [
+    { kind: "quoted-identifier", value: "call_get_value" },
+  ]);
+  // `` inside a backtick identifier is one literal backtick.
+  assert.deepStrictEqual(tokenizeSql("`a``b`"), [
+    { kind: "quoted-identifier", value: "a`b" },
+  ]);
+});
+
+test("analyzeInsert recognizes bracket- and backtick-quoted target tables", () => {
+  // WHY: a quoted target table must resolve to the same table name so
+  // the host-call checks (undeclared-method-use, duplicate-call-id,
+  // lineage) are not silently bypassed by the quoting form.
+  const bindings: Record<string, BindingValue> = { c: { type: "text", value: "c-1" } };
+  const bracket = analyzeInsert(
+    tokenizeSql("INSERT INTO [call_get_value] (call_id) VALUES (:c)"),
+    bindings,
+    "call_id",
+  );
+  assert.equal(bracket?.table, "call_get_value");
+  assert.equal(bracket?.rows.length, 1);
+  assert.equal(bracket?.rows[0].callId, "c-1");
+  const backtick = analyzeInsert(
+    tokenizeSql("INSERT INTO `call_get_value` (call_id) VALUES (:c)"),
+    bindings,
+    "call_id",
+  );
+  assert.equal(backtick?.table, "call_get_value");
+});
+
+test("bracket-quoted call table still lints as a call-table insert", () => {
+  // Recognized as the getValue call table → undeclared-method-use fires
+  // (the quoting must not disable the host-call check).
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: [],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO [call_get_value] (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.ok(codes(findings).includes("undeclared-method-use"), JSON.stringify(findings));
+  assert.ok(!codes(findings).includes("implicit-column-list"), JSON.stringify(findings));
+});
+
+// -- INSERT ... AS <alias> (explicit column list) ----------------------------
+// SQLite >= 3.24.0 accepts `INSERT INTO t AS c (cols) …` (UPSERT syntax).
+// The alias must be skipped so the explicit column list is still parsed —
+// otherwise a valid aliased INSERT is wrongly reported implicit-column-list
+// and its call id is dropped, defeating duplicate/lineage resolution.
+
+test("analyzeInsert skips an AS alias before the column list", () => {
+  const info = analyzeInsert(
+    tokenizeSql("INSERT INTO call_get_value AS c (call_id, input_key) VALUES ('c-1', 'k')"),
+    {},
+    "call_id",
+  );
+  assert.equal(info?.table, "call_get_value");
+  assert.deepStrictEqual(info?.columns, ["call_id", "input_key"]);
+  assert.equal(info?.rows[0].callId, "c-1");
+  // schema-qualified target + alias resolves to the same table name.
+  const qualified = analyzeInsert(
+    tokenizeSql("INSERT INTO main.call_get_value AS c (call_id, input_key) VALUES ('c-1', 'k')"),
+    {},
+    "call_id",
+  );
+  assert.equal(qualified?.table, "call_get_value");
+  assert.deepStrictEqual(qualified?.columns, ["call_id", "input_key"]);
+});
+
+test("aliased INSERT keeps its explicit column list (no implicit-column-list)", () => {
+  // WHY: the column list WAS explicit — the alias must not fabricate an
+  // implicit-column-list error that wrongly blocks publish.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value AS c (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.ok(!codes(findings).includes("implicit-column-list"), JSON.stringify(findings));
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("aliased INSERTs still resolve call ids (duplicate-call-id survives)", () => {
+  // WHY: rows/call-ids must not be lost to the alias — two aliased
+  // inserts of the same id must still collide.
+  const stmt = {
+    sql: "INSERT INTO call_get_value AS c (call_id, input_key) VALUES ('dup-1', 'k')",
+  };
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [{ id: "s1", statements: [stmt, stmt] }],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.ok(codes(findings).includes("duplicate-call-id"), JSON.stringify(findings));
+});
+
+// -- method-api-level-too-high -----------------------------------------------
+// A method's apiLevel is the API level a script that uses it depends on.
+// requiredApiLevel only bounds the library apiLevel, so a script can list
+// a level-2 method (or invoke its inline function) under requiredApiLevel
+// 1 — understating what it needs. On an older level-1 host the call table
+// or inline function is absent; the clean-skip contract (requiredApiLevel)
+// is what should protect against that, so under-declaring it is an error.
+
+function level2Manifest() {
+  const base = JSON.parse(readFixture("manifests/sample-host.manifest.json"));
+  return parseHostManifest({
+    ...base,
+    library: { ...base.library, apiLevel: 2 },
+    methods: base.methods.map((method: ManifestMethod) =>
+      method.methodName === "getValue" ? { ...method, apiLevel: 2 } : method,
+    ),
+  });
+}
+
+test("method-api-level-too-high: call-table insert of a higher-apiLevel method", () => {
+  // WHY: the script under-declares the API level it depends on, so an
+  // older host would fail to clean-skip instead of running correctly.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, level2Manifest());
+  assert.ok(codes(findings).includes("method-api-level-too-high"), JSON.stringify(findings));
+  assert.ok(!isPublishable(findings));
+});
+
+test("method-api-level-too-high: inline invocation of a higher-apiLevel method", () => {
+  // WHY: inline invocation is not gated by requiredMethods, so a level-1
+  // host that supports inlineFunctions but lacks this method would raise
+  // "no such function" at runtime instead of clean-skipping.
+  const payload = inlineScript(["inlineFunctions"], [], "SELECT fn_get_value('k')");
+  const findings = lintScript(payload, level2Manifest());
+  assert.ok(codes(findings).includes("method-api-level-too-high"), JSON.stringify(findings));
+});
+
+test("method-api-level-too-high: silent when requiredApiLevel covers the method", () => {
+  // WHY: the check keys on the apiLevel relationship, not mere method
+  // presence — it must stay silent when the script declares enough, so
+  // it cannot pass vacuously when business logic changes.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 2,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_value (call_id, input_key) VALUES ('c-1', 'k')" },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, level2Manifest());
+  assert.ok(!codes(findings).includes("method-api-level-too-high"), JSON.stringify(findings));
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
 });

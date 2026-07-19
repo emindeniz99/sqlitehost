@@ -27,6 +27,7 @@ export type LintCode =
   | "invalid-envelope"
   | "duplicate-step-id"
   | "required-api-level-too-high"
+  | "method-api-level-too-high"
   | "unknown-required-feature"
   | "unknown-required-method"
   | "duplicate-input-name"
@@ -299,6 +300,19 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
             ...at,
           });
         }
+        // Inline invocation is not gated by requiredMethods, so the
+        // apiLevel dependency must be checked here too: a level-1 host
+        // that supports inlineFunctions but lacks this method would raise
+        // "no such function" at runtime instead of clean-skipping.
+        if (method.apiLevel > script.requiredApiLevel && !reportedFunctions.has(nameLc)) {
+          reportedFunctions.add(nameLc);
+          findings.push({
+            code: "method-api-level-too-high",
+            severity: "error",
+            message: `inline function "${call.name}" (method "${method.methodName}") requires apiLevel ${method.apiLevel} which exceeds the script's requiredApiLevel ${script.requiredApiLevel}`,
+            ...at,
+          });
+        }
         if (
           call.argCount !== UNKNOWN_ARGS &&
           (call.argCount < inline.minArgs || call.argCount > inline.maxArgs)
@@ -364,6 +378,18 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
           code: "undeclared-method-use",
           severity: "error",
           message: `INSERT INTO ${insert.table} uses method "${methodName}" which is not in requiredMethods`,
+          ...at,
+        });
+      }
+      // The script depends on this method's apiLevel: an under-declared
+      // requiredApiLevel would let an older host silently fail to
+      // clean-skip (mirrors required-api-level-too-high, but per method).
+      const method = methodsByName.get(methodName);
+      if (method !== undefined && method.apiLevel > script.requiredApiLevel) {
+        findings.push({
+          code: "method-api-level-too-high",
+          severity: "error",
+          message: `method "${methodName}" requires apiLevel ${method.apiLevel} which exceeds the script's requiredApiLevel ${script.requiredApiLevel}`,
           ...at,
         });
       }

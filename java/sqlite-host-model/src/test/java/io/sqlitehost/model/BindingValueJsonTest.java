@@ -202,8 +202,17 @@ class BindingValueJsonTest {
     void nullBindingCarriesNoValue() throws IOException {
         BindingValue value = onlyBinding(scriptWithBinding("{\"type\":\"null\"}"));
         assertEquals(BindingValue.Type.NULL, value.type());
+        // A present `value` violates the "null = absent value" contract
+        // (docs/script-envelope.md) — both a non-null value and an
+        // explicit JSON null, which the old hasNonNull guard wrongly
+        // accepted. This pins the Java reader to the same key-presence
+        // rule the TS parser already enforces (parse.test.ts) so the two
+        // cross-language readers agree; without the null case the test
+        // would pass while the readers diverge.
         assertThrows(JsonReadException.class,
                 () -> scriptWithBinding("{\"type\":\"null\",\"value\":1}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"null\",\"value\":null}"));
     }
 
     @Test

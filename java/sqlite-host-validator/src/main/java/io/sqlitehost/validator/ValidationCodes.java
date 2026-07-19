@@ -11,6 +11,7 @@ public final class ValidationCodes {
     public static final String INVALID_ENVELOPE = "invalid-envelope";
     public static final String DUPLICATE_STEP_ID = "duplicate-step-id";
     public static final String REQUIRED_API_LEVEL_TOO_HIGH = "required-api-level-too-high";
+    public static final String METHOD_API_LEVEL_TOO_HIGH = "method-api-level-too-high";
     public static final String UNKNOWN_REQUIRED_FEATURE = "unknown-required-feature";
     public static final String UNKNOWN_REQUIRED_METHOD = "unknown-required-method";
     public static final String DUPLICATE_INPUT_NAME = "duplicate-input-name";

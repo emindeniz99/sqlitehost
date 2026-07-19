@@ -74,6 +74,55 @@ class SqlAnalyzerTest {
     }
 
     @Test
+    void parsesInsertIntoBracketQuotedTable() {
+        // [call_get_value] (MS Access/SQL Server compat) resolves to the
+        // same table name so the host-call checks are not bypassed.
+        InsertStatement parsed = insert(
+                "INSERT INTO [call_get_value] (call_id, input_key) VALUES (:callId, 'k')");
+        assertEquals("call_get_value", parsed.table());
+        assertEquals(List.of("call_id", "input_key"), parsed.columns());
+        assertEquals(new ValueExpr(ValueExpr.Kind.PARAM, "callId"), parsed.rows().get(0).get(0));
+    }
+
+    @Test
+    void parsesInsertIntoBacktickQuotedTable() {
+        // `call_get_value` (MySQL compat) resolves the same way.
+        InsertStatement parsed = insert(
+                "INSERT INTO `call_get_value` (call_id, input_key) VALUES (:callId, 'k')");
+        assertEquals("call_get_value", parsed.table());
+        assertEquals(List.of("call_id", "input_key"), parsed.columns());
+    }
+
+    @Test
+    void recognizesBracketQuotedCallIdColumnInComparisons() {
+        // [call_id] = :x lexes as an IDENT, so the call-id comparison is
+        // still extracted for result-read lineage.
+        List<ValueExpr> comparisons = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
+                "SELECT 1 FROM result_get_value WHERE [call_id] = :x"), "call_id");
+        assertEquals(List.of(new ValueExpr(ValueExpr.Kind.PARAM, "x")), comparisons);
+    }
+
+    @Test
+    void parsesInsertWithAsAliasBeforeColumnList() {
+        // SQLite >= 3.24.0 INSERT INTO t AS c (cols) …: the alias must be
+        // skipped so the explicit column list (and its values) survive.
+        InsertStatement parsed = insert(
+                "INSERT INTO call_get_value AS c (call_id, input_key) VALUES (:callId, 'k')");
+        assertEquals("call_get_value", parsed.table());
+        assertEquals(List.of("call_id", "input_key"), parsed.columns());
+        assertEquals(new ValueExpr(ValueExpr.Kind.PARAM, "callId"), parsed.rows().get(0).get(0));
+        assertEquals(new ValueExpr(ValueExpr.Kind.STRING, "k"), parsed.rows().get(0).get(1));
+    }
+
+    @Test
+    void parsesSchemaQualifiedInsertWithAsAlias() {
+        InsertStatement parsed = insert(
+                "INSERT INTO main.call_get_value AS c (call_id, input_key) VALUES (:callId, 'k')");
+        assertEquals("call_get_value", parsed.table());
+        assertEquals(List.of("call_id", "input_key"), parsed.columns());
+    }
+
+    @Test
     void mapsFirstSelectItemsToColumns() {
         InsertStatement parsed = insert(
                 "INSERT INTO call_set_value (call_id, input_key, input_value)"

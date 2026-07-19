@@ -167,7 +167,11 @@ public final class ScriptJsonReader {
         JsonNode value = node.get("value");
         switch (type) {
             case NULL:
-                if (value != null && !value.isNull()) {
+                // A null binding carries NO value field at all — a present
+                // `value`, even an explicit JSON null, violates the
+                // "null = absent value" contract (docs/script-envelope.md),
+                // matching the TS parser's `"value" in value` check.
+                if (node.has("value")) {
                     throw new JsonReadException(
                             context + ": null binding must not carry a value");
                 }

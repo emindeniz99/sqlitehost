@@ -73,6 +73,18 @@
       ]
     },
     {
+      "payload": "valid/example-011-insert-alias.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-012-bracket-target.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "invalid/inline-undeclared-feature.json",
       "valid": false,
       "errors": [
@@ -310,6 +322,39 @@
         {
           "code": "unknown-required-method",
           "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/undeclared-method-use-bracket.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "undeclared-method-use",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/duplicate-call-id-backtick.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "duplicate-call-id",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/result-read-unknown-call-bracket.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "result-read-unknown-call",
+          "validators": ["java"]
         }
       ],
       "warnings": []

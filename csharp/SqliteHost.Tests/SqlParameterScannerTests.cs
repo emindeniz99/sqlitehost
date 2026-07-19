@@ -38,6 +38,28 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void SkipsBracketQuotedIdentifiers()
+        {
+            // [id] (MS Access/SQL Server compat): a ':' inside a bracket
+            // identifier is not a parameter (it ends at the first ']'), and
+            // a real parameter after it is still found.
+            var names = SqlParameterScanner.ScanParameterNames(
+                "SELECT [weird:col] FROM t WHERE x = :real");
+            Assert.Equal(new[] { "real" }, names);
+        }
+
+        [Fact]
+        public void SkipsBacktickQuotedIdentifiers()
+        {
+            // `id` (MySQL compat): a '$' inside a backtick identifier is not
+            // a parameter, doubled backticks are escapes, and a real
+            // parameter after it is still found.
+            var names = SqlParameterScanner.ScanParameterNames(
+                "SELECT `x$y`, `a``b :ghost` FROM t WHERE z = $real");
+            Assert.Equal(new[] { "real" }, names);
+        }
+
+        [Fact]
         public void SkipsLineComments()
         {
             var names = SqlParameterScanner.ScanParameterNames(

@@ -8,9 +8,12 @@ import java.util.Set;
 /**
  * Hand-written SQL tokenizer — the shared scanner algorithm pinned by
  * docs/errors.md: it skips string literals ({@code '…'} with {@code ''}
- * escapes), double-quoted identifiers, line comments ({@code --}) and
- * block comments ({@code /* *}{@code /}), and recognizes named
- * parameters written {@code :name}, {@code @name}, or {@code $name}.
+ * escapes) and quoted identifiers — double-quoted ({@code "…"} with
+ * {@code ""} escapes), bracket ({@code [...]}, ends at the first
+ * {@code ]}, no escape) and backtick ({@code `…`} with doubled-backtick
+ * escapes) — plus line comments ({@code --}) and block comments
+ * ({@code /* *}{@code /}), and recognizes named parameters written
+ * {@code :name}, {@code @name}, or {@code $name}.
  * Positional ({@code ?}) parameters are not supported in v1 and come
  * out as punctuation.
  */
@@ -89,6 +92,44 @@ public final class SqlTokenizer {
                     }
                     value.append(ch);
                     i++;
+                }
+                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                continue;
+            }
+
+            // `…` backtick-quoted identifier (MySQL compat) with `` escapes
+            if (c == '`') {
+                StringBuilder value = new StringBuilder();
+                i++;
+                while (i < n) {
+                    char ch = sql.charAt(i);
+                    if (ch == '`') {
+                        if (i + 1 < n && sql.charAt(i + 1) == '`') {
+                            value.append('`');
+                            i += 2;
+                            continue;
+                        }
+                        i++;
+                        break;
+                    }
+                    value.append(ch);
+                    i++;
+                }
+                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                continue;
+            }
+
+            // [...] bracket-quoted identifier (MS Access/SQL Server
+            // compat): no escape mechanism — ends at the first ']'
+            if (c == '[') {
+                StringBuilder value = new StringBuilder();
+                i++;
+                while (i < n && sql.charAt(i) != ']') {
+                    value.append(sql.charAt(i));
+                    i++;
+                }
+                if (i < n) {
+                    i++; // consume ']'
                 }
                 tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
                 continue;

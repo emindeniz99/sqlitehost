@@ -65,6 +65,33 @@ class SqlTokenizerTest {
     }
 
     @Test
+    void lexesBracketQuotedIdentifiers() {
+        // [id] (MS Access/SQL Server compat) lexes as an IDENT with the
+        // inner text — no escape mechanism, so it ends at the first ']'.
+        List<SqlToken> tokens = SqlTokenizer.tokenize("[call_get_value]");
+        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "call_get_value"), tokens.get(0));
+        List<SqlToken> weird = SqlTokenizer.tokenize("[weird ]x]");
+        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "weird "), weird.get(0));
+    }
+
+    @Test
+    void lexesBacktickQuotedIdentifiersWithDoubledEscapes() {
+        // `id` (MySQL compat) lexes as an IDENT; `` is one literal backtick.
+        List<SqlToken> tokens = SqlTokenizer.tokenize("`call_get_value`");
+        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "call_get_value"), tokens.get(0));
+        List<SqlToken> escaped = SqlTokenizer.tokenize("`a``b`");
+        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "a`b"), escaped.get(0));
+    }
+
+    @Test
+    void skipsParametersInsideBracketAndBacktickIdentifiers() {
+        // A :name inside a quoted identifier is not a parameter — the
+        // narrower binding-scan half of the shared-scanner fix.
+        assertEquals(Set.of("real"), params("SELECT [:notaparam] FROM t WHERE x = :real"));
+        assertEquals(Set.of("real"), params("SELECT `:notaparam` FROM t WHERE x = :real"));
+    }
+
+    @Test
     void skipsLineComments() {
         assertEquals(Set.of("used"),
                 params("SELECT :used -- :ignored in comment\nFROM t"));

@@ -2,9 +2,11 @@
  * Lexical SQL scanning for the static authoring lint. The named
  * parameter scanner implements the shared algorithm from
  * docs/errors.md: scan for `:name` / `@name` / `$name` while skipping
- * string literals ('…' with '' escapes), double-quoted identifiers,
- * line comments (--) and block comments. The same algorithm is used by
- * the C# runtime and the Java validator.
+ * string literals ('…' with '' escapes) and quoted identifiers —
+ * double-quoted ("…" with "" escapes), bracket ([…], ends at the first
+ * ']', no escape) and backtick (`…` with `` `` `` escapes) — plus line
+ * comments (--) and block comments. The same algorithm is used by the
+ * C# runtime and the Java validator.
  *
  * The INSERT analysis on top of the token stream is deliberately
  * best-effort (docs/validation.md): it resolves statically-known
@@ -97,6 +99,41 @@ export function tokenizeSql(sql: string): SqlToken[] {
         kind: quote === "'" ? "string" : "quoted-identifier",
         value,
       });
+      continue;
+    }
+    if (ch === "`") {
+      // Backtick-quoted identifier (MySQL compat) with doubled-backtick
+      // escapes, mirroring the "…" loop above. Emits the same
+      // quoted-identifier kind so INSERT/lineage analysis accepts it.
+      let value = "";
+      i++;
+      while (i < n) {
+        if (sql[i] === "`") {
+          if (sql[i + 1] === "`") {
+            value += "`";
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        value += sql[i];
+        i++;
+      }
+      tokens.push({ kind: "quoted-identifier", value });
+      continue;
+    }
+    if (ch === "[") {
+      // Bracket-quoted identifier (MS Access/SQL Server compat): no
+      // escape mechanism — the identifier ends at the first ']'.
+      let value = "";
+      i++;
+      while (i < n && sql[i] !== "]") {
+        value += sql[i];
+        i++;
+      }
+      if (i < n) i++; // past ']'
+      tokens.push({ kind: "quoted-identifier", value });
       continue;
     }
     if (ch === ":" || ch === "@" || ch === "$") {
@@ -357,6 +394,17 @@ export function analyzeInsert(
     i += 2;
   }
   const table = nameToken.value.toLowerCase();
+
+  // Optional `AS <alias>` between the table name and the column list
+  // (valid SQLite >= 3.24.0, e.g. INSERT INTO t AS c (...) …). Skip it
+  // so the explicit column list is still recognized. Only the
+  // `AS <ident>` form is handled — a bare alias is a syntax error for
+  // INSERT targets, and VALUES/SELECT/DEFAULT are identifiers that must
+  // not be swallowed.
+  if (keywordAt(tokens, i, "as")) {
+    i++;
+    if (tokens[i]?.kind === "identifier" || tokens[i]?.kind === "quoted-identifier") i++;
+  }
 
   let columns: string[] | null = null;
   if (tokens[i]?.kind === "punct" && tokens[i]?.value === "(") {

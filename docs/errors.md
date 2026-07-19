@@ -73,8 +73,10 @@ logging/telemetry. A source-level guard test enforces this.
 
 When `ValidateBindings` is on, the runtime lexically scans each
 statement's SQL for named parameters (`:name`, `@name`, `$name`) —
-skipping string literals ('…' with '' escapes), double-quoted
-identifiers, line comments (`--`) and block comments (`/* */`) — and
+skipping string literals ('…' with '' escapes), quoted identifiers
+(double-quoted `"…"` with `""` escapes, bracket `[…]` ending at the
+first `]` with no escape, and backtick `` `…` `` with doubled-backtick
+escapes), line comments (`--`) and block comments (`/* */`) — and
 compares the set against the statement's binding names. The same
 scanner algorithm is used by the Java validator and the TypeScript
 authoring lint (see `docs/validation.md`).
