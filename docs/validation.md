@@ -54,7 +54,7 @@ code (`java` = full engine, `typescript` = static authoring subset).
 |---|---|---|
 | `missing-binding` | error | SQL parameter with no binding |
 | `unused-binding` | error | binding not referenced in SQL |
-| `binding-type-mismatch` | error | for `INSERT INTO <call table> (cols…) VALUES (…)` where a parameter feeds a known column: binding type must be compatible with the column's scalar type (`string`←text, `bytes`←blob, `boolean`←bool, `int32`←int32, `int64`←int32/int64, `float32`←float32, `float64`←float64/float32, `call_id`←text; integer bindings do NOT coerce into float columns and vice versa; optional columns also accept null) |
+| `binding-type-mismatch` | error | for `INSERT INTO <call table or input list child table> (cols…) VALUES (…)` where a parameter feeds a known column: binding type must be compatible with the column's scalar type (`string`←text, `bytes`←blob, `boolean`←bool, `int32`←int32, `int64`←int32/int64, `float32`←float32, `float64`←float64/float32, `call_id`←text; integer bindings do NOT coerce into float columns and vice versa; optional columns also accept null) |
 | `mixed-prefix-binding` | warning | the same bare name is used through more than one prefix form (`:v` and `$v`) in one statement — supported by the runtime (one binding feeds all forms) but usually an authoring accident; use `:name` consistently |
 | `positional-parameter` | error | SQL uses a positional (`?` / `?N`) parameter; v1 supports named parameters only (`:name` / `@name` / `$name`, docs/script-envelope.md) |
 

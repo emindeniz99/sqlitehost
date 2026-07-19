@@ -183,10 +183,24 @@ export function scanNamedParameters(sql: string): string[] {
   return names;
 }
 
+/** A single-parameter cell of an INSERT row bound to a known column. */
+export interface InsertCell {
+  /** Target column name, lowercased. */
+  column: string;
+  /** Bare parameter name feeding the column (single-parameter cells only). */
+  param: string;
+}
+
 /** One row emitted by an INSERT (a VALUES group or the SELECT list). */
 export interface InsertRowInfo {
   /** Statically-resolved call-id, or null when unresolvable. */
   callId: string | null;
+  /**
+   * Cells whose value is a single parameter and whose column is known
+   * (explicit column list only) — for binding-type checks. Empty when the
+   * column list is implicit or no cell is a bare parameter.
+   */
+  cells: InsertCell[];
 }
 
 export interface InsertInfo {
@@ -195,6 +209,20 @@ export interface InsertInfo {
   /** Explicit column list (lowercased), or null when implicit. */
   columns: string[] | null;
   rows: InsertRowInfo[];
+}
+
+/** Single-parameter cells of one row, paired with their (explicit) columns. */
+function paramCells(columns: string[] | null, exprs: SqlToken[][]): InsertCell[] {
+  if (columns === null) return [];
+  const cells: InsertCell[] = [];
+  const n = Math.min(columns.length, exprs.length);
+  for (let i = 0; i < n; i++) {
+    const expr = exprs[i];
+    if (expr.length === 1 && expr[0].kind === "parameter") {
+      cells.push({ column: columns[i], param: expr[0].value });
+    }
+  }
+  return cells;
 }
 
 function keywordAt(tokens: SqlToken[], index: number, word: string): boolean {
@@ -439,6 +467,7 @@ export function analyzeInsert(
       rows.push({
         callId:
           callIdIndex >= 0 ? resolveExpression(exprs[callIdIndex], bindings) : null,
+        cells: paramCells(columns, exprs),
       });
       i = j + 1;
       if (tokens[i]?.kind === "punct" && tokens[i]?.value === ",") i++;
@@ -465,6 +494,7 @@ export function analyzeInsert(
     const exprs = splitTopLevel(tokens, start, j);
     rows.push({
       callId: callIdIndex >= 0 ? resolveExpression(exprs[callIdIndex], bindings) : null,
+      cells: paramCells(columns, exprs),
     });
   } else {
     // INSERT INTO t DEFAULT VALUES, or unrecognized: no rows to resolve.

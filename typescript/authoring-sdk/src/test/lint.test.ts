@@ -911,3 +911,131 @@ test("method-api-level-too-high: silent when requiredApiLevel covers the method"
   assert.ok(!codes(findings).includes("method-api-level-too-high"), JSON.stringify(findings));
   assert.deepStrictEqual(findings, [], JSON.stringify(findings));
 });
+
+// -- binding-type-mismatch ---------------------------------------------------
+// A parameter feeding a known call-table column must be wire-compatible
+// with that column's scalar type, over the shared ir.ts BINDING_TYPE_COMPAT
+// table (docs/proposals/rule-parameters-as-data.md). Until this landed the
+// matrix lived only in the Java engine, so the TS lint approved payloads
+// Java rejected. The fixture matrix pins blob→int64 and float64→int64; these
+// pin what it cannot express — the widening/NULL/child-table/float edges.
+// setValue's input_value is int64, so it drives most cases.
+
+function setValueWrite(value: BindingValue) {
+  return {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["setValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_set_value (call_id, input_key, input_value) VALUES (:callId, :key, :value)",
+            bindings: {
+              callId: { type: "text", value: "c-1" },
+              key: { type: "text", value: "k" },
+              value,
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test("binding-type-mismatch: int32 widens into an int64 column (no over-fire)", () => {
+  // WHY: the matrix accepts int32 into an int64 column — the check must
+  // not flag a legal widening, or it would block valid payloads.
+  const findings = lintScript(setValueWrite({ type: "int32", value: 1 }), manifest);
+  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+});
+
+test("binding-type-mismatch: integers never coerce into a float column", () => {
+  // WHY: recordScore's input_score is float64, which accepts only
+  // float32/float64 — an int64 there is a real mismatch (Java rejects it),
+  // so the TS lint must too, or the two validators disagree.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["recordScore"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_record_score (call_id, input_key, input_score) VALUES (:callId, :key, :score)",
+            bindings: {
+              callId: { type: "text", value: "c-1" },
+              key: { type: "text", value: "k" },
+              score: { type: "int64", value: 7 },
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const mismatch = lintScript(payload, manifest).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
+  assert.equal(mismatch[0].severity, "error");
+});
+
+test("binding-type-mismatch: a null binding is accepted only for an optional column", () => {
+  // WHY: the NULL→optional rule is orthogonal to the type matrix — a null
+  // binding stands in for any type but only where the column permits it.
+  // input_value is required, so null is a mismatch…
+  const required = lintScript(setValueWrite({ type: "null" }), manifest);
+  assert.ok(codes(required).includes("binding-type-mismatch"), JSON.stringify(required));
+  // …while getValues' input_default_value is optional, so null is fine.
+  const optional = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES (:callId, :dv)",
+            bindings: {
+              callId: { type: "text", value: "c-1" },
+              dv: { type: "null" },
+            },
+          },
+        ],
+      },
+    ],
+  };
+  assert.ok(
+    !codes(lintScript(optional, manifest)).includes("binding-type-mismatch"),
+    JSON.stringify(lintScript(optional, manifest)),
+  );
+});
+
+test("binding-type-mismatch: the check covers input list child tables", () => {
+  // WHY: child-table columns are writable too — the shared matrix must
+  // guard them, not just top-level call tables. input_key is a string
+  // column, so an int64 binding there is a mismatch.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES ('q-1', 0)",
+          },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES ('q-1', 0, :k)",
+            bindings: { k: { type: "int64", value: 5 } },
+          },
+        ],
+      },
+    ],
+  };
+  const mismatch = lintScript(payload, manifest).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
+  assert.equal(mismatch[0].statementIndex, 1);
+});

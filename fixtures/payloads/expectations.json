@@ -57,7 +57,10 @@
       "warnings": [
         {
           "code": "mixed-prefix-binding",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ]
     },
@@ -68,7 +71,10 @@
       "warnings": [
         {
           "code": "unused-required-method",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ]
     },
@@ -90,7 +96,10 @@
       "errors": [
         {
           "code": "undeclared-feature-use",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -101,7 +110,10 @@
       "errors": [
         {
           "code": "unknown-function",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -112,7 +124,10 @@
       "errors": [
         {
           "code": "function-arity-mismatch",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -123,7 +138,10 @@
       "errors": [
         {
           "code": "duplicate-input-name",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -134,7 +152,10 @@
       "errors": [
         {
           "code": "invalid-envelope",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -145,7 +166,10 @@
       "errors": [
         {
           "code": "list-child-later-step",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -156,7 +180,10 @@
       "errors": [
         {
           "code": "missing-binding",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -167,7 +194,10 @@
       "errors": [
         {
           "code": "unused-binding",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -178,7 +208,10 @@
       "errors": [
         {
           "code": "positional-parameter",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -189,7 +222,9 @@
       "errors": [
         {
           "code": "sql-prepare-error",
-          "validators": ["java"]
+          "validators": [
+            "java"
+          ]
         }
       ],
       "warnings": []
@@ -200,7 +235,10 @@
       "errors": [
         {
           "code": "implicit-column-list",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -211,7 +249,10 @@
       "errors": [
         {
           "code": "result-read-unknown-call",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -222,7 +263,10 @@
       "errors": [
         {
           "code": "result-read-not-after-call",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -233,7 +277,10 @@
       "errors": [
         {
           "code": "undeclared-method-use",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -244,7 +291,10 @@
       "errors": [
         {
           "code": "binding-type-mismatch",
-          "validators": ["java"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -255,7 +305,10 @@
       "errors": [
         {
           "code": "binding-type-mismatch",
-          "validators": ["java"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -266,7 +319,10 @@
       "errors": [
         {
           "code": "duplicate-call-id",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -277,7 +333,10 @@
       "errors": [
         {
           "code": "duplicate-call-id",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -288,7 +347,10 @@
       "errors": [
         {
           "code": "duplicate-step-id",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -299,7 +361,10 @@
       "errors": [
         {
           "code": "required-api-level-too-high",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -310,7 +375,10 @@
       "errors": [
         {
           "code": "unknown-required-feature",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -321,7 +389,10 @@
       "errors": [
         {
           "code": "unknown-required-method",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -332,7 +403,10 @@
       "errors": [
         {
           "code": "undeclared-method-use",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -343,7 +417,10 @@
       "errors": [
         {
           "code": "duplicate-call-id",
-          "validators": ["java", "typescript"]
+          "validators": [
+            "java",
+            "typescript"
+          ]
         }
       ],
       "warnings": []
@@ -354,7 +431,9 @@
       "errors": [
         {
           "code": "result-read-unknown-call",
-          "validators": ["java"]
+          "validators": [
+            "java"
+          ]
         }
       ],
       "warnings": []

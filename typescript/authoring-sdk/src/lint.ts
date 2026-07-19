@@ -8,12 +8,17 @@
  * manifest's `columns` block, never hardcoded (docs/naming.md).
  */
 
+import { BINDING_TYPE_COMPAT } from "@sqlite-host/codegen-core";
 import {
   validateScript,
   type BindingValue,
   type Script,
 } from "@sqlite-host/runtime-types";
-import type { HostManifest, ManifestMethod } from "./manifest.js";
+import type {
+  HostManifest,
+  ManifestMethod,
+  ManifestScalarType,
+} from "./manifest.js";
 import {
   analyzeInsert,
   callIdFilters,
@@ -33,6 +38,7 @@ export type LintCode =
   | "duplicate-input-name"
   | "missing-binding"
   | "unused-binding"
+  | "binding-type-mismatch"
   | "mixed-prefix-binding"
   | "positional-parameter"
   | "implicit-column-list"
@@ -51,6 +57,25 @@ export type LintSeverity = "error" | "warning";
 
 /** Feature a script must declare to call inline functions (docs/validation.md). */
 const FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
+
+/** An insertable column's scalar type + optionality, for binding-type checks. */
+interface InsertableColumn {
+  scalarType: ManifestScalarType;
+  optional: boolean;
+}
+
+/**
+ * Binding-type compatibility, single-sourced in ir.ts BINDING_TYPE_COMPAT
+ * (docs/proposals/rule-parameters-as-data.md): a null binding is accepted
+ * iff the column is optional; otherwise the binding's wire type must be in
+ * the column scalar type's accepted set (int64 widens from int32, float64
+ * from float32, integers never coerce into float columns).
+ */
+function bindingCompatible(column: InsertableColumn, bindingType: string): boolean {
+  if (bindingType === "null") return column.optional;
+  const accepted = BINDING_TYPE_COMPAT[column.scalarType];
+  return accepted !== undefined && accepted.includes(bindingType);
+}
 
 export interface LintFinding {
   code: LintCode;
@@ -152,6 +177,10 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   const resultTables = new Map<string, string>(); // result table -> method name
   const resultChildTables = new Map<string, string>(); // result child table -> method name
   const inlineFunctions = new Map<string, ManifestMethod>(); // function name (lc) -> method
+  // Insertable table (lc) -> column (lc) -> scalar type + optionality, for
+  // binding-type checks. Covers the writable tables: call tables (input
+  // fields) and input list child tables (item fields).
+  const insertableColumns = new Map<string, Map<string, InsertableColumn>>();
   // Tolerate pre-inline manifests (no functionPrefix): an empty prefix
   // never matches, so no identifier is ever flagged unknown-function.
   const functionPrefix = manifest.naming.functionPrefix ?? "";
@@ -164,11 +193,27 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
     if (method.inline !== null && method.inline !== undefined) {
       inlineFunctions.set(method.inline.functionName.toLowerCase(), method);
     }
+    const callCols = new Map<string, InsertableColumn>();
+    for (const field of method.input.fields) {
+      callCols.set(field.column.toLowerCase(), {
+        scalarType: field.scalarType,
+        optional: field.optional,
+      });
+    }
+    insertableColumns.set(method.callTable.toLowerCase(), callCols);
     for (const listField of method.input.listFields) {
       inputChildTables.set(listField.childTable.toLowerCase(), {
         methodName: method.methodName,
         callTable: method.callTable.toLowerCase(),
       });
+      const childCols = new Map<string, InsertableColumn>();
+      for (const field of listField.itemFields) {
+        childCols.set(field.column.toLowerCase(), {
+          scalarType: field.scalarType,
+          optional: field.optional,
+        });
+      }
+      insertableColumns.set(listField.childTable.toLowerCase(), childCols);
     }
     for (const listField of method.result.listFields) {
       resultChildTables.set(listField.childTable.toLowerCase(), method.methodName);
@@ -256,6 +301,32 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
           stepId: step.id,
           statementIndex,
         });
+
+        // binding-type-mismatch: for a write into a call table (or input
+        // list child table) with an explicit column list, a parameter that
+        // feeds a known column must be type-compatible with the column's
+        // scalar type (docs/validation.md). Mirrors the Java engine over
+        // the shared BINDING_TYPE_COMPAT table.
+        const columnTypes = insertableColumns.get(insert.table);
+        if (columnTypes !== undefined) {
+          for (const row of insert.rows) {
+            for (const cell of row.cells) {
+              const columnType = columnTypes.get(cell.column);
+              const binding = bindings[cell.param];
+              if (columnType === undefined || binding === undefined) {
+                continue; // unknown column / missing-binding reported elsewhere
+              }
+              if (!bindingCompatible(columnType, binding.type)) {
+                findings.push({
+                  code: "binding-type-mismatch",
+                  severity: "error",
+                  message: `binding "${cell.param}" of type ${binding.type} is not compatible with column ${insert.table}.${cell.column} (${columnType.scalarType}${columnType.optional ? ", optional" : ""})`,
+                  ...at,
+                });
+              }
+            }
+          }
+        }
       }
 
       // Inline function lint (docs/validation.md — feature

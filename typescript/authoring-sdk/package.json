@@ -37,6 +37,7 @@
     "test": "npm run build && node --test 'dist/test/*.test.js'"
   },
   "dependencies": {
+    "@sqlite-host/codegen-core": "workspace:*",
     "@sqlite-host/runtime-types": "workspace:*"
   },
   "devDependencies": {
