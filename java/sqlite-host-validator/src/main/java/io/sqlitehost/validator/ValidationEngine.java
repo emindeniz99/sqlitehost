@@ -475,20 +475,22 @@ public final class ValidationEngine {
 
     private static void checkDuplicateCallIds(
             SchemaIndex schema, Analysis analysis, List<ValidationFinding> findings) {
-        Map<String, CallEmit> firstByTableAndId = new LinkedHashMap<>();
+        // Keyed by call id alone: the queue table declares the call-id
+        // column UNIQUE and every call-table trigger inserts into it, so
+        // call ids are global across call tables — not per table.
+        Map<String, CallEmit> firstByCallId = new LinkedHashMap<>();
         for (CallEmit emit : analysis.callEmits) {
             if (emit.callId == null) {
                 continue; // computed ids are skipped by duplicate checks
             }
-            String key = emit.callTableLc + "\0" + emit.callId;
-            CallEmit first = firstByTableAndId.putIfAbsent(key, emit);
+            CallEmit first = firstByCallId.putIfAbsent(emit.callId, emit);
             if (first != null) {
                 findings.add(ValidationFinding.error(ValidationCodes.DUPLICATE_CALL_ID,
                         emit.stepId, emit.statementIndex,
                         schema.callIdColumn + " '" + emit.callId
-                                + "' is emitted more than once for call table '"
-                                + emit.callTableLc + "' (first emitted in step '"
-                                + first.stepId + "')"));
+                                + "' is emitted more than once (call ids are unique"
+                                + " across all call tables; first emitted in step '"
+                                + first.stepId + "' into '" + first.callTableLc + "')"));
             }
         }
     }

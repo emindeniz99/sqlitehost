@@ -338,7 +338,10 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   });
 
   // -- host-call usage checks -------------------------------------------------
-  const seenCallIds = new Map<string, InsertRecord>(); // "table\u0000id"
+  // Keyed by call id alone: the queue table declares call_id UNIQUE and
+  // every call-table trigger inserts into it, so call ids are global
+  // across call tables — not per table.
+  const seenCallIds = new Map<string, InsertRecord>();
   for (const insert of inserts) {
     const at = { stepId: insert.stepId, statementIndex: insert.statementIndex };
     const isCallTable = callTables.has(insert.table);
@@ -366,16 +369,16 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
       for (const callId of insert.callIds) {
         if (callId === null) continue;
-        const key = `${insert.table}\u0000${callId}`;
-        if (seenCallIds.has(key)) {
+        const first = seenCallIds.get(callId);
+        if (first !== undefined) {
           findings.push({
             code: "duplicate-call-id",
             severity: "error",
-            message: `${callIdColumn} "${callId}" is emitted more than once for ${insert.table}`,
+            message: `${callIdColumn} "${callId}" is emitted more than once (call ids are unique across all call tables; first emitted into ${first.table})`,
             ...at,
           });
         } else {
-          seenCallIds.set(key, insert);
+          seenCallIds.set(callId, insert);
         }
       }
     }

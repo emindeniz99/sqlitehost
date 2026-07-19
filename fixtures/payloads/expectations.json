@@ -260,6 +260,17 @@
       "warnings": []
     },
     {
+      "payload": "invalid/duplicate-call-id-cross-method.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "duplicate-call-id",
+          "validators": ["java", "typescript"]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/duplicate-step-id.json",
       "valid": false,
       "errors": [
