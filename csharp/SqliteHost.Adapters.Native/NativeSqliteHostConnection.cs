@@ -519,9 +519,13 @@ namespace SqliteHost.Adapters.Native
             {
                 string name = NativeMethods.FromUtf8Z(
                     NativeMethods.sqlite3_bind_parameter_name(statement, i));
-                // Nameless (?NNN) parameters can never be fed by bare-name
-                // bindings; treat them as unbound too.
-                string bareName = string.IsNullOrEmpty(name) ? null : name.Substring(1);
+                // Positional parameters (? and ?NNN) are unsupported by the
+                // adapter contract and are never bound by
+                // BindUnderAllPrefixes, so treat them as unbound even when a
+                // binding named like the digits ("1" for ?1) exists.
+                string bareName = string.IsNullOrEmpty(name) || name[0] == '?'
+                    ? null
+                    : name.Substring(1);
                 bool bound = false;
                 if (bareName != null && bindings != null)
                 {

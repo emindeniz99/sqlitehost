@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using SqliteHost.Adapters.Native;
 using Xunit;
 
@@ -208,6 +209,56 @@ namespace SqliteHost.Tests.Adapter
                 "SELECT name FROM sqlite_master WHERE name IN ('t', 'u') ORDER BY name", null,
                 row => row.GetText(0));
             Assert.Equal(new[] { "t", "u" }, tables);
+        }
+
+        // ---- positional parameters --------------------------------------------
+
+        [Fact]
+        public void PositionalParameter_IsRejected_EvenWhenADigitNamedBindingExists()
+        {
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+
+            // sqlite3_bind_parameter_name reports "?1" and BindUnderAllPrefixes
+            // never binds positional parameters, so accepting the "1" binding
+            // here would step the statement with an implicit NULL — the silent
+            // failure the adapter contract forbids.
+            var ex = Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Query(
+                    "SELECT ?1", Bind(("1", SqliteHostBindingValue.Int64(7))),
+                    row => row.GetInt64(0)));
+
+            Assert.Contains("?1", ex.Message);
+        }
+
+        // ---- file-backed factory workspaces -----------------------------------
+
+        [Fact]
+        public void FileBackedFactory_RecreatesTheWorkspaceFile_PerOpen()
+        {
+            string path = Path.Combine(
+                Path.GetTempPath(), "sqlitehost-fresh-" + Guid.NewGuid().ToString("N") + ".db");
+            var factory = new NativeSqliteHostConnectionFactory(path);
+            try
+            {
+                using (ISqliteHostConnection first = factory.OpenWorkspace())
+                {
+                    first.Execute("CREATE TABLE t (id INTEGER)", null);
+                }
+                using (ISqliteHostConnection second = factory.OpenWorkspace())
+                {
+                    // The temporary-workspace contract: the previous run's
+                    // schema must be gone, so the same CREATE TABLE succeeds
+                    // instead of failing with "table t already exists".
+                    second.Execute("CREATE TABLE t (id INTEGER)", null);
+                }
+            }
+            finally
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
         }
 
         // ---- prepared statements ---------------------------------------------------

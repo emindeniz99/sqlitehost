@@ -1,9 +1,14 @@
+using System.IO;
+
 namespace SqliteHost.Adapters.Native
 {
     /// <summary>
     /// Workspace factory over <see cref="NativeSqliteHostConnection"/>.
     /// Opens a private in-memory database by default; the overload taking a
-    /// database path opens (creating if needed) that file per workspace.
+    /// database path recreates that file fresh for every workspace — the
+    /// runtime's workspace is temporary and schema creation assumes an
+    /// empty database, so any existing file (and its -wal/-shm siblings)
+    /// at the path is deleted on each open.
     /// Carries the static scalar-function capability marker
     /// (<see cref="ISqliteHostScalarFunctionCapableFactory"/>): connections
     /// implement ISqliteHostScalarFunctionConnection natively.
@@ -39,6 +44,22 @@ namespace SqliteHost.Adapters.Native
         public static string NativeLibraryPath => NativeMethods.LibraryName;
 
         public ISqliteHostConnection OpenWorkspace()
-            => NativeSqliteHostConnection.Open(_databasePath);
+        {
+            if (_databasePath != ":memory:")
+            {
+                DeleteIfExists(_databasePath);
+                DeleteIfExists(_databasePath + "-wal");
+                DeleteIfExists(_databasePath + "-shm");
+            }
+            return NativeSqliteHostConnection.Open(_databasePath);
+        }
+
+        private static void DeleteIfExists(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 }
