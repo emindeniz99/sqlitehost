@@ -27,6 +27,11 @@ requirement, no external dependencies, single namespace root
 (`SqliteHost`) that can be find/replace-renamed. Unity Package Manager
 is not required to consume the sources.
 
+For what those vendored sources actually do — which ~2,400 lines execute
+on device, the ~1-file security-review surface, and how to trim the
+package to just the profile you use (with the per-profile file list) — see
+`docs/guides/vendored-footprint.md`.
+
 ## Versioning
 
 The protocol (`sqlite-host-v1`, manifestVersion 1, apiLevel) versions
