@@ -45,6 +45,10 @@ failures:
   `SqliteHostRunResult.SqliteErrorCode`.
 - Malformed SQL, missing tables, and missing columns must never look
   like success with zero rows.
+- `Execute` must step a row-producing statement to completion (until
+  `SQLITE_DONE`), discarding rows. SQLite evaluates a SELECT only as
+  it is stepped, so stopping at the first row would silently skip
+  later-row evaluation — errors and inline function invocations alike.
 - Native bind errors must not be ignored.
 - A statement error mid-step must abort the step: later statements do
   not execute and pending host calls are **not** drained for that step
@@ -100,7 +104,7 @@ suite for the exact matrix.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (23 core
+`AdapterConformanceTestsBase` — the xunit contract suite (24 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

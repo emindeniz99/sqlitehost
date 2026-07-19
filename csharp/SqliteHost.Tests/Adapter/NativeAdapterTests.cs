@@ -151,6 +151,65 @@ namespace SqliteHost.Tests.Adapter
             Assert.Equal(new[] { "blob|0" }, rows);
         }
 
+        // ---- multi-statement SQL (prepare tail) --------------------------------
+
+        [Fact]
+        public void MultiStatementSql_Throws_InsteadOfSilentlyDroppingTheTail()
+        {
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+
+            var ex = Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Execute(
+                    "CREATE TABLE a (x INTEGER); CREATE TABLE b (y INTEGER)", null));
+
+            // The adapter contract forbids silent partial execution:
+            // rejection must happen before any stepping — not "run the
+            // first statement and drop the rest", and not "run the first,
+            // then throw".
+            Assert.Contains("multi-statement", ex.Message);
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name IN ('a', 'b')", null,
+                row => row.GetText(0));
+            Assert.Empty(tables);
+        }
+
+        [Fact]
+        public void MultiStatementSql_Throws_ThroughQueryAndPrepareToo()
+        {
+            // Query and Prepare share Execute's prepare path; all three
+            // entry points must uphold the contract, not just Execute.
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+
+            Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Query(
+                    "CREATE TABLE a (x INTEGER); CREATE TABLE b (y INTEGER)", null,
+                    row => row.GetInt64(0)));
+            Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Prepare("SELECT :x; SELECT :y"));
+
+            // Neither entry point executed anything before rejecting.
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name IN ('a', 'b')", null,
+                row => row.GetText(0));
+            Assert.Empty(tables);
+        }
+
+        [Fact]
+        public void TrailingTerminatorAndComment_AreNotMultiStatement()
+        {
+            // The tail check compiles the remainder instead of scanning for
+            // non-whitespace: trailing terminators and comments are legal
+            // authoring; only a second executable statement is the error.
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+            connection.Execute("CREATE TABLE t (x INTEGER);", null);
+            connection.Execute("CREATE TABLE u (x INTEGER); -- note", null);
+
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name IN ('t', 'u') ORDER BY name", null,
+                row => row.GetText(0));
+            Assert.Equal(new[] { "t", "u" }, tables);
+        }
+
         // ---- prepared statements ---------------------------------------------------
 
         [Fact]

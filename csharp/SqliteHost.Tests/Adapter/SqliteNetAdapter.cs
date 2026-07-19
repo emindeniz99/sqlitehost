@@ -49,8 +49,15 @@ namespace SqliteHost.Tests.Adapter
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             using sqlite3_stmt statement = PrepareCore(sql, bindings);
-            int rc = raw.sqlite3_step(statement);
-            if (rc != raw.SQLITE_DONE && rc != raw.SQLITE_ROW)
+            // SQLite evaluates a row-producing statement only as it is
+            // stepped: drain to SQLITE_DONE (discarding rows) so later-row
+            // evaluation — errors and inline function invocations — is
+            // never silently skipped (docs/adapter-contract.md).
+            int rc;
+            while ((rc = raw.sqlite3_step(statement)) == raw.SQLITE_ROW)
+            {
+            }
+            if (rc != raw.SQLITE_DONE)
             {
                 throw Error("sqlite3_step", rc);
             }

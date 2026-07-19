@@ -80,6 +80,18 @@ namespace SqliteHost.Adapters.Native
         internal static extern int sqlite3_prepare_v2(
             IntPtr db, byte[] sqlUtf8, int byteCount, out IntPtr statement, out IntPtr tail);
 
+        /// <summary>
+        /// IntPtr-sql overload for callers that need the returned tail
+        /// pointer: with the byte[] overload the array's pinning ends when
+        /// the call returns, so the tail (which points into that buffer)
+        /// must not be dereferenced afterwards. Callers pin the SQL bytes
+        /// explicitly, pass their address here, and convert the tail to an
+        /// offset while still pinned.
+        /// </summary>
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int sqlite3_prepare_v2(
+            IntPtr db, IntPtr sqlUtf8, int byteCount, out IntPtr statement, out IntPtr tail);
+
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int sqlite3_step(IntPtr statement);
 

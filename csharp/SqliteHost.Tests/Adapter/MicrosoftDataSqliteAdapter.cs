@@ -27,7 +27,18 @@ namespace SqliteHost.Tests.Adapter
             using var command = CreateCommand(sql, bindings);
             try
             {
-                command.ExecuteNonQuery();
+                // Not ExecuteNonQuery: it steps a row-producing statement
+                // only once, so later-row evaluation — errors and inline
+                // function invocations — would be silently skipped. Drain
+                // the reader instead (docs/adapter-contract.md).
+                using var reader = command.ExecuteReader();
+                do
+                {
+                    while (reader.Read())
+                    {
+                    }
+                }
+                while (reader.NextResult());
             }
             catch (SqliteException ex)
             {

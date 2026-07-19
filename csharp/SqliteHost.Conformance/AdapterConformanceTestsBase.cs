@@ -449,6 +449,27 @@ namespace SqliteHost.Conformance
             Assert.Equal(new[] { "g-1" }, callIds);
         }
 
+        [SkippableFact]
+        public void Execute_RowProducingStatement_RunsToCompletion_LaterRowErrorSurfaces()
+        {
+            // SQLite evaluates a SELECT only as it is stepped; an Execute
+            // that stops at the first SQLITE_ROW reports success for a
+            // statement that never finished running — exactly the silent
+            // failure docs/adapter-contract.md forbids. abs(long.MinValue)
+            // raises "integer overflow" only when row 2 is stepped, so this
+            // test can only pass if Execute evaluates every row. No ORDER
+            // BY on purpose: a sort would materialize every row into the
+            // sorter on the FIRST step and mask a stop-at-first-row Execute;
+            // a plain table scan steps rows lazily in rowid order.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, a INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, a) VALUES (1, 1), (2, :min)",
+                Bind(("min", SqliteHostBindingValue.Int64(long.MinValue))));
+            Assert.ThrowsAny<SqliteHostAdapterException>(
+                () => connection.Execute("SELECT abs(a) FROM scratch", null));
+        }
+
         // ---- optional capability: inline scalar functions ----------------
         // Runs only against adapters implementing
         // ISqliteHostScalarFunctionConnection; skipped with a reason
@@ -602,6 +623,27 @@ namespace SqliteHost.Conformance
             // across the native frames: the connection stays fully usable.
             var rows = connection.Query("SELECT 41 + 1", null, row => row.GetInt64(0));
             Assert.Equal(new[] { 42L }, rows);
+        }
+
+        [SkippableFact]
+        public void ScalarFunction_ExecuteEvaluatesEveryRow()
+        {
+            // The runtime routes every script statement through Execute
+            // (SqliteHostRuntimeCore), so inline-function invocations in
+            // later rows must not silently vanish: Execute must step a
+            // row-producing statement to completion even though it discards
+            // the rows.
+            using ISqliteHostScalarFunctionConnection connection = OpenFunctionCapable();
+            int invocations = 0;
+            connection.RegisterScalarFunction(new SqliteHostScalarFunction(
+                "fn_probe", 1, 1,
+                args => { invocations++; return SqliteHostBindingValue.Int64(1); }));
+            connection.Execute("CREATE TABLE scratch (a INTEGER)", null);
+            connection.Execute("INSERT INTO scratch (a) VALUES (1), (2), (3)", null);
+
+            connection.Execute("SELECT fn_probe(a) FROM scratch", null);
+
+            Assert.Equal(3, invocations);
         }
 
         [SkippableFact]

@@ -100,8 +100,16 @@ namespace SqliteHost.Adapters.Native
             IntPtr statement = PrepareAndBind(sql, bindings);
             try
             {
-                int rc = NativeMethods.sqlite3_step(statement);
-                if (rc != NativeMethods.SQLITE_DONE && rc != NativeMethods.SQLITE_ROW)
+                // SQLite evaluates a row-producing statement only as it is
+                // stepped: drain to SQLITE_DONE (discarding rows) so
+                // later-row evaluation — errors and inline function
+                // invocations — is never silently skipped
+                // (docs/adapter-contract.md).
+                int rc;
+                while ((rc = NativeMethods.sqlite3_step(statement)) == NativeMethods.SQLITE_ROW)
+                {
+                }
+                if (rc != NativeMethods.SQLITE_DONE)
                 {
                     throw CreateError("sqlite3_step", rc);
                 }
@@ -379,8 +387,26 @@ namespace SqliteHost.Adapters.Native
         private IntPtr PrepareOnly(string sql)
         {
             byte[] sqlUtf8 = NativeMethods.ToUtf8Z(sql);
-            int rc = NativeMethods.sqlite3_prepare_v2(
-                _db, sqlUtf8, sqlUtf8.Length, out IntPtr statement, out IntPtr tail);
+            // Pin explicitly and call the IntPtr overload: the tail pointer
+            // points into the SQL buffer and is only meaningful while the
+            // buffer is pinned, so convert it to an offset before unpinning.
+            int rc;
+            IntPtr statement;
+            int tailOffset;
+            GCHandle pin = GCHandle.Alloc(sqlUtf8, GCHandleType.Pinned);
+            try
+            {
+                IntPtr basePtr = pin.AddrOfPinnedObject();
+                rc = NativeMethods.sqlite3_prepare_v2(
+                    _db, basePtr, sqlUtf8.Length, out statement, out IntPtr tail);
+                tailOffset = tail == IntPtr.Zero
+                    ? sqlUtf8.Length
+                    : (int)(tail.ToInt64() - basePtr.ToInt64());
+            }
+            finally
+            {
+                pin.Free();
+            }
             if (rc != NativeMethods.SQLITE_OK)
             {
                 if (statement != IntPtr.Zero)
@@ -398,7 +424,44 @@ namespace SqliteHost.Adapters.Native
                     "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
                     0, null);
             }
+            RejectSqlAfterFirstStatement(statement, sqlUtf8, tailOffset);
             return statement;
+        }
+
+        /// <summary>
+        /// sqlite3_prepare_v2 compiles only the first statement and hands
+        /// the rest back through the tail; running just the first while
+        /// silently dropping the rest is exactly the silent partial
+        /// execution docs/adapter-contract.md forbids. Preparing the tail
+        /// (rather than scanning it for non-whitespace) deliberately
+        /// tolerates trailing terminators, whitespace, and comments —
+        /// mirroring SQLite's own "no statement" semantics above — so only
+        /// a second executable statement (or a tail that fails to compile)
+        /// is rejected. Nothing has been stepped when this throws.
+        /// </summary>
+        private void RejectSqlAfterFirstStatement(IntPtr statement, byte[] sqlUtf8, int tailOffset)
+        {
+            int tailLength = sqlUtf8.Length - tailOffset;
+            if (tailLength <= 1)
+            {
+                return;   // nothing after the first statement but the NUL terminator
+            }
+            var tailUtf8 = new byte[tailLength];
+            Array.Copy(sqlUtf8, tailOffset, tailUtf8, 0, tailLength);
+            int rc = NativeMethods.sqlite3_prepare_v2(
+                _db, tailUtf8, tailUtf8.Length, out IntPtr tailStatement, out IntPtr _);
+            if (tailStatement != IntPtr.Zero)
+            {
+                NativeMethods.sqlite3_finalize(tailStatement);
+            }
+            if (rc != NativeMethods.SQLITE_OK || tailStatement != IntPtr.Zero)
+            {
+                NativeMethods.sqlite3_finalize(statement);
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 left SQL after the first statement: multi-statement SQL"
+                    + " is not supported; send each statement in its own Execute/Query/Prepare call.",
+                    0, null);
+            }
         }
 
         private IntPtr PrepareAndBind(string sql, IReadOnlyList<SqliteHostBinding> bindings)
