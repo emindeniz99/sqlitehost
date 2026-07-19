@@ -45,18 +45,6 @@ Deliberately absent and proposed:
   guarantee that makes untrusted-ish scripts tractable; recursive CTEs
   cover data-driven iteration.
 
-## Maintainability proposals (designed, awaiting owner decision)
-
-- **Rule parameters as shared data**: single-source the validation-rule
-  *parameters* (the reserved `pending` status, the SQLite built-in
-  function list, the binding-type compatibility matrix, the identifier
-  regexes) that are currently hardcoded and drift across the C#, Java, and
-  TS ports — the structural cause behind most of the recent validation
-  bugs. Keep each language's algorithm; emit the parameters from
-  `codegen/core/src/ir.ts` into a generated constant file per language,
-  byte-golden checked. Full write-up, inventory, and phasing in
-  [docs/proposals/rule-parameters-as-data.md](./docs/proposals/rule-parameters-as-data.md).
-
 ## Dropped (decided against, not deferred)
 
 - **SqliteHost.Json** — optional C# JSON parse helpers. The core

@@ -1,8 +1,10 @@
 # Proposal: rule parameters as shared data (single-sourced constants)
 
-Status: **design-only, awaiting owner decision.** No code change is
-proposed here — this documents the problem, an inventory, and a
-recommended mechanism so an implementation plan can be made later.
+Status: **implemented** (Phase 1 + Phase 2). This documents the problem,
+the inventory, and the mechanism; the "Phasing" section below records what
+actually shipped. The single source is `codegen/core/src/ir.ts`, projected
+into the generated `ProtocolConstants.g.cs` / `Protocol.java` and pinned by
+the cross-language golden and per-language equivalence tests.
 
 ## Motivation
 
@@ -132,14 +134,25 @@ sources. Because the constants are emitter output, a separate
 intermediate if useful, but `ir.ts` as the single source plus generated
 projections is sufficient.
 
-## Phasing (implementation left to a future owner-approved plan)
+## Phasing (as shipped)
 
-- **Phase 1 (highest value):** the binding-type compatibility matrix, the
-  built-in function list, and the `pending` sentinel → generated constant
-  files; this also *adds* the missing binding-type check to TS and C#.
-- **Phase 2:** the `halt`/`fail` verbs, feature vocabulary, and the
-  identifier / method / sql-name regex strings (Java + TS use them as real
-  regexes; C# keeps its char-scan + equivalence test).
+- **Phase 1 (highest value) — done.** The binding-type compatibility
+  matrix, the built-in function list, and the `pending` sentinel moved to
+  `ir.ts` and are projected into `ProtocolConstants.g.cs` (C#) and
+  `Protocol.java` (Java). This also *added* the missing binding-type check
+  to the TS lint — the matrix now has two consumers (the Java validator and
+  the TS lint), closing the gap where TS approved payloads Java rejected.
+- **Phase 2 — done.** The `halt`/`fail` control verbs and the
+  `inlineFunctions` feature flag are projected into the generated constant
+  files; the C# runtime, the Java validator, and the TS lint read them
+  instead of literals. The method-name pattern is projected into
+  `ProtocolConstants.g.cs`, and the C# char-scan is pinned to it by a Regex
+  equivalence test. The TypeSpec library can't import `codegen-core` (it
+  would form a workspace cycle), so its `IDENTIFIER` / `METHOD_NAME` /
+  `SQL_NAME` regexes stay local and are pinned equal to the `ir.ts` pattern
+  strings by an equivalence test in `codegen-core`. Java has no runtime
+  executor or identifier validator, so it consumes only the feature flag —
+  no dead control-verb / pattern constants are generated for it.
 - **Out of scope:** the `requiredApiLevel >= 1` threshold (trivial inline,
   no drift) and the whole SQL tokenizer / analyzer — see non-goals.
 
