@@ -5,11 +5,13 @@
  * scalars, nested models, nested lists, optional list fields, empty list
  * item models, unions and maps, duplicate method names, duplicate SQL
  * names per shape, duplicate derived table names, missing @hostMethod,
- * and invalid shared table / column name configuration (docs/naming.md). Diagnostics are reported
+ * host interfaces declared outside any namespace, and invalid shared
+ * table / column name configuration (docs/naming.md). Diagnostics are reported
  * with the codes declared by @sqlite-host/typespec.
  */
 
 import {
+  getNamespaceFullName,
   isArrayModelType,
   isRecordModelType,
   type DiagnosticTarget,
@@ -211,6 +213,15 @@ export function validateHostLibraryInterface(
   const tableNames = new Set<string>();
   const fieldColumns = new Set<string>();
   const functionClaims: Array<[string, DiagnosticTarget]> = [];
+
+  // The library must live inside a namespace: the emitters derive Java
+  // package and C# namespace names from it, and the global namespace's
+  // empty name would generate invalid code (e.g. "package .generated;").
+  const namespaceName =
+    iface.namespace !== undefined ? getNamespaceFullName(iface.namespace) : "";
+  if (namespaceName.length === 0) {
+    error(ctx, "missing-namespace", { name: iface.name }, iface);
+  }
 
   // functionPrefix must be non-empty (docs/naming.md). It is a prefix,
   // not a table, so it joins no other distinctness check.

@@ -58,6 +58,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Duplicate @hostLibrary interface name "${"name"}"; interface names must be unique within a compilation because they name the emitted artifacts.`,
       },
     },
+    "missing-namespace": {
+      severity: "error",
+      messages: {
+        default: paramMessage`@hostLibrary interface "${"name"}" must be declared inside a namespace; the emitters derive Java package and C# namespace names from it, and the global namespace's empty name would generate invalid code.`,
+      },
+    },
     "missing-host-method": {
       severity: "error",
       messages: {

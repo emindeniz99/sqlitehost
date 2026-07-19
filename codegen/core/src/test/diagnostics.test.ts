@@ -16,6 +16,25 @@ function shell(body: string): string {
   `;
 }
 
+test("rejects a host library declared in the global namespace", async () => {
+  // The emitters derive Java package and C# namespace names from the
+  // library namespace; the global namespace's empty name would emit
+  // invalid code (e.g. Java "package .generated;").
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "missing-namespace");
+});
+
 test("rejects top-level primitive input", async () => {
   const result = await compileSource(
     shell(`
