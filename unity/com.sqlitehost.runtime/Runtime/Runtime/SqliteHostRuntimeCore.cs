@@ -418,6 +418,12 @@ namespace SqliteHost
                 return Failure(state, SqliteHostRunStatus.SkippedUnsupported, "unsupported-engine",
                     "Engine '" + (script.Engine ?? "<null>") + "' is not '" + EngineV1 + "'.", null, null);
             }
+            if (script.RequiredApiLevel < 1)
+            {
+                return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
+                    "Script requiredApiLevel " + script.RequiredApiLevel
+                    + " is invalid; the envelope requires an integer >= 1.", null, null);
+            }
             if (script.RequiredApiLevel > _hostDefinition.ApiLevel)
             {
                 return Failure(state, SqliteHostRunStatus.SkippedUnsupported, "unsupported-api-level",

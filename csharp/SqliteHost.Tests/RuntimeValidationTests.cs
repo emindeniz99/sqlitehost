@@ -61,6 +61,33 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void RequiredApiLevelBelowOne_FailsValidation_WorkspaceNeverOpened()
+        {
+            // The envelope contract (docs/script-envelope.md) makes
+            // requiredApiLevel a required integer >= 1, and the TS/Java
+            // validators reject anything below that as invalid-envelope. The
+            // C# runtime consumes parsed objects with no JSON-validation
+            // layer, so the int default of 0 (a consumer who simply never set
+            // it) must fail validation before any workspace side effect
+            // instead of silently executing an envelope every other language
+            // layer rejects.
+            foreach (int level in new[] { 0, -1 })
+            {
+                var (runtime, factory, handlers) = CreateRuntime();
+                SqliteHostScript script = ValidSingleCallScript();
+                script.RequiredApiLevel = level;
+
+                SqliteHostRunResult result = runtime.Run(script);
+
+                Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+                Assert.Equal("invalid-script", result.ErrorCode);
+                Assert.Equal(0, factory.OpenCount);
+                Assert.Empty(handlers.Log);
+                Assert.Equal(-1, result.StatementIndex);
+            }
+        }
+
+        [Fact]
         public void UnknownRequiredFeature_IsCleanSkip_WorkspaceNeverOpened()
         {
             var (runtime, factory, _) = CreateRuntime();
