@@ -214,8 +214,8 @@ window). **IL2CPP footnote**: the fields result does *not* transfer —
 under IL2CPP the fields variant measured **~32 KB raw / ~12 KB gz
 smaller** on the 50-method host (IL2CPP emits per-accessor C++ +
 metadata that survives High stripping). Small next to the per-method
-totals, and auto-properties remain the shipped default for DX; noted
-here in case a future `--fields` generator switch is ever worth it for
+totals, and auto-properties remain the shipped default for DX; the
+opt-in `--dto-fields` emitter flag ships exactly this switch for
 size-critical Unity consumers (`docs/reports/il2cpp-size-report.md`). The one remaining
 code-shape lever — collapsing the handler interface to a single
 ordinal `Invoke(int, …)` dispatch — saves ~4.8 KB gzip but changes the
