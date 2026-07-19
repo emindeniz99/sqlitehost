@@ -12,6 +12,8 @@
 
 import {
   generateSchemaScript,
+  PENDING_STATUS,
+  SQLITE_BUILTIN_FUNCTIONS,
   type HostLibraryIr,
   type HostMethodIr,
   type ListFieldIr,
@@ -37,6 +39,7 @@ export const SPECS_FILE = "GeneratedHostMethodSpecs.g.cs";
 export const DEFINITION_FILE = "GeneratedHostDefinition.g.cs";
 export const SCHEMA_FILE = "GeneratedSchemaSql.g.cs";
 export const ENVELOPE_FILE = "envelope/ScriptEnvelope.g.cs";
+export const PROTOCOL_CONSTANTS_FILE = "runtime/ProtocolConstants.g.cs";
 
 /** Generated namespace: the library namespace with a .Generated suffix. */
 export function generatedNamespace(ir: HostLibraryIr): string {
@@ -863,6 +866,65 @@ export function emitScriptEnvelope(): string {
 }
 
 // ---------------------------------------------------------------------------
+// ProtocolConstants.g.cs (protocol v1, app-independent, vendored into Runtime)
+// ---------------------------------------------------------------------------
+
+/**
+ * Protocol constants the C# runtime consumes, projected from the single
+ * source in codegen/core/src/ir.ts (docs/proposals/rule-parameters-as-data.md).
+ * Lives in SqliteHost.Runtime (not Abstractions) so the built-in list can be
+ * stripped under the SQLITEHOST_SLIM define — the inline-function-name
+ * collision check that uses it is itself SLIM-stripped.
+ */
+export function emitProtocolConstants(): string {
+  const lines: string[] = [
+    HEADER,
+    "",
+    "using System;",
+    "using System.Collections.Generic;",
+    "",
+    "namespace SqliteHost",
+    "{",
+    "    /// <summary>",
+    "    /// Protocol constants projected from codegen/core/src/ir.ts",
+    "    /// (docs/proposals/rule-parameters-as-data.md). Do not edit by hand —",
+    "    /// regenerate via the C# emitter; the cross-language golden pins this.",
+    "    /// </summary>",
+    "    internal static class ProtocolConstants",
+    "    {",
+    "        /// <summary>",
+    "        /// Reserved initial queue status (ir.ts PENDING_STATUS). The queue",
+    "        /// DDL defaults new rows to this literal and the runtime drain",
+    "        /// selects rows with this status; a doneValue equal to it would",
+    "        /// leave drained rows selectable, so it is rejected at registration.",
+    "        /// </summary>",
+    `        internal const string PendingStatus = ${csharpString(PENDING_STATUS)};`,
+    "",
+    "#if !SQLITEHOST_SLIM",
+    "        /// <summary>",
+    "        /// SQLite built-in function names an inline function name must not",
+    "        /// collide with (ir.ts SQLITE_BUILTIN_FUNCTIONS). SQLite resolves",
+    "        /// function names case-insensitively, so membership ignores case.",
+    "        /// </summary>",
+    "        internal static readonly HashSet<string> SqliteBuiltinFunctions =",
+    "            new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
+    "            {",
+  ];
+  SQLITE_BUILTIN_FUNCTIONS.forEach((name, index) => {
+    const comma = index === SQLITE_BUILTIN_FUNCTIONS.length - 1 ? "" : ",";
+    lines.push(`                ${csharpString(name)}${comma}`);
+  });
+  lines.push(
+    "            };",
+    "#endif",
+    "    }",
+    "}",
+    "",
+  );
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -923,6 +985,7 @@ export function emitCSharp(
     { path: DEFINITION_FILE, contents: emitHostDefinition(ir, ns) },
     { path: SCHEMA_FILE, contents: emitSchemaSql(ir, ns) },
     { path: ENVELOPE_FILE, contents: emitScriptEnvelope() },
+    { path: PROTOCOL_CONSTANTS_FILE, contents: emitProtocolConstants() },
   );
   return files;
 }

@@ -125,7 +125,7 @@ namespace SqliteHost
                 + "    " + columns.QueueId + " INTEGER PRIMARY KEY AUTOINCREMENT,\n"
                 + "    " + columns.CallId + " TEXT NOT NULL UNIQUE,\n"
                 + "    " + columns.Method + " TEXT NOT NULL,\n"
-                + "    " + columns.Status + " TEXT NOT NULL DEFAULT 'pending'\n"
+                + "    " + columns.Status + " TEXT NOT NULL DEFAULT '" + ProtocolConstants.PendingStatus + "'\n"
                 + ");";
         }
 

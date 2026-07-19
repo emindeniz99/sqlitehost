@@ -61,6 +61,7 @@ const csharpGoldens = {
   "GeneratedHostDefinition.g.cs": "csharp/SqliteHost.Generated.Sample/GeneratedHostDefinition.g.cs",
   "GeneratedSchemaSql.g.cs": "csharp/SqliteHost.Generated.Sample/GeneratedSchemaSql.g.cs",
   "envelope/ScriptEnvelope.g.cs": "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+  "runtime/ProtocolConstants.g.cs": "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
 };
 const csharpFiles = csharpEmitter.emitCSharp(compiled.ir);
 check("csharp emitter: emits exactly the pinned file set", () => {
@@ -86,6 +87,7 @@ const csharpProfileGoldens = [
       "GeneratedHostDefinition.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/GeneratedHostDefinition.g.cs",
       "GeneratedSchemaSql.g.cs": "csharp/SqliteHost.Generated.Sample.Compact/GeneratedSchemaSql.g.cs",
       "envelope/ScriptEnvelope.g.cs": "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+      "runtime/ProtocolConstants.g.cs": "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
     },
   },
   {
@@ -97,6 +99,7 @@ const csharpProfileGoldens = [
       "GeneratedHostDefinition.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedHostDefinition.g.cs",
       "GeneratedSchemaSql.g.cs": "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedSchemaSql.g.cs",
       "envelope/ScriptEnvelope.g.cs": "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+      "runtime/ProtocolConstants.g.cs": "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
     },
   },
 ];
@@ -118,12 +121,14 @@ const javaMain = "java/sqlite-host-model/src/main/java";
 const javaTest = "java/sqlite-host-model/src/test/java";
 const envelopeDir = javaEmitter.ENVELOPE_PACKAGE.split(".").join("/");
 const generatedDir = javaEmitter.generatedPackageName(compiled.ir).split(".").join("/");
+const protocolFile = javaEmitter.PROTOCOL_FILE; // host-independent, main tree
 const javaFiles = javaEmitter.emitJava(compiled.ir);
 assert.ok(javaFiles.length > 0, "java emitter emitted nothing");
 for (const file of javaFiles) {
-  const base = file.path.startsWith(envelopeDir + "/") ? javaMain : javaTest;
+  const inMainTree = file.path.startsWith(envelopeDir + "/") || file.path === protocolFile;
+  const base = inMainTree ? javaMain : javaTest;
   assert.ok(
-    file.path.startsWith(envelopeDir + "/") || file.path.startsWith(generatedDir + "/"),
+    inMainTree || file.path.startsWith(generatedDir + "/"),
     `unexpected java emit path ${file.path}`,
   );
   check(`java emitter: ${file.path} byte-identical`, () => {

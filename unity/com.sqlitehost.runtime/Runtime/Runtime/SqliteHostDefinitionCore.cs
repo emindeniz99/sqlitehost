@@ -139,7 +139,7 @@ namespace SqliteHost
                     continue;
                 }
                 string functionName = spec.InlineFunction.FunctionName;
-                if (SqliteBuiltinFunctions.Contains(functionName))
+                if (ProtocolConstants.SqliteBuiltinFunctions.Contains(functionName))
                 {
                     throw new ArgumentException(
                         "Inline function name '" + functionName + "' of method '" + spec.MethodName
@@ -354,7 +354,7 @@ namespace SqliteHost
             RequireNonEmpty(columns.ItemIndex, "ItemIndex");
             RequireNonEmpty(columns.Status, "Status");
             RequireNonEmpty(columns.DoneValue, "DoneValue");
-            if (string.Equals(columns.DoneValue, "pending", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(columns.DoneValue, ProtocolConstants.PendingStatus, StringComparison.OrdinalIgnoreCase))
             {
                 // 'pending' is the reserved queued-status literal: the queue
                 // DDL defaults status to 'pending' (SchemaGenerator) and the
@@ -464,55 +464,6 @@ namespace SqliteHost
 #endif
         }
 #if !SQLITEHOST_SLIM
-
-        /// <summary>
-        /// SQLite built-in scalar/aggregate function names an inline
-        /// function name must not collide with (docs/naming.md). Mirrors
-        /// SQLITE_BUILTIN_FUNCTIONS in codegen/core/src/validate.ts;
-        /// SQLite resolves function names case-insensitively, so
-        /// membership ignores case.
-        /// </summary>
-        private static readonly HashSet<string> SqliteBuiltinFunctions =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "abs",
-                "coalesce",
-                "count",
-                "sum",
-                "min",
-                "max",
-                "length",
-                "lower",
-                "upper",
-                "printf",
-                "random",
-                "replace",
-                "round",
-                "substr",
-                "trim",
-                "date",
-                "time",
-                "datetime",
-                "ifnull",
-                "nullif",
-                "instr",
-                "hex",
-                "quote",
-                "total",
-                "group_concat",
-                "typeof",
-                "unicode",
-                "char",
-                "likelihood",
-                "likely",
-                "unlikely",
-                "last_insert_rowid",
-                "changes",
-                "sqlite_version",
-                "glob",
-                "like",
-                "zeroblob"
-            };
 
         /// <summary>
         /// Hand-rolled match of the TypeSpec METHOD_NAME regex

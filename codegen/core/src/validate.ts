@@ -38,6 +38,7 @@ import {
   namedValueTableColumns,
   PENDING_STATUS,
   queueTableColumns,
+  SQLITE_BUILTIN_FUNCTIONS,
 } from "./ir.js";
 import {
   deriveCallTable,
@@ -61,49 +62,11 @@ const SUPPORTED_SCALARS: Record<string, ScalarTypeIr> = {
 };
 
 /**
- * SQLite built-in scalar/aggregate function names an inline function
- * name must not collide with (docs/naming.md). Function names are
- * case-insensitive in SQLite, so collision checks compare lowercased.
+ * Lowercased lookup set over the single-sourced SQLite built-in function
+ * names (ir.ts SQLITE_BUILTIN_FUNCTIONS). Function names resolve
+ * case-insensitively, so inline-function-name collisions compare lowercased.
  */
-export const SQLITE_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
-  "abs",
-  "coalesce",
-  "count",
-  "sum",
-  "min",
-  "max",
-  "length",
-  "lower",
-  "upper",
-  "printf",
-  "random",
-  "replace",
-  "round",
-  "substr",
-  "trim",
-  "date",
-  "time",
-  "datetime",
-  "ifnull",
-  "nullif",
-  "instr",
-  "hex",
-  "quote",
-  "total",
-  "group_concat",
-  "typeof",
-  "unicode",
-  "char",
-  "likelihood",
-  "likely",
-  "unlikely",
-  "last_insert_rowid",
-  "changes",
-  "sqlite_version",
-  "glob",
-  "like",
-  "zeroblob",
-]);
+const SQLITE_BUILTIN_FUNCTION_SET: ReadonlySet<string> = new Set(SQLITE_BUILTIN_FUNCTIONS);
 
 /** Map a std scalar to the IR scalar type; undefined when unsupported. */
 export function mapSupportedScalar(
@@ -422,7 +385,7 @@ export function validateHostLibraryInterface(
     if (tableNames.has(lower)) {
       error(ctx, "function-name-collision", { name }, target);
     }
-    if (SQLITE_BUILTIN_FUNCTIONS.has(lower)) {
+    if (SQLITE_BUILTIN_FUNCTION_SET.has(lower)) {
       error(ctx, "builtin-function-collision", { name }, target);
     }
   }

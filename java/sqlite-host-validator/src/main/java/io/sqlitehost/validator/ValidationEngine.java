@@ -1,5 +1,6 @@
 package io.sqlitehost.validator;
 
+import io.sqlitehost.model.Protocol;
 import io.sqlitehost.model.envelope.BindingValue;
 import io.sqlitehost.model.envelope.RuntimeInput;
 import io.sqlitehost.model.envelope.Script;
@@ -455,28 +456,16 @@ public final class ValidationEngine {
     }
 
     private static boolean compatible(ColumnType column, BindingValue.Type type) {
+        // A null binding is accepted iff the column is optional — orthogonal
+        // to the per-type table. The type→accepted-types matrix itself is
+        // single-sourced in ir.ts and projected into Protocol.BINDING_TYPE_COMPAT
+        // (docs/proposals/rule-parameters-as-data.md): int64 widens from int32,
+        // float64 from float32, integers never coerce into float columns.
         if (type == BindingValue.Type.NULL) {
             return column.optional();
         }
-        switch (column.scalarType()) {
-            case STRING:
-                return type == BindingValue.Type.TEXT;
-            case BYTES:
-                return type == BindingValue.Type.BLOB;
-            case BOOLEAN:
-                return type == BindingValue.Type.BOOL;
-            case INT32:
-                return type == BindingValue.Type.INT32;
-            case INT64:
-                return type == BindingValue.Type.INT32 || type == BindingValue.Type.INT64;
-            case FLOAT32:
-                // Integer bindings do NOT coerce into float columns.
-                return type == BindingValue.Type.FLOAT32;
-            case FLOAT64:
-                return type == BindingValue.Type.FLOAT64 || type == BindingValue.Type.FLOAT32;
-            default:
-                return false;
-        }
+        Set<String> accepted = Protocol.BINDING_TYPE_COMPAT.get(column.scalarType().jsonName());
+        return accepted != null && accepted.contains(type.jsonName());
     }
 
     // ---------------------------------------------------------------

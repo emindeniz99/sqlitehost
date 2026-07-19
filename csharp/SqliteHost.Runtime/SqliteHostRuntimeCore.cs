@@ -620,7 +620,7 @@ namespace SqliteHost
                 pending = connection.QueryRows(
                     "SELECT " + columns.QueueId + ", " + columns.CallId + ", " + columns.Method
                     + " FROM " + _hostDefinition.Naming.QueueTable
-                    + " WHERE " + columns.Status + " = 'pending' ORDER BY " + columns.QueueId,
+                    + " WHERE " + columns.Status + " = '" + ProtocolConstants.PendingStatus + "' ORDER BY " + columns.QueueId,
                     RuntimeSql.NoBindings,
                     delegate(ISqliteHostRow row)
                     {

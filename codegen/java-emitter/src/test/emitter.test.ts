@@ -9,7 +9,9 @@ import {
   ENVELOPE_PACKAGE,
   emitEnvelopeModel,
   emitJava,
+  emitJavaProtocolConstants,
   generatedPackageName,
+  PROTOCOL_FILE,
 } from "../emit.js";
 
 const packageRoot = resolve(fileURLToPath(import.meta.url), "../../..");
@@ -61,10 +63,20 @@ test("every emitted file maps to exactly one committed golden", () => {
   for (const file of emitJava(ir)) {
     assert.ok(
       file.path.startsWith(`${envelopeDir}/`) ||
-        file.path.startsWith(`${generatedDir}/`),
+        file.path.startsWith(`${generatedDir}/`) ||
+        file.path === PROTOCOL_FILE,
       `unexpected emit path: ${file.path}`,
     );
   }
+});
+
+test("protocol constants file is byte-identical to the committed source", () => {
+  // Host-independent, projected from ir.ts (single source), lives in the
+  // main tree (io.sqlitehost.model).
+  const file = emitJavaProtocolConstants();
+  assert.equal(file.path, PROTOCOL_FILE);
+  const golden = readFileSync(join(mainRoot, file.path), "utf8");
+  assert.equal(file.contents, golden, `bytes differ for ${file.path}`);
 });
 
 test("emitting twice from independently parsed manifests is deterministic", () => {

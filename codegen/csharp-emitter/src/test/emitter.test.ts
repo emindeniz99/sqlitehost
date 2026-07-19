@@ -40,13 +40,15 @@ const goldenByEmitPath: Record<string, string> = {
     "csharp/SqliteHost.Generated.Sample/GeneratedSchemaSql.g.cs",
   "envelope/ScriptEnvelope.g.cs":
     "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+  "runtime/ProtocolConstants.g.cs":
+    "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
 };
 
 function sampleIr(): HostLibraryIr {
   return parseManifest(readFileSync(manifestPath, "utf8"));
 }
 
-test("emitCSharp emits exactly the six expected files", () => {
+test("emitCSharp emits exactly the seven expected files", () => {
   const files = emitCSharp(sampleIr());
   assert.deepEqual(
     files.map((f) => f.path),
@@ -122,6 +124,8 @@ const compactGoldenByEmitPath: Record<string, string> = {
     "csharp/SqliteHost.Generated.Sample.Compact/GeneratedSchemaSql.g.cs",
   "envelope/ScriptEnvelope.g.cs":
     "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+  "runtime/ProtocolConstants.g.cs":
+    "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
 };
 
 const ultraOptions = {
@@ -140,6 +144,8 @@ const ultraGoldenByEmitPath: Record<string, string> = {
     "csharp/SqliteHost.Generated.Sample.Ultra/GeneratedSchemaSql.g.cs",
   "envelope/ScriptEnvelope.g.cs":
     "csharp/SqliteHost.Abstractions/ScriptEnvelope.g.cs",
+  "runtime/ProtocolConstants.g.cs":
+    "csharp/SqliteHost.Runtime/ProtocolConstants.g.cs",
 };
 
 test("explicit classic profile emits the same bytes as the default options", () => {
@@ -149,7 +155,7 @@ test("explicit classic profile emits the same bytes as the default options", () 
   );
 });
 
-test("compact profile emits exactly the six expected files", () => {
+test("compact profile emits exactly the seven expected files", () => {
   const files = emitCSharp(sampleIr(), compactOptions);
   assert.deepEqual(
     files.map((f) => f.path),

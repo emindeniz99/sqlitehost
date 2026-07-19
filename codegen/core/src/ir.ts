@@ -225,6 +225,84 @@ export const PENDING_STATUS = "pending";
 export const CONTROL_ACTION_HALT = "halt";
 export const CONTROL_ACTION_FAIL = "fail";
 
+/**
+ * SQLite built-in scalar/aggregate function names an inline function name
+ * must not collide with (docs/naming.md). SQLite resolves function names
+ * case-insensitively, so collision checks compare lowercased. Single-sourced
+ * here and projected into each language's generated protocol constants
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const SQLITE_BUILTIN_FUNCTIONS: readonly string[] = [
+  "abs",
+  "coalesce",
+  "count",
+  "sum",
+  "min",
+  "max",
+  "length",
+  "lower",
+  "upper",
+  "printf",
+  "random",
+  "replace",
+  "round",
+  "substr",
+  "trim",
+  "date",
+  "time",
+  "datetime",
+  "ifnull",
+  "nullif",
+  "instr",
+  "hex",
+  "quote",
+  "total",
+  "group_concat",
+  "typeof",
+  "unicode",
+  "char",
+  "likelihood",
+  "likely",
+  "unlikely",
+  "last_insert_rowid",
+  "changes",
+  "sqlite_version",
+  "glob",
+  "like",
+  "zeroblob",
+];
+
+/**
+ * Binding-type compatibility: for each scalar column type, the envelope
+ * binding value types (wire names) that may feed it. int64 widens from
+ * int32; float64 widens from float32; integers never coerce into float
+ * columns (docs/validation.md). Orthogonal to this table, a `null` binding
+ * is accepted iff the column is optional — that optionality rule stays
+ * inline in each consumer. Single-sourced here; consumed by the Java
+ * validator (via generated Protocol.java) and the TS lint (directly).
+ */
+export const BINDING_TYPE_COMPAT: Record<ScalarTypeIr, readonly string[]> = {
+  int32: ["int32"],
+  int64: ["int32", "int64"],
+  boolean: ["bool"],
+  string: ["text"],
+  bytes: ["blob"],
+  float32: ["float32"],
+  float64: ["float32", "float64"],
+};
+
+/**
+ * Protocol identifier shape patterns (docs/naming.md). These use only
+ * anchors and simple character classes — the common subset of JS, Java,
+ * and .NET regex — so the pattern string is portable. Single-sourced here
+ * and projected per language; the C# runtime deliberately ships a
+ * hand-rolled char-scan instead of System.Text.RegularExpressions
+ * (netstandard2.0/Unity size) and only tests equivalence against these.
+ */
+export const IDENTIFIER_PATTERN = "^[A-Za-z_][A-Za-z0-9_]*$";
+export const METHOD_NAME_PATTERN = "^[A-Za-z][A-Za-z0-9_]*$";
+export const SQL_NAME_PATTERN = "^[a-z][a-z0-9_]*$";
+
 /** Build the column list of each runtime-managed table from the columns config. */
 export function queueTableColumns(c: ColumnsIr): string[] {
   return [c.queueId, c.callId, c.method, c.status];

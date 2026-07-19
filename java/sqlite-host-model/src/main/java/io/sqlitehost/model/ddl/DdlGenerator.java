@@ -1,5 +1,6 @@
 package io.sqlitehost.model.ddl;
 
+import io.sqlitehost.model.Protocol;
 import io.sqlitehost.model.manifest.ListField;
 import io.sqlitehost.model.manifest.Manifest;
 import io.sqlitehost.model.manifest.ManifestColumns;
@@ -55,7 +56,7 @@ public final class DdlGenerator {
                 "    " + columns.queueId() + " INTEGER PRIMARY KEY AUTOINCREMENT,",
                 "    " + columns.callId() + " TEXT NOT NULL UNIQUE,",
                 "    " + columns.method() + " TEXT NOT NULL,",
-                "    " + columns.status() + " TEXT NOT NULL DEFAULT 'pending'",
+                "    " + columns.status() + " TEXT NOT NULL DEFAULT '" + Protocol.PENDING_STATUS + "'",
                 ");");
     }
 
