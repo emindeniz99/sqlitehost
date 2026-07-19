@@ -115,6 +115,44 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void EmptyInputListItemShape_ThrowsAtBuildTime()
+        {
+            // Mirrors TypeSpec's empty-list-item diagnostic: a zero-field
+            // item shape would make the runtime build "SELECT  FROM child"
+            // for every queued call — a guaranteed FailedSql far from the
+            // code that authored the spec.
+            var spec = HostMethod
+                .For<object, KeyInput, ValueResult>("getValue")
+                .Inputs(i => i
+                    .Text("key", (x, v) => x.Key = v)
+                    .List<PairItem>("pairs", (x, v) => x.Pairs = v, item => { }))
+                .Results(r => r.Long("value", x => x.Value))
+                .Handler((h, input) => new ValueResult())
+                .Build();
+
+            var ex = Assert.Throws<ArgumentException>(() => Define(spec));
+            Assert.Contains("'pairs'", ex.Message);
+            Assert.Contains("at least one item field", ex.Message);
+        }
+
+        [Fact]
+        public void EmptyResultListItemShape_ThrowsAtBuildTime()
+        {
+            var spec = HostMethod
+                .For<object, KeyInput, ValueResult>("getValue")
+                .Inputs(i => i.Text("key", (x, v) => x.Key = v))
+                .Results(r => r
+                    .Long("value", x => x.Value)
+                    .List<PairItem>("pairs", x => x.Pairs, item => { }))
+                .Handler((h, input) => new ValueResult())
+                .Build();
+
+            var ex = Assert.Throws<ArgumentException>(() => Define(spec));
+            Assert.Contains("'pairs'", ex.Message);
+            Assert.Contains("at least one item field", ex.Message);
+        }
+
+        [Fact]
         public void SameSqlNameOnInputAndResultSides_IsAllowed()
         {
             // Different tables: the rule is per-shape, not global (TypeSpec

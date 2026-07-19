@@ -73,6 +73,7 @@ namespace SqliteHost
             }
             ValidateWorkspaceTableNames(naming, _specs);
             ValidateDerivedTableNames(naming, _specs);
+            ValidateListItemShapes(_specs);
             ValidateColumnNames(naming, columns, _specs);
             ValidateFieldSqlNames(_specs);
             ValidateInlineFunctionNames(naming, _specs);
@@ -268,6 +269,45 @@ namespace SqliteHost
             }
 #endif
         }
+
+        /// <summary>
+        /// List item shapes: every input/result list field must declare at
+        /// least one item field — a zero-field item shape would produce
+        /// "SELECT  FROM"/empty-projection SQL for every queued call
+        /// (mirrors the TypeSpec empty-list-item diagnostic). Fails loud at
+        /// definition build time.
+        /// </summary>
+        private static void ValidateListItemShapes(List<ErasedHostMethodSpec> specs)
+        {
+#if !SQLITEHOST_SLIM
+            foreach (ErasedHostMethodSpec spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                foreach (SchemaListFieldModel listField in model.InputListFields)
+                {
+                    RequireItemFields(model.MethodName, "Input", listField);
+                }
+                foreach (SchemaListFieldModel listField in model.ResultListFields)
+                {
+                    RequireItemFields(model.MethodName, "Result", listField);
+                }
+            }
+#endif
+        }
+
+#if !SQLITEHOST_SLIM
+        private static void RequireItemFields(
+            string methodName, string side, SchemaListFieldModel listField)
+        {
+            if (listField.ItemFields.Count == 0)
+            {
+                throw new ArgumentException(
+                    side + " list field '" + listField.SqlName + "' of method '" + methodName
+                    + "' must declare at least one item field.",
+                    "methods");
+            }
+        }
+#endif
 
         /// <summary>
         /// Shared column names and the done literal (docs/naming.md):
