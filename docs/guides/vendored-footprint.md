@@ -84,11 +84,13 @@ UPM package's `SqliteHost.asmdef`) by `tests/vendor-trim` in the full gate
 (`tests/end-to-end/run-all.sh`), so the delete list stays verified — **0
 warnings, 0 errors** — as the runtime evolves, not asserted once.
 
-To also drop the optional validation, define `SQLITEHOST_SLIM` (Unity:
-Scripting Define Symbols) — it compiles out the registration/binding
-checks. `SqlParameterScanner.cs` (173 lines) is validation-only and can be
-deleted outright under SLIM. See `docs/compatibility.md` ("App size") for
-exactly what SLIM removes.
+To also drop the optional validation, either define `SQLITEHOST_SLIM`
+(Unity: Scripting Define Symbols) or pass `--slim` to the tool:
+`node unity/vendor.mjs --profile ultra --slim --out <dir>`. `--slim` removes
+every `#if !SQLITEHOST_SLIM` block and the validation-only
+`SqlParameterScanner.cs` from the copied source, so the result compiles with
+no define set — an ultra `--slim` tree is ~4.9k lines. See
+`docs/compatibility.md` ("App size") for exactly what SLIM removes.
 
 **Trade-off:** deleting a profile or defining SLIM removes defense-in-depth
 that catches malformed method definitions and backend/client contract skew

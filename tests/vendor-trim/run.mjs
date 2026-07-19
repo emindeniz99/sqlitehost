@@ -13,6 +13,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROFILES, PROFILE_FILES, excludedRelPaths, vendor } from "../../unity/vendor.mjs";
 
+// Walk .cs files under a dir, returning [relPath, content] pairs.
+function csFiles(dir, base = dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...csFiles(full, base));
+    else if (entry.name.endsWith(".cs")) out.push([path.relative(base, full), fs.readFileSync(full, "utf8")]);
+  }
+  return out;
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.join(here, "..", "..", "unity", "com.sqlitehost.runtime");
 
@@ -45,37 +56,55 @@ const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
 
 const dotnet = findDotnet();
 let failures = 0;
+let compiled = 0;
 
 for (const profile of PROFILES) {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), `vendor-${profile}-`));
-  try {
-    const { copied } = vendor({ profile, outDir, packageDir, includeSamples: false });
+  for (const slim of [false, true]) {
+    const label = `${profile}${slim ? " (slim)" : ""}`;
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), `vendor-${profile}-`));
+    try {
+      const { copied } = vendor({ profile, outDir, packageDir, includeSamples: false, slim });
 
-    // The trim must drop every OTHER profile's files and keep this one's.
-    for (const rel of excludedRelPaths(profile)) {
-      if (fs.existsSync(path.join(outDir, rel))) {
-        console.error(`FAIL ${profile}: expected ${rel} to be trimmed but it is present`);
-        failures++;
+      // The trim must drop every OTHER profile's files and keep this one's.
+      for (const rel of excludedRelPaths(profile)) {
+        if (fs.existsSync(path.join(outDir, rel))) {
+          console.error(`FAIL ${label}: expected ${rel} to be trimmed but it is present`);
+          failures++;
+        }
       }
-    }
-    for (const file of PROFILE_FILES[profile]) {
-      if (!fs.existsSync(path.join(outDir, "Runtime", "Runtime", file))) {
-        console.error(`FAIL ${profile}: kept-profile file ${file} is missing from the trim`);
-        failures++;
+      for (const file of PROFILE_FILES[profile]) {
+        if (!fs.existsSync(path.join(outDir, "Runtime", "Runtime", file))) {
+          console.error(`FAIL ${label}: kept-profile file ${file} is missing`);
+          failures++;
+        }
       }
-    }
+      if (slim) {
+        // No validation source and no residual SLIM guards may survive.
+        if (fs.existsSync(path.join(outDir, "Runtime", "Runtime", "SqlParameterScanner.cs"))) {
+          console.error(`FAIL ${label}: SqlParameterScanner.cs must be dropped under --slim`);
+          failures++;
+        }
+        for (const [rel, content] of csFiles(outDir)) {
+          if (content.includes("#if !SQLITEHOST_SLIM")) {
+            console.error(`FAIL ${label}: residual "#if !SQLITEHOST_SLIM" in ${rel}`);
+            failures++;
+          }
+        }
+      }
 
-    fs.writeFileSync(path.join(outDir, "trim.csproj"), CSPROJ);
-    execFileSync(dotnet, ["build", path.join(outDir, "trim.csproj"), "-v", "q", "-nologo"], {
-      stdio: "pipe",
-    });
-    console.log(`ok  ${profile}-only trim compiles as one assembly (${copied} files)`);
-  } catch (err) {
-    failures++;
-    const detail = err.stdout ? err.stdout.toString() : err.message;
-    console.error(`FAIL ${profile}: ${detail}`);
-  } finally {
-    fs.rmSync(outDir, { recursive: true, force: true });
+      fs.writeFileSync(path.join(outDir, "trim.csproj"), CSPROJ);
+      execFileSync(dotnet, ["build", path.join(outDir, "trim.csproj"), "-v", "q", "-nologo"], {
+        stdio: "pipe",
+      });
+      compiled++;
+      console.log(`ok  ${label} trim compiles as one assembly (${copied} files)`);
+    } catch (err) {
+      failures++;
+      const detail = err.stdout ? err.stdout.toString() : err.message;
+      console.error(`FAIL ${label}: ${detail}`);
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -83,4 +112,4 @@ if (failures > 0) {
   console.error(`\nVENDOR-TRIM FAILED (${failures} problem(s))`);
   process.exit(1);
 }
-console.log(`\nVENDOR-TRIM GREEN (${PROFILES.length} profiles trimmed + compiled)`);
+console.log(`\nVENDOR-TRIM GREEN (${compiled} profile×mode trims compiled)`);
