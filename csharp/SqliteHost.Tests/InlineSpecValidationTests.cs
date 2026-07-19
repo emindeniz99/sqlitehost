@@ -233,6 +233,46 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void InlineFunctionName_CollidingWithASqliteBuiltin_FailsLoud()
+        {
+            // Registering an application-defined function replaces the
+            // SQLite built-in with the same name and arity on the
+            // workspace connection, so scripts calling max(...) would
+            // silently run host code. Fail loud at definition build time,
+            // mirroring the TypeSpec builtin-function-collision diagnostic
+            // (codegen/core/src/validate.ts); the script lint deliberately
+            // leaves un-prefixed built-in calls unlinted as "SQLite's
+            // business" and relies on this guard.
+            var ex = Assert.Throws<ArgumentException>(() => SqliteHostDefinition
+                .ForHandlers<object>()
+                .Methods(new[] { InlineGetValueSpec("max") }));
+            Assert.Contains("max", ex.Message);
+            Assert.Contains("built-in", ex.Message);
+        }
+
+        [Fact]
+        public void InlineFunctionName_CollidingWithASqliteBuiltin_IsCaseInsensitive()
+        {
+            // SQLite resolves function names case-insensitively, so "MAX"
+            // shadows max() just the same.
+            var ex = Assert.Throws<ArgumentException>(() => SqliteHostDefinition
+                .ForHandlers<object>()
+                .Methods(new[] { InlineGetValueSpec("MAX") }));
+            Assert.Contains("built-in", ex.Message);
+        }
+
+        [Fact]
+        public void InlineFunctionName_ContainingABuiltinName_BuildsFine()
+        {
+            // The guard is exact-name membership, not substring: the fn_
+            // prefix keeps its collision-free guarantee.
+            var definition = SqliteHostDefinition
+                .ForHandlers<object>()
+                .Methods(new[] { InlineGetValueSpec("fn_max") });
+            Assert.NotNull(definition);
+        }
+
+        [Fact]
         public void DuplicateInlineFunctionNames_AcrossMethods_FailLoud()
         {
             var other = HostMethod

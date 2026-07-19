@@ -72,7 +72,9 @@ namespace SqliteHost
                 _specs.Add(spec);
             }
             ValidateWorkspaceTableNames(naming, _specs);
+            ValidateDerivedTableNames(naming, _specs);
             ValidateColumnNames(naming, columns, _specs);
+            ValidateFieldSqlNames(_specs);
             ValidateInlineFunctionNames(naming, _specs);
             HasInlineFunctions = ComputeHasInlineFunctions(_specs);
         }
@@ -92,8 +94,9 @@ namespace SqliteHost
         /// <summary>
         /// Inline function naming (docs/naming.md): the FunctionPrefix must
         /// be non-empty, and inline function names must be mutually
-        /// distinct and must not collide with any workspace or derived
-        /// call/result/child table name. Fails loud at definition build
+        /// distinct, must not collide with any workspace or derived
+        /// call/result/child table name, and must not collide with a
+        /// SQLite built-in function name. Fails loud at definition build
         /// time.
         /// </summary>
         private static void ValidateInlineFunctionNames(
@@ -134,6 +137,13 @@ namespace SqliteHost
                     continue;
                 }
                 string functionName = spec.InlineFunction.FunctionName;
+                if (SqliteBuiltinFunctions.Contains(functionName))
+                {
+                    throw new ArgumentException(
+                        "Inline function name '" + functionName + "' of method '" + spec.MethodName
+                        + "' collides with a SQLite built-in function name.",
+                        "methods");
+                }
                 if (tableNames.Contains(functionName))
                 {
                     throw new ArgumentException(
@@ -210,6 +220,50 @@ namespace SqliteHost
                             + "' collides with a derived table name of method '" + model.MethodName + "'.",
                             nameof(naming));
                     }
+                }
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Derived table names (docs/naming.md): every method's derived
+        /// call/result/child table name must be claimed by exactly one
+        /// method, mirroring the canonical TypeSpec duplicate-table-name
+        /// diagnostic (codegen/core/src/validate.ts). Fails loud at
+        /// definition build time.
+        /// </summary>
+        private static void ValidateDerivedTableNames(
+            SqliteHostNaming naming,
+            List<ErasedHostMethodSpec> specs)
+        {
+#if !SQLITEHOST_SLIM
+            var claimedTables = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (ErasedHostMethodSpec spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                var derivedTables = new List<string>();
+                derivedTables.Add(NamingDerivation.CallTable(naming, model.MethodName));
+                derivedTables.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                foreach (SchemaListFieldModel listField in model.InputListFields)
+                {
+                    derivedTables.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                }
+                foreach (SchemaListFieldModel listField in model.ResultListFields)
+                {
+                    derivedTables.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                }
+                foreach (string derivedTable in derivedTables)
+                {
+                    string claimedBy;
+                    if (claimedTables.TryGetValue(derivedTable, out claimedBy))
+                    {
+                        throw new ArgumentException(
+                            "Derived table name '" + derivedTable + "' of method '" + model.MethodName
+                            + "' is already used by method '" + claimedBy
+                            + "'; method or list field names collide after naming derivation.",
+                            "methods");
+                    }
+                    claimedTables.Add(derivedTable, model.MethodName);
                 }
             }
 #endif
@@ -297,7 +351,78 @@ namespace SqliteHost
             }
 #endif
         }
+
+        /// <summary>
+        /// Field SQL names (docs/naming.md): SQL names must be mutually
+        /// distinct within each input/result shape (scalar and list
+        /// fields share the shape's namespace) and within each list item
+        /// shape, mirroring the canonical TypeSpec duplicate-sql-name
+        /// diagnostic (codegen/core/src/validate.ts). Fails loud at
+        /// definition build time.
+        /// </summary>
+        private static void ValidateFieldSqlNames(List<ErasedHostMethodSpec> specs)
+        {
 #if !SQLITEHOST_SLIM
+            foreach (ErasedHostMethodSpec spec in specs)
+            {
+                SchemaMethodModel model = spec.SchemaModel;
+                RequireDistinctShapeSqlNames(
+                    "input", model.MethodName, model.InputFields, model.InputListFields);
+                RequireDistinctShapeSqlNames(
+                    "result", model.MethodName, model.ResultFields, model.ResultListFields);
+            }
+#endif
+        }
+#if !SQLITEHOST_SLIM
+
+        /// <summary>
+        /// SQLite built-in scalar/aggregate function names an inline
+        /// function name must not collide with (docs/naming.md). Mirrors
+        /// SQLITE_BUILTIN_FUNCTIONS in codegen/core/src/validate.ts;
+        /// SQLite resolves function names case-insensitively, so
+        /// membership ignores case.
+        /// </summary>
+        private static readonly HashSet<string> SqliteBuiltinFunctions =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "abs",
+                "coalesce",
+                "count",
+                "sum",
+                "min",
+                "max",
+                "length",
+                "lower",
+                "upper",
+                "printf",
+                "random",
+                "replace",
+                "round",
+                "substr",
+                "trim",
+                "date",
+                "time",
+                "datetime",
+                "ifnull",
+                "nullif",
+                "instr",
+                "hex",
+                "quote",
+                "total",
+                "group_concat",
+                "typeof",
+                "unicode",
+                "char",
+                "likelihood",
+                "likely",
+                "unlikely",
+                "last_insert_rowid",
+                "changes",
+                "sqlite_version",
+                "glob",
+                "like",
+                "zeroblob"
+            };
 
         private static void RequireNonEmpty(string value, string columnProperty)
         {
@@ -319,6 +444,46 @@ namespace SqliteHost
                     throw new ArgumentException(
                         "Column name '" + name + "' occurs more than once in the " + table + " table.",
                         "columns");
+                }
+            }
+        }
+
+        private static void RequireDistinctShapeSqlNames(
+            string shape,
+            string methodName,
+            IReadOnlyList<SchemaFieldModel> fields,
+            IReadOnlyList<SchemaListFieldModel> listFields)
+        {
+            var sqlNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (SchemaFieldModel field in fields)
+            {
+                if (!sqlNames.Add(field.SqlName))
+                {
+                    throw new ArgumentException(
+                        "SQL name '" + field.SqlName + "' occurs more than once in the "
+                        + shape + " shape of method '" + methodName + "'.",
+                        "methods");
+                }
+            }
+            foreach (SchemaListFieldModel listField in listFields)
+            {
+                if (!sqlNames.Add(listField.SqlName))
+                {
+                    throw new ArgumentException(
+                        "SQL name '" + listField.SqlName + "' occurs more than once in the "
+                        + shape + " shape of method '" + methodName + "'.",
+                        "methods");
+                }
+                var itemSqlNames = new HashSet<string>(StringComparer.Ordinal);
+                foreach (SchemaFieldModel itemField in listField.ItemFields)
+                {
+                    if (!itemSqlNames.Add(itemField.SqlName))
+                    {
+                        throw new ArgumentException(
+                            "SQL name '" + itemField.SqlName + "' occurs more than once in the item shape of list field '"
+                            + listField.SqlName + "' of method '" + methodName + "'.",
+                            "methods");
+                    }
                 }
             }
         }
