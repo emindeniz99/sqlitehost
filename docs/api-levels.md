@@ -4,6 +4,14 @@ Each generated method spec carries an API level; the host definition
 carries the library's supported API level. Payloads declare
 `requiredApiLevel`, `requiredFeatures`, `requiredMethods`.
 
+A method's apiLevel must not exceed the library's apiLevel. The runtime
+gates a payload's `requiredApiLevel` against the library level only (see
+below), so a method pinned above that level could never be reached with
+a correctly-declared payload; the frontend rejects it at compile time
+(`method-api-level-too-high`, `docs/validation.md` §1). Pinning a method
+to a level *below* the library's is valid — it predates the library's
+current level.
+
 ## Runtime behavior (clean skip)
 
 ```text

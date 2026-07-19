@@ -297,6 +297,76 @@ test("rejects duplicate sqlNames within a shape", async () => {
   assertDiagnostic(result, "duplicate-sql-name");
 });
 
+test("rejects two referenced input models sharing a simple name across namespaces", async () => {
+  // All three emitters flatten every namespace into ONE C#/Java/TS
+  // namespace/package and key DTOs by simple name, so two DISTINCT `Foo`
+  // shapes collapse/overwrite into one while the other method's generated
+  // specs reference fields the surviving DTO lacks -> uncompilable
+  // generated code (C# CS1061 from the emit dedup, Java same-path file
+  // overwrite, TS duplicate `export interface`). Only distinct
+  // declarations sharing a simple name are rejected.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "first", handler: "First" })
+        op First(input: A.Foo): Out;
+
+        @hostMethod({ name: "second", handler: "Second" })
+        op Second(input: B.Foo): Out;
+      }
+      model Out { value: int64; }
+      namespace A { model Foo { x: string; } }
+      namespace B { model Foo { y: int64; } }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-model-name");
+});
+
+test("rejects two referenced result models sharing a simple name across namespaces", async () => {
+  // Same collapse as the input case, exercised through the result DTO
+  // source: two distinct `Res` shapes flatten into one generated class.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "first", handler: "First" })
+        op First(input: In): A.Res;
+
+        @hostMethod({ name: "second", handler: "Second" })
+        op Second(input: In): B.Res;
+      }
+      model In { key: string; }
+      namespace A { model Res { x: string; } }
+      namespace B { model Res { y: int64; } }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-model-name");
+});
+
+test("rejects two list-item models sharing a simple name across namespaces", async () => {
+  // List item element models become DTOs too (itemModelName), so two
+  // distinct `Item` shapes in different namespaces collapse the same way.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "first", handler: "First" })
+        op First(input: FirstIn): Out;
+
+        @hostMethod({ name: "second", handler: "Second" })
+        op Second(input: SecondIn): Out;
+      }
+      model FirstIn { items: A.Item[]; }
+      model SecondIn { items: B.Item[]; }
+      model Out { value: int64; }
+      namespace A { model Item { x: string; } }
+      namespace B { model Item { y: int64; } }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-model-name");
+});
+
 test("rejects distinct method names that derive the same tables", async () => {
   const result = await compileSource(
     shell(`
@@ -357,6 +427,29 @@ test("rejects invalid api levels", async () => {
     `),
   );
   assertDiagnostic(result, "invalid-api-level");
+});
+
+test("rejects a method apiLevel above the library apiLevel", async () => {
+  // A method may not require a newer API level than its library: both the
+  // Java validator (ValidationEngine.checkCompatibility) and the C#
+  // runtime (SqliteHostRuntimeCore.Precheck) gate a payload's
+  // requiredApiLevel against the LIBRARY level only. So a level-2 method
+  // under a level-1 library is either dead (a correct requiredApiLevel:2
+  // payload is skipped since 2 > 1) or a gate bypass (an under-declared
+  // requiredApiLevel:1 payload runs it since 1 <= 1). The test fails if
+  // that class of nonsensical manifest is ever allowed to compile again.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", apiLevel: 2 })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "method-api-level-too-high");
 });
 
 test("reports when no @hostLibrary interface exists", async () => {
@@ -539,6 +632,45 @@ test("rejects an empty column name", async () => {
   assertDiagnostic(result, "invalid-column-name");
 });
 
+test("rejects a column name that is not a snake_case identifier", async () => {
+  // Configurable column identifiers are interpolated UNQUOTED into the
+  // generated DDL (ddl.ts queue/parent/child tables), so a hyphenated name
+  // like "call-id" yields a CREATE TABLE that fails at schema-creation time
+  // in every language runtime. The validator fails loud at compile time
+  // (docs/naming.md snake_case rule) instead of shipping a corrupt
+  // manifest; the test fails if the SQL_NAME shape guard is removed.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, callIdColumn: "call-id" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-column-name");
+});
+
+test("rejects an uppercase column name (guard covers the whole options list)", async () => {
+  // The shape guard applies to every ...Column option, not just callId: an
+  // uppercase messageColumn is not a valid snake_case SQL identifier and
+  // would emit an invalid unquoted DDL identifier.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, messageColumn: "MessageBody" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-column-name");
+});
+
 test("rejects an empty doneStatusValue", async () => {
   const result = await compileSource(
     shell(`
@@ -554,10 +686,53 @@ test("rejects an empty doneStatusValue", async () => {
   assertDiagnostic(result, "invalid-done-status-value");
 });
 
+test("rejects a doneStatusValue of the reserved 'pending' queue status", async () => {
+  // The queue defaults new rows to 'pending' (ddl.ts queue DDL) and the
+  // runtime drain selects status='pending' (SqliteHostRuntimeCore
+  // DrainPendingCalls) while marking done rows with status=doneValue, so a
+  // doneValue of 'pending' leaves drained rows selectable -> re-drain /
+  // duplicate handler execution, and the "done" mark never sticks. This
+  // test fails if the check is ever weakened back to emptiness-only.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, doneStatusValue: "pending" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "done-status-value-collision");
+});
+
 test("rejects duplicate column names within the queue table set", async () => {
   const result = await compileSource(
     shell(`
       @hostLibrary({ apiLevel: 1, methodColumn: "status" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "duplicate-column-name");
+});
+
+test("rejects column names differing only by case within a table set", async () => {
+  // SQLite resolves column names case-insensitively, so methodColumn
+  // "Status" and the default statusColumn "status" become ONE queue-table
+  // column and the CREATE TABLE would fail before any script runs. The
+  // exact-case distinctness set missed this; the test fails if the
+  // distinctness comparison is reverted to exact case. ("Status" is also
+  // not snake_case, so invalid-column-name fires too — this asserts the
+  // case-insensitive distinctness specifically.)
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, methodColumn: "Status" })
       interface Methods {
         @hostMethod({ name: "getValue", handler: "GetValue" })
         op GetValue(input: In): Out;
@@ -640,6 +815,26 @@ test("rejects a status column colliding with a derived list item result column",
       model In { key: string; }
       model Item { key: string; }
       model Out { entries: Item[]; }
+    `),
+  );
+  assertDiagnostic(result, "column-name-collision");
+});
+
+test("rejects a row-identity column colliding case-insensitively with a derived field column", async () => {
+  // A configured row-identity column that collides case-insensitively with
+  // a derived field column also breaks CREATE TABLE: statusColumn
+  // "RESULT_KEY" resolves to the same column as the derived result_key
+  // (model Out { key } -> result_key). The exact-case row-identity check
+  // missed this; the test fails if the lookup is reverted to exact case.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, statusColumn: "RESULT_KEY" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { key: string; }
     `),
   );
   assertDiagnostic(result, "column-name-collision");

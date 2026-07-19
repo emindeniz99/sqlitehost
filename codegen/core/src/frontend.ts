@@ -238,7 +238,16 @@ function buildLibraryIr(
     message: options.messageColumn ?? COLUMNS_V1.message,
   };
 
-  if (!validateHostLibraryInterface(program, iface, naming, sharedTables, columns)) {
+  if (
+    !validateHostLibraryInterface(
+      program,
+      iface,
+      naming,
+      sharedTables,
+      columns,
+      options.apiLevel,
+    )
+  ) {
     return undefined;
   }
 

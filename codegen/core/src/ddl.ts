@@ -17,6 +17,7 @@ import type {
   ScalarFieldIr,
   ScalarTypeIr,
 } from "./ir.js";
+import { PENDING_STATUS } from "./ir.js";
 
 export function sqlColumnType(scalarType: ScalarTypeIr): string {
   switch (scalarType) {
@@ -46,7 +47,7 @@ function queueTableDdl(ir: HostLibraryIr): string {
     `    ${c.queueId} INTEGER PRIMARY KEY AUTOINCREMENT,`,
     `    ${c.callId} TEXT NOT NULL UNIQUE,`,
     `    ${c.method} TEXT NOT NULL,`,
-    `    ${c.status} TEXT NOT NULL DEFAULT 'pending'`,
+    `    ${c.status} TEXT NOT NULL DEFAULT '${PENDING_STATUS}'`,
     ");",
   ].join("\n");
 }

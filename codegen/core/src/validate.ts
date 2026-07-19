@@ -4,10 +4,12 @@
  * frontend builds the IR: non-model top-level input/output, unsupported
  * scalars, nested models, nested lists, optional list fields, empty list
  * item models, unions and maps, duplicate method names, duplicate SQL
- * names per shape, duplicate derived table names, missing @hostMethod,
- * host interfaces declared outside any namespace, and invalid shared
- * table / column name configuration (docs/naming.md). Diagnostics are reported
- * with the codes declared by @sqlite-host/typespec.
+ * names per shape, duplicate derived table names, duplicate DTO simple
+ * names across namespaces, a method apiLevel above the library apiLevel,
+ * missing @hostMethod, host interfaces declared outside any namespace,
+ * and invalid shared table / column name configuration (docs/naming.md).
+ * Diagnostics are reported with the codes declared by
+ * @sqlite-host/typespec.
  */
 
 import {
@@ -27,12 +29,14 @@ import {
   getHostMethodOptions,
   getSqlName,
   reportDiagnostic,
+  SQL_NAME,
   type HostMethodOptions,
 } from "@sqlite-host/typespec";
 import type { ColumnsIr, NamingIr, ScalarTypeIr } from "./ir.js";
 import {
   controlTableColumns,
   namedValueTableColumns,
+  PENDING_STATUS,
   queueTableColumns,
 } from "./ir.js";
 import {
@@ -138,12 +142,18 @@ export interface SharedTableNames {
 }
 
 /**
- * Configurable column names: non-empty, and mutually distinct within
- * each runtime-managed table's column set (docs/naming.md). The
- * doneValue literal is only checked for non-emptiness — it is data,
- * not an identifier. Row-identity columns are checked against derived
- * field columns by the caller (validateHostLibraryInterface), once
- * every field column is known.
+ * Configurable column names: each must be a snake_case identifier
+ * ([a-z][a-z0-9_]*, the same shape @sqlName enforces) because the
+ * generated DDL interpolates it unquoted, and mutually distinct within
+ * each runtime-managed table's column set (docs/naming.md). SQLite
+ * resolves column names case-insensitively, so distinctness compares
+ * lowercased. The doneValue literal is data, not an identifier, so it is
+ * only checked for non-emptiness — except it must not equal the reserved
+ * `pending` queue status (the queue defaults new rows to 'pending' and
+ * the runtime drain selects status='pending', so a done value of
+ * 'pending' would leave drained rows selectable and re-run). Row-identity
+ * columns are checked against derived field columns by the caller
+ * (validateHostLibraryInterface), once every field column is known.
  */
 function validateColumns(
   ctx: ValidationContext,
@@ -166,12 +176,14 @@ function validateColumns(
     ["messageColumn", columns.message],
   ];
   for (const [option, column] of options) {
-    if (column.length === 0) {
-      error(ctx, "invalid-column-name", { option }, target);
+    if (!SQL_NAME.test(column)) {
+      error(ctx, "invalid-column-name", { option, column }, target);
     }
   }
   if (columns.doneValue.length === 0) {
     error(ctx, "invalid-done-status-value", {}, target);
+  } else if (columns.doneValue === PENDING_STATUS) {
+    error(ctx, "done-status-value-collision", { value: columns.doneValue }, target);
   }
 
   const checkDistinct = (table: string, set: string[]) => {
@@ -180,10 +192,11 @@ function validateColumns(
       if (column.length === 0) {
         continue; // already reported as invalid-column-name
       }
-      if (seen.has(column)) {
+      const lower = column.toLowerCase();
+      if (seen.has(lower)) {
         error(ctx, "duplicate-column-name", { column, table }, target);
       } else {
-        seen.add(column);
+        seen.add(lower);
       }
     }
   };
@@ -207,12 +220,49 @@ export function validateHostLibraryInterface(
   naming: NamingIr,
   sharedTables: SharedTableNames,
   columns: ColumnsIr,
+  libraryApiLevel: number,
 ): boolean {
   const ctx: ValidationContext = { program, ok: true };
   const methodNames = new Set<string>();
   const tableNames = new Set<string>();
   const fieldColumns = new Set<string>();
   const functionClaims: Array<[string, DiagnosticTarget]> = [];
+
+  // Every referenced input/result/list-item model becomes a DTO. The
+  // emitters flatten all namespaces into one C#/Java/TS namespace and key
+  // DTOs by simple name, so two DISTINCT models sharing a simple name
+  // would collapse into one (or overwrite) while specs reference the
+  // other shape — uncompilable generated code. Reusing the SAME model
+  // across methods is legitimate, so collisions are keyed on the
+  // fully-qualified name: only a differing FQN under one simple name is a
+  // genuine clash.
+  const modelFqns = new Map<string, string>();
+  const recordDtoName = (model: Model, target: DiagnosticTarget) => {
+    const fqn = getModelFqn(model);
+    const existing = modelFqns.get(model.name);
+    if (existing === undefined) {
+      modelFqns.set(model.name, fqn);
+    } else if (existing !== fqn) {
+      error(
+        ctx,
+        "duplicate-model-name",
+        { name: model.name, first: existing, second: fqn },
+        target,
+      );
+    }
+  };
+  const recordShapeDtos = (model: Model, target: DiagnosticTarget) => {
+    recordDtoName(model, target);
+    for (const prop of model.properties.values()) {
+      const type = prop.type;
+      if (type.kind === "Model" && isArrayModelType(program, type)) {
+        const element = type.indexer.value;
+        if (isNamedPlainModel(program, element)) {
+          recordDtoName(element, target);
+        }
+      }
+    }
+  };
 
   // The library must live inside a namespace: the emitters derive Java
   // package and C# namespace names from it, and the global namespace's
@@ -273,6 +323,24 @@ export function validateHostLibraryInterface(
       continue;
     }
 
+    // A method may not require a newer API level than its library: both
+    // the Java validator and the C# runtime gate a payload's
+    // requiredApiLevel against the LIBRARY level only, so a method above
+    // that level is either unreachable or a silent gate bypass
+    // (docs/api-levels.md).
+    if (options.apiLevel !== undefined && options.apiLevel > libraryApiLevel) {
+      error(
+        ctx,
+        "method-api-level-too-high",
+        {
+          operation: op.name,
+          methodLevel: String(options.apiLevel),
+          libraryLevel: String(libraryApiLevel),
+        },
+        op,
+      );
+    }
+
     const methodName = options.name;
     let claimTables = true;
     if (methodNames.has(methodName)) {
@@ -291,6 +359,7 @@ export function validateHostLibraryInterface(
 
     const inputModel = checkInputModel(ctx, op);
     if (inputModel !== undefined) {
+      recordShapeDtos(inputModel, op);
       const listSqlNames = validateShape(
         ctx,
         inputModel,
@@ -306,6 +375,7 @@ export function validateHostLibraryInterface(
 
     const resultModel = checkResultModel(ctx, op);
     if (resultModel !== undefined) {
+      recordShapeDtos(resultModel, op);
       const listSqlNames = validateShape(
         ctx,
         resultModel,
@@ -364,14 +434,16 @@ export function validateHostLibraryInterface(
   }
 
   // Row-identity columns (docs/naming.md) must not collide with any
-  // derived input/result field column across all methods.
+  // derived input/result field column across all methods. SQLite resolves
+  // column names case-insensitively, so both sides compare lowercased
+  // (fieldColumns already holds lowercased entries).
   const rowIdentity: Array<[string, string]> = [
     ["callIdColumn", columns.callId],
     ["itemIndexColumn", columns.itemIndex],
     ["statusColumn", columns.status],
   ];
   for (const [option, column] of rowIdentity) {
-    if (column.length > 0 && fieldColumns.has(column)) {
+    if (column.length > 0 && fieldColumns.has(column.toLowerCase())) {
       error(ctx, "column-name-collision", { option, column }, iface);
     }
   }
@@ -466,6 +538,17 @@ function analyzeInlineExposure(
   return options.functionName ?? deriveFunctionName(naming, options.name);
 }
 
+/**
+ * Fully-qualified name of a referenced model, used to distinguish a
+ * legitimately reused model (same FQN) from two distinct declarations
+ * that collapse to one DTO simple name (duplicate-model-name).
+ */
+function getModelFqn(model: Model): string {
+  return model.namespace !== undefined
+    ? `${getNamespaceFullName(model.namespace)}.${model.name}`
+    : model.name;
+}
+
 function isNamedPlainModel(program: Program, type: Type): type is Model {
   return (
     type.kind === "Model" &&
@@ -553,7 +636,7 @@ function validateShape(
       sqlNames.add(sqlName);
     }
     if (prop.type.kind === "Scalar") {
-      fieldColumns.add(deriveColumn(sqlName));
+      fieldColumns.add(deriveColumn(sqlName).toLowerCase());
     }
     if (validateField(ctx, prop, deriveColumn, fieldColumns)) {
       listFields.push([sqlName, prop]);
@@ -644,7 +727,7 @@ function validateItemModel(
     }
     const type = prop.type;
     if (type.kind === "Scalar") {
-      fieldColumns.add(deriveColumn(sqlName));
+      fieldColumns.add(deriveColumn(sqlName).toLowerCase());
       if (mapSupportedScalar(ctx.program, type) === undefined) {
         error(
           ctx,

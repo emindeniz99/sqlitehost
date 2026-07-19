@@ -16,6 +16,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`apiLevel must be a positive integer, got ${"value"}.`,
       },
     },
+    "method-api-level-too-high": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Operation "${"operation"}" declares apiLevel ${"methodLevel"} above the library apiLevel ${"libraryLevel"}; the runtime gates requiredApiLevel against the library level, so a method cannot require a higher level than its library.`,
+      },
+    },
     "invalid-min-sqlite-version": {
       severity: "error",
       messages: {
@@ -130,6 +136,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Duplicate SQL name "${"name"}" in model "${"model"}".`,
       },
     },
+    "duplicate-model-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Model name "${"name"}" is declared by more than one referenced model ("${"first"}" and "${"second"}"); DTO simple names must be unique across the library because the emitters flatten every namespace into a single C#/Java/TS namespace and key DTOs by simple name.`,
+      },
+    },
     "duplicate-table-name": {
       severity: "error",
       messages: {
@@ -157,13 +169,19 @@ export const $lib = createTypeSpecLibrary({
     "invalid-column-name": {
       severity: "error",
       messages: {
-        default: paramMessage`${"option"} must be a non-empty column name.`,
+        default: paramMessage`${"option"} "${"column"}" must be a snake_case column name ([a-z][a-z0-9_]*).`,
       },
     },
     "invalid-done-status-value": {
       severity: "error",
       messages: {
         default: "doneStatusValue must be a non-empty status literal.",
+      },
+    },
+    "done-status-value-collision": {
+      severity: "error",
+      messages: {
+        default: paramMessage`doneStatusValue "${"value"}" collides with the reserved "pending" queue status: the queue defaults new rows to 'pending' and the runtime drain selects status='pending', so drained rows would stay selectable and re-run. Pick a different value.`,
       },
     },
     "duplicate-column-name": {

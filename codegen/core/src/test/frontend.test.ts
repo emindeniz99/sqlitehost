@@ -226,18 +226,26 @@ test("naming keys are optional and default to protocol v1 conventions", async ()
   assert.equal(result.ir.methods[0].callTable, "call_get_value");
 });
 
-test("method apiLevel defaults to the library apiLevel and can be overridden", async () => {
+test("method apiLevel defaults to the library apiLevel and can be pinned lower", async () => {
+  // A method may be pinned to an EARLIER API level than its library (it
+  // existed before the library reached its current level) and otherwise
+  // defaults to the library level. The opposite direction — a method
+  // apiLevel ABOVE the library level — is rejected
+  // (method-api-level-too-high) because both the Java validator and the
+  // C# runtime gate a payload's requiredApiLevel against the LIBRARY
+  // level only, so a higher method level would be unreachable or a silent
+  // gate bypass.
   const result = await compileSource(`
     import "@sqlite-host/typespec";
     using SqliteHost;
     namespace Test;
 
-    @hostLibrary({ apiLevel: 3 })
+    @hostLibrary({ apiLevel: 5 })
     interface Methods {
       @hostMethod({ name: "first", handler: "First" })
       op First(input: In): Out;
 
-      @hostMethod({ name: "second", handler: "Second", apiLevel: 5 })
+      @hostMethod({ name: "second", handler: "Second", apiLevel: 3 })
       op Second(input: In): Out;
     }
 
@@ -245,12 +253,12 @@ test("method apiLevel defaults to the library apiLevel and can be overridden", a
     model Out { value: int64; }
   `);
   assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
-  assert.equal(result.ir.library.apiLevel, 3);
+  assert.equal(result.ir.library.apiLevel, 5);
   assert.deepEqual(
     result.ir.methods.map((m) => [m.methodName, m.apiLevel]),
     [
-      ["first", 3],
-      ["second", 5],
+      ["first", 5],
+      ["second", 3],
     ],
   );
 });
@@ -485,6 +493,64 @@ test("done status value with an embedded quote is escaped in the DDL", async () 
   assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
   const ddl = generateSchemaScript(result.ir);
   assert.match(ddl, /status TEXT NOT NULL DEFAULT 'do''ne'/);
+});
+
+test("a doneStatusValue differing only by case from 'pending' is allowed", async () => {
+  // The reserved-status collision check is exact and case-sensitive,
+  // mirroring the drain's BINARY comparison (WHERE status = 'pending'):
+  // only the lowercase literal 'pending' collides with the queue's default
+  // status, so "Pending" is a distinct status and must still produce an
+  // IR. Pins the exact-match rule and guards against over-rejecting valid
+  // done values.
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1, doneStatusValue: "Pending" })
+    interface Methods {
+      @hostMethod({ name: "getValue", handler: "GetValue" })
+      op GetValue(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.equal(result.ir.columns.doneValue, "Pending");
+});
+
+test("the same model reused across multiple methods is accepted (not a duplicate DTO name)", async () => {
+  // Only DISTINCT declarations sharing a simple name are rejected as
+  // duplicate-model-name; reusing the SAME model across methods is
+  // legitimate (the emitters' by-name DTO dedup is built for exactly this)
+  // and must still produce an IR. Keying the collision check on the
+  // fully-qualified name — not a raw simple-name count — is what preserves
+  // this; a naive count would regress real hosts.
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "first", handler: "First" })
+      op First(input: In): Out;
+
+      @hostMethod({ name: "second", handler: "Second" })
+      op Second(input: In): Out;
+    }
+
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.ok(result.ir, JSON.stringify(result.diagnostics.map((d) => d.message)));
+  assert.deepEqual(
+    result.ir.methods.map((m) => m.methodName),
+    ["first", "second"],
+  );
+  assert.equal(result.ir.methods[0].input.modelName, "In");
+  assert.equal(result.ir.methods[1].input.modelName, "In");
 });
 
 // Two @hostLibrary interfaces in one compilation. Both declare a

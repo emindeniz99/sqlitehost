@@ -52,7 +52,7 @@ export interface HostMethodOptions {
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const METHOD_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
-const SQL_NAME = /^[a-z][a-z0-9_]*$/;
+export const SQL_NAME = /^[a-z][a-z0-9_]*$/;
 const SQLITE_VERSION = /^\d+(\.\d+){0,3}$/;
 
 /**

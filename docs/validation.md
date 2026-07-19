@@ -9,7 +9,10 @@ The `@sqlite-host/typespec` library + frontend reject at compile time:
 unsupported top-level method shapes (input/output must be objects),
 unsupported scalar types, nested objects, nested lists, unions/maps,
 duplicate method names, duplicate SQL names, duplicate derived
-table/column names, missing/invalid api level, invalid handler names,
+table/column names, duplicate DTO/model simple names across namespaces,
+non-snake_case or case-colliding column names, a doneStatusValue equal
+to the reserved `pending` queue sentinel, missing/invalid api level, a
+method apiLevel exceeding the library apiLevel, invalid handler names,
 invalid or empty list item shapes, host interfaces declared outside
 any namespace.
 

@@ -210,6 +210,17 @@ export const COLUMNS_V1: ColumnsIr = {
   message: "message",
 };
 
+/**
+ * Reserved initial queue status. The queue-table DDL defaults new rows
+ * to this literal and the runtime drain (DrainPendingCalls) selects rows
+ * with status = PENDING_STATUS, marking a row done by resetting its
+ * status to the configured doneValue. A doneValue equal to this sentinel
+ * would leave drained rows selectable — re-drain / duplicate execution —
+ * so it is rejected as a doneStatusValue (validate.ts). Single-sourced
+ * here and referenced by the queue DDL template (ddl.ts).
+ */
+export const PENDING_STATUS = "pending";
+
 /** Protocol verbs for the control table's action column (NOT configurable). */
 export const CONTROL_ACTION_HALT = "halt";
 export const CONTROL_ACTION_FAIL = "fail";

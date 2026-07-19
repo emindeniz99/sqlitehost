@@ -55,9 +55,13 @@ textValueColumn:  text_value    blobValueColumn: blob_value
 actionColumn:     action        messageColumn:   message
 ```
 
-Column names must be non-empty and mutually distinct within each
-table, and the row-identity columns (`callId`/`itemIndex`/`status`)
-must not collide with any derived input/result field column.
+Column names must be snake_case identifiers (`[a-z][a-z0-9_]*`, the same
+shape `@sqlName` enforces — they are interpolated unquoted into the
+generated DDL) and mutually distinct within each table (compared
+case-insensitively, since SQLite resolves column names
+case-insensitively); the row-identity columns
+(`callId`/`itemIndex`/`status`) must not collide (case-insensitively)
+with any derived input/result field column.
 
 ## Protocol constants (deliberately NOT configurable)
 
@@ -66,6 +70,9 @@ must not collide with any derived input/result field column.
 - the control-table action verbs `halt` / `fail` — commands **to** the
   runtime (unlike the `done` label, which is data a script filters on
   and is therefore configurable);
+- the reserved initial queue status `pending` — the queue defaults new
+  rows to it and the drain selects `status = 'pending'`, so (unlike the
+  configurable `done` label) it is **not** a valid `doneStatusValue`;
 - the queue-trigger derivation rule (`trg_<callTable>_queue` — scripts
   never reference triggers by name);
 - the manifest/envelope JSON keys (wire format, not SQL).
