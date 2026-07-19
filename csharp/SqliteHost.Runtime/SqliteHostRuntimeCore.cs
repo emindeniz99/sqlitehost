@@ -70,7 +70,7 @@ namespace SqliteHost
                 return hostDefinition.SupportedFeatures;
             }
             var features = new List<string>(hostDefinition.SupportedFeatures);
-            features.Add("inlineFunctions");
+            features.Add(ProtocolConstants.FeatureInlineFunctions);
             return features;
         }
 
@@ -230,7 +230,7 @@ namespace SqliteHost
                     {
                         continue;
                     }
-                    if (control.Action == "halt")
+                    if (control.Action == ProtocolConstants.ControlActionHalt)
                     {
                         // Graceful stop: skip the remaining statements, drain
                         // the calls this step already emitted, skip the rest.
@@ -238,7 +238,7 @@ namespace SqliteHost
                         haltMessage = control.Message;
                         break;
                     }
-                    if (control.Action == "fail")
+                    if (control.Action == ProtocolConstants.ControlActionFail)
                     {
                         // Script-initiated abort: no drain for this step.
                         return StatementFailure(
@@ -247,7 +247,9 @@ namespace SqliteHost
                     }
                     return StatementFailure(
                         state, SqliteHostRunStatus.FailedValidation, "invalid-control-action",
-                        "Control table action '" + control.Action + "' is not 'halt' or 'fail'.",
+                        "Control table action '" + control.Action + "' is not '"
+                            + ProtocolConstants.ControlActionHalt + "' or '"
+                            + ProtocolConstants.ControlActionFail + "'.",
                         step.Id, statementIndex);
                 }
 

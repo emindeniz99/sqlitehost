@@ -15,6 +15,7 @@
 import {
   BINDING_TYPE_COMPAT,
   ENGINE_V1,
+  FEATURE_INLINE_FUNCTIONS,
   PENDING_STATUS,
   toSnakeCase,
   type HostLibraryIr,
@@ -93,6 +94,13 @@ public final class Protocol {
      * rows with this status.
      */
     public static final String PENDING_STATUS = ${javaString(PENDING_STATUS)};
+
+    /**
+     * Feature flag ({@code ir.ts FEATURE_INLINE_FUNCTIONS}) a script must
+     * declare in {@code requiredFeatures} to call a host's inline functions;
+     * the validator gates inline-function use on its presence.
+     */
+    public static final String FEATURE_INLINE_FUNCTIONS = ${javaString(FEATURE_INLINE_FUNCTIONS)};
 
     /**
      * Binding-type compatibility ({@code ir.ts BINDING_TYPE_COMPAT}): for each

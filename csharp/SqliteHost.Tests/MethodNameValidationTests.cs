@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace SqliteHost.Tests
@@ -107,6 +108,33 @@ namespace SqliteHost.Tests
             // table.)
             var definition = Define(Spec(methodName));
             Assert.NotEmpty(definition.GenerateSchemaStatements());
+        }
+
+        [Theory]
+        [InlineData("getValue")]
+        [InlineData("get_value")]
+        [InlineData("A")]
+        [InlineData("z9")]
+        [InlineData("with_1_and_UPPER")]
+        [InlineData("get-value")]
+        [InlineData("bad'name")]
+        [InlineData("1st")]
+        [InlineData("_leading")]
+        [InlineData("")]
+        [InlineData("has space")]
+        [InlineData("dollar$sign")]
+        public void CharScan_MatchesSharedMethodNamePattern(string name)
+        {
+            // The runtime deliberately hand-rolls the method-name check
+            // (no System.Text.RegularExpressions on netstandard2.0/Unity),
+            // so it can silently drift from the canonical pattern. Pin the
+            // scan to the single source (ir.ts METHOD_NAME_PATTERN, projected
+            // into ProtocolConstants.MethodNamePattern) by requiring it to
+            // agree, verdict for verdict, with that pattern compiled as a
+            // real Regex — the one place we're allowed to use one, in a test.
+            bool regexVerdict = Regex.IsMatch(name, ProtocolConstants.MethodNamePattern);
+            bool scanVerdict = SqliteHostDefinitionCore.IsValidMethodName(name);
+            Assert.Equal(regexVerdict, scanVerdict);
         }
     }
 }

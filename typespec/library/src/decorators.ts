@@ -50,8 +50,14 @@ export interface HostMethodOptions {
   functionName?: string;
 }
 
-const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const METHOD_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+// Protocol identifier shapes (docs/naming.md). These are the canonical
+// authoring-time enforcement; the same patterns are single-sourced as
+// strings in codegen/core/src/ir.ts (IDENTIFIER_PATTERN / METHOD_NAME_PATTERN
+// / SQL_NAME_PATTERN) and pinned equal by an equivalence test there — the
+// library can't import codegen-core (it would form a workspace cycle), so
+// the regexes are exported for that test to compare against.
+export const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const METHOD_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 export const SQL_NAME = /^[a-z][a-z0-9_]*$/;
 const SQLITE_VERSION = /^\d+(\.\d+){0,3}$/;
 

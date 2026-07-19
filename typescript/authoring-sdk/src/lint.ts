@@ -8,7 +8,7 @@
  * manifest's `columns` block, never hardcoded (docs/naming.md).
  */
 
-import { BINDING_TYPE_COMPAT } from "@sqlite-host/codegen-core";
+import { BINDING_TYPE_COMPAT, FEATURE_INLINE_FUNCTIONS } from "@sqlite-host/codegen-core";
 import {
   validateScript,
   type BindingValue,
@@ -54,9 +54,6 @@ export type LintCode =
   | "result-read-not-after-call";
 
 export type LintSeverity = "error" | "warning";
-
-/** Feature a script must declare to call inline functions (docs/validation.md). */
-const FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
 
 /** An insertable column's scalar type + optionality, for binding-type checks. */
 interface InsertableColumn {

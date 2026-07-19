@@ -41,8 +41,12 @@ import java.util.Set;
  */
 public final class ValidationEngine {
 
-    /** Feature a script must declare to call inline functions (docs/validation.md). */
-    private static final String FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
+    /**
+     * Feature a script must declare to call inline functions
+     * (docs/validation.md); single-sourced in ir.ts and projected into
+     * {@link Protocol#FEATURE_INLINE_FUNCTIONS}.
+     */
+    private static final String FEATURE_INLINE_FUNCTIONS = Protocol.FEATURE_INLINE_FUNCTIONS;
 
     public ValidationReport validate(Manifest manifest, Script script) {
         List<ValidationFinding> findings = new ArrayList<>();

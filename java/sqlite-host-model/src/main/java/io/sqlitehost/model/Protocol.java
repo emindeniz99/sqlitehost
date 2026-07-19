@@ -21,6 +21,13 @@ public final class Protocol {
     public static final String PENDING_STATUS = "pending";
 
     /**
+     * Feature flag ({@code ir.ts FEATURE_INLINE_FUNCTIONS}) a script must
+     * declare in {@code requiredFeatures} to call a host's inline functions;
+     * the validator gates inline-function use on its presence.
+     */
+    public static final String FEATURE_INLINE_FUNCTIONS = "inlineFunctions";
+
+    /**
      * Binding-type compatibility ({@code ir.ts BINDING_TYPE_COMPAT}): for each
      * scalar column type (manifest wire name), the envelope binding value
      * types that may feed it. A {@code null} binding is accepted iff the

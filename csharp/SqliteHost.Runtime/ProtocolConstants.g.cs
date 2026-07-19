@@ -20,7 +20,30 @@ namespace SqliteHost
         /// </summary>
         internal const string PendingStatus = "pending";
 
+        /// <summary>
+        /// Control-table action verbs (ir.ts CONTROL_ACTION_HALT /
+        /// CONTROL_ACTION_FAIL). The runtime branches the control row's
+        /// action on these; any other value is an invalid-control-action.
+        /// </summary>
+        internal const string ControlActionHalt = "halt";
+        internal const string ControlActionFail = "fail";
+
+        /// <summary>
+        /// Feature flag a runtime advertises (ir.ts FEATURE_INLINE_FUNCTIONS)
+        /// when its connection factory is scalar-function-capable and the
+        /// host exposes at least one inline function.
+        /// </summary>
+        internal const string FeatureInlineFunctions = "inlineFunctions";
+
 #if !SQLITEHOST_SLIM
+        /// <summary>
+        /// Method-name shape (ir.ts METHOD_NAME_PATTERN). The registration
+        /// validator ships a hand-rolled char-scan instead of
+        /// System.Text.RegularExpressions (netstandard2.0/Unity size); the
+        /// test suite pins that scan to this canonical pattern.
+        /// </summary>
+        internal const string MethodNamePattern = "^[A-Za-z][A-Za-z0-9_]*$";
+
         /// <summary>
         /// SQLite built-in function names an inline function name must not
         /// collide with (ir.ts SQLITE_BUILTIN_FUNCTIONS). SQLite resolves

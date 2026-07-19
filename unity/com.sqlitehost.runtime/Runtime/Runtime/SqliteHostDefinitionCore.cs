@@ -473,7 +473,10 @@ namespace SqliteHost
         /// netstandard2.0/Unity target), so this stays a char scan for
         /// convention parity rather than pulling in a Regex dependency.
         /// </summary>
-        private static bool IsValidMethodName(string name)
+        // internal (not private) so the test suite can pin this hand-rolled
+        // scan to the shared ProtocolConstants.MethodNamePattern via a real
+        // Regex — the runtime itself never takes a dependency on Regex.
+        internal static bool IsValidMethodName(string name)
         {
             if (string.IsNullOrEmpty(name))
             {
