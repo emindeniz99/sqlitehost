@@ -3,20 +3,16 @@
 Items that still require action outside this environment. Delete
 entries when shipped.
 
-- **Unity 2021 in-editor spike (manual)**: everything is scaffolded —
-  open `unity/SampleProject` in Unity Hub with a 2021.3 editor and
-  follow [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md)
-  (set .NET Standard 2.0 API level, zero-compile-error gate, Play-mode
-  smoke, record results in docs/compatibility.md). IL2CPP build is the
-  stretch goal.
-- **IL2CPP size measurements (hand off to a Unity-equipped agent)**:
-  the full self-contained protocol — bench kit, hypothesis ledger with
-  the NativeAOT verdicts to re-test (H-GVM and H-FIELDS can genuinely
-  flip under IL2CPP), 9-row build matrix, report template, and a
-  copy-paste hand-off prompt — is
-  [docs/guides/il2cpp-size-protocol.md](./docs/guides/il2cpp-size-protocol.md).
-  Deliverable: `docs/reports/il2cpp-size-report.md` + patches to the
-  compatibility App size table.
+- **Unity 2021.3 in-editor spike (manual, partially superseded)**: a
+  Unity-equipped agent has since compiled the sources and shipped
+  IL2CPP builds on Unity 2022.3 (Android/ARM64 — see
+  [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md)),
+  so the compile + IL2CPP gates are de-facto proven one LTS up. What
+  remains is the literal 2021.3 floor check: open `unity/SampleProject`
+  with a 2021.3 editor per
+  [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md)
+  (.NET Standard 2.0 API level, zero-compile-error gate, Play-mode
+  smoke, record results in docs/compatibility.md).
 - **Execute the publishing checklist (manual/legal)**: accounts, 2FA,
   GPG key, `io.sqlitehost` namespace verification, `@sqlite-host` npm
   scope, license decision, and name/trademark signoff (note the SQLite

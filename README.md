@@ -30,6 +30,22 @@ Java validator (prepare-only SQLite checks + semantic lint)
 TypeScript authoring SDK (typed payload building + static lint)
 ```
 
+Highlights beyond the core loop:
+
+- **Adapters**: works over any SQLite wrapper via a two-method erased
+  contract (`Execute`/`QueryRows`); ships a pure-DllImport reference
+  adapter (`SqliteHost.Adapters.Native`, scalar functions included) and
+  a conformance suite (`SqliteHost.Conformance`) that consumer test
+  projects subclass — silent failure is a contract violation.
+- **Engine reach**: policy floor SQLite 3.19.3, engine-verified down to
+  real 3.9.0 binaries (permanent five-engine CI matrix).
+- **Inline host functions**: eligible read-only methods double as SQL
+  scalar functions (`fn_*`) inside script statements.
+- **App-size profiles** (measured under NativeAOT *and* real Unity
+  IL2CPP — `docs/reports/il2cpp-size-report.md`): `--profile
+  classic|compact|ultra` + `SQLITEHOST_SLIM` + `--dto-fields` take a
+  50-method host down to ~84 KB of compressed download under IL2CPP.
+
 ## How to run
 
 Prerequisites: .NET 8 SDK, JDK 17+, Maven, Node 20+, pnpm.
@@ -50,7 +66,9 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 
 | Doc | What |
 |---|---|
+| [docs/guides/getting-started.md](./docs/guides/getting-started.md) | consumption paths (vendor / packages / emitters), end-to-end walkthrough |
 | [docs/architecture.md](./docs/architecture.md) | layers, generated-vs-handwritten boundary, lifecycle, resolved decisions |
+| [docs/adapter-contract.md](./docs/adapter-contract.md) | the normative SQLite-adapter contract + conformance suite |
 | [docs/script-envelope.md](./docs/script-envelope.md) | the cross-language script payload contract |
 | [docs/workspace-schema.md](./docs/workspace-schema.md) | call/result/queue tables, triggers, DDL canon |
 | [docs/naming.md](./docs/naming.md) | host-level naming conventions + snake_case rules |
@@ -62,6 +80,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/compatibility.md](./docs/compatibility.md) | SQLite 3.19.3 / Unity 2021 / Java 17 / TS 5 floors |
 | [docs/testing.md](./docs/testing.md) | test matrix |
 | [docs/packaging.md](./docs/packaging.md) | intended distribution |
+| [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md) | measured Unity IL2CPP app-size matrix (Android/ARM64) |
 
 ## Notes / learnings
 
