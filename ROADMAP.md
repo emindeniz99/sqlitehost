@@ -29,6 +29,9 @@ entries when shipped.
 ## Scripting-language proposals (designed, awaiting owner decision)
 
 What a "Lua-length" script needs vs. what SQL-as-the-language covers.
+(Why an embedded VM was not adopted at all — the Lua/xLua, MoonSharp,
+Jint, QuickJS/V8 and Wasm comparison — is in
+[docs/why-sql-not-a-vm.md](./docs/why-sql-not-a-vm.md).)
 Have today: variables (`script_vars`), arithmetic/expressions (SQL),
 conditionals (`WHERE`/`CASE`/`EXISTS` gating), functions (host
 methods, plus inline scalar functions for eligible getters), early

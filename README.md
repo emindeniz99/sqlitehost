@@ -16,7 +16,9 @@ SqliteHost is the typed SQLite bridge. The runtime is deliberately
 thin: it never invents calls, infers business semantics, or adds
 refresh/sync/log effects. It is not a Lua-style embedded VM, an ORM, or
 a workflow engine — SQL (SQLite 3.19.3-compatible) *is* the scripting
-surface.
+surface. Why that choice, and which embedded VMs (Lua/xLua/LuaJIT,
+MoonSharp, Jint, QuickJS/V8, Wasm) were weighed against it:
+[docs/why-sql-not-a-vm.md](./docs/why-sql-not-a-vm.md).
 
 ```text
 TypeSpec (typespec/) ──frontend──> IR (codegen/core)
