@@ -680,15 +680,94 @@ test("functionCalls: identifier-then-paren extraction with top-level arg counts"
     "SELECT fn_get_value(max(1, 2), 'a,b'), count(*), 'lit(', t.col FROM t WHERE fn_open('x'",
   );
   assert.deepStrictEqual(functionCalls(tokens), [
-    { name: "fn_get_value", argCount: 2 },
-    { name: "max", argCount: 2 },
-    { name: "count", argCount: 1 },
+    { name: "fn_get_value", argCount: 2, hasNowArg: false },
+    { name: "max", argCount: 2, hasNowArg: false },
+    { name: "count", argCount: 1, hasNowArg: false },
     // ')' never closes: arity is unknowable — UNKNOWN_ARGS, skipped by lint.
-    { name: "fn_open", argCount: UNKNOWN_ARGS },
+    { name: "fn_open", argCount: UNKNOWN_ARGS, hasNowArg: false },
   ]);
   assert.deepStrictEqual(functionCalls(tokenizeSql("SELECT fn_noargs()")), [
-    { name: "fn_noargs", argCount: 0 },
+    { name: "fn_noargs", argCount: 0, hasNowArg: false },
   ]);
+});
+
+test("functionCalls: hasNowArg is set only by a bare top-level 'now' literal", () => {
+  // The determinism lint keys on this flag, so it must distinguish the
+  // wall-clock form from a reproducible one: 'now' as a whole argument
+  // (in any position, any case) reads the clock; a parameter, a
+  // different literal, or a 'now' buried in a larger expression or a
+  // nested call does not.
+  const nowArg = (sql: string): boolean => functionCalls(tokenizeSql(sql))[0].hasNowArg;
+  assert.equal(nowArg("SELECT datetime('now')"), true);
+  assert.equal(nowArg("SELECT strftime('%Y', 'NOW')"), true);
+  assert.equal(nowArg("SELECT datetime('now', '+1 day')"), true);
+  assert.equal(nowArg("SELECT datetime('2020-01-01')"), false);
+  assert.equal(nowArg("SELECT date(:day)"), false);
+  assert.equal(nowArg("SELECT date('now' || '')"), false);
+  assert.equal(nowArg("SELECT date(coalesce('now', ''))"), false);
+});
+
+// -- determinism lint (docs/validation.md) ---------------------------------
+// Why it matters: a payload is a durable artifact that may be replayed
+// (re-run against a restored database) and its result is expected to
+// match the original run. A built-in that draws from the RNG or the wall
+// clock silently breaks that, so the author is warned — but only warned,
+// because a one-shot script may legitimately want a random id.
+
+function nondeterministicWarnings(sql: string): LintFinding[] {
+  return lintScript(inlineScript([], [], sql), manifest).filter(
+    (finding) => finding.code === "nondeterministic-function",
+  );
+}
+
+test("nondeterministic-function: RNG built-ins warn on every call", () => {
+  for (const sql of ["SELECT random()", "SELECT randomblob(16)", "SELECT RANDOM()"]) {
+    const warnings = nondeterministicWarnings(sql);
+    assert.equal(warnings.length, 1, `${sql}: ${JSON.stringify(warnings)}`);
+    assert.equal(warnings[0].severity, "warning");
+    assert.match(warnings[0].message, /replay/i);
+  }
+});
+
+test("nondeterministic-function: date/time built-ins warn only on the clock forms", () => {
+  // Zero-arg and 'now' read the clock; an explicit instant or a bound
+  // parameter is reproducible and must stay silent, or authors would
+  // learn to ignore the warning.
+  for (const sql of [
+    "SELECT date()",
+    "SELECT datetime('now')",
+    "SELECT julianday('NOW')",
+    "SELECT strftime('%Y', 'now')",
+  ]) {
+    assert.equal(nondeterministicWarnings(sql).length, 1, sql);
+  }
+  for (const sql of [
+    "SELECT datetime('2020-01-01')",
+    "SELECT date(:day)",
+    "SELECT strftime('%Y', '2020-01-01')",
+  ]) {
+    assert.deepStrictEqual(
+      nondeterministicWarnings(sql).map((f) => f.message),
+      [],
+      sql,
+    );
+  }
+});
+
+test("nondeterministic-function: only exact built-in names match", () => {
+  // A host method named randomize(...) is not SQLite's random(), and a
+  // string literal that spells a call is collapsed by the tokenizer —
+  // neither may be flagged.
+  assert.deepStrictEqual(nondeterministicWarnings("SELECT randomize(1)"), []);
+  assert.deepStrictEqual(nondeterministicWarnings("SELECT 'random()' AS label"), []);
+});
+
+test("nondeterministic-function: one warning per offending call occurrence", () => {
+  const warnings = nondeterministicWarnings(
+    "SELECT random(), datetime('now'), abs(random())",
+  );
+  assert.equal(warnings.length, 3, JSON.stringify(warnings));
+  assert.ok(warnings.every((finding) => finding.stepId === "s"));
 });
 
 test("duplicate-input-name: two inputs sharing a name is an error", () => {

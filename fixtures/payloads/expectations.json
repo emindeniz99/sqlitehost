@@ -91,6 +91,27 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-013-nondeterministic.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "nondeterministic-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "nondeterministic-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ]
+    },
+    {
       "payload": "invalid/inline-undeclared-feature.json",
       "valid": false,
       "errors": [

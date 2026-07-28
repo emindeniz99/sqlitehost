@@ -359,6 +359,10 @@ public final class ValidationEngine {
      * an unmatched identifier is unknown-function only when it carries
      * the host's functionPrefix — non-prefix identifiers (max(...),
      * abs(...)) are SQLite's business, not the lint's.
+     *
+     * <p>The same pass raises the determinism warning
+     * (nondeterministic-function), which is about built-ins rather than
+     * inline functions but reads the identical call list.</p>
      */
     private static void analyzeFunctionCalls(
             SchemaIndex schema, Script script, List<SqlToken> tokens,
@@ -367,6 +371,15 @@ public final class ValidationEngine {
         Set<String> reported = new HashSet<>();
         for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
             String nameLc = lower(call.name());
+            if (isNondeterministic(nameLc, call)) {
+                findings.add(ValidationFinding.warning(
+                        ValidationCodes.NONDETERMINISTIC_FUNCTION,
+                        stepId, statementIndex,
+                        "SQL calls the nondeterministic built-in '" + call.name()
+                                + "' — replaying this script would diverge from the"
+                                + " original run; compute the value in the host and"
+                                + " bind it instead"));
+            }
             MethodDescriptor method = schema.inlineFunctions.get(nameLc);
             if (method == null) {
                 if (nameLc.startsWith(schema.functionPrefixLc) && reported.add(nameLc)) {
@@ -415,6 +428,21 @@ public final class ValidationEngine {
                                         ? "" : ".." + inline.maxArgs())));
             }
         }
+    }
+
+    /**
+     * nondeterministic-function (docs/validation.md): the ALWAYS list is
+     * flagged on every call; a date/time built-in only when it reads the
+     * wall clock — zero arguments, or a top-level {@code 'now'} literal.
+     * Both lists are single-sourced in ir.ts and projected into
+     * {@link Protocol} (docs/proposals/rule-parameters-as-data.md).
+     */
+    private static boolean isNondeterministic(String nameLc, FunctionCall call) {
+        if (Protocol.NONDETERMINISTIC_FUNCTIONS_ALWAYS.contains(nameLc)) {
+            return true;
+        }
+        return Protocol.NONDETERMINISTIC_TIME_FUNCTIONS.contains(nameLc)
+                && (call.argCount() == 0 || call.hasNowArg());
     }
 
     /**

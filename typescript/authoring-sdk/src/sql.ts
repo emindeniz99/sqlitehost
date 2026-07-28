@@ -325,6 +325,12 @@ export interface SqlFunctionCall {
   /** Function name as written (SQL function names are case-insensitive). */
   name: string;
   argCount: number;
+  /**
+   * Whether some top-level argument is the string literal `'now'`
+   * (case-insensitive) — what makes a date/time built-in read the wall
+   * clock (the determinism lint, docs/validation.md).
+   */
+  hasNowArg: boolean;
 }
 
 /** The closing `)` was never found — arity is unknowable. */
@@ -342,7 +348,11 @@ export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   const calls: SqlFunctionCall[] = [];
   for (let i = 0; i + 1 < tokens.length; i++) {
     if (tokens[i].kind === "identifier" && isPunctAt(tokens[i + 1], "(")) {
-      calls.push({ name: tokens[i].value, argCount: countArgs(tokens, i + 2) });
+      calls.push({
+        name: tokens[i].value,
+        argCount: countArgs(tokens, i + 2),
+        hasNowArg: hasNowArg(tokens, i + 2),
+      });
     }
   }
   return calls;
@@ -368,6 +378,40 @@ function countArgs(tokens: SqlToken[], start: number): number {
     sawArgToken = true;
   }
   return UNKNOWN_ARGS;
+}
+
+/**
+ * Whether some top-level argument from just after `(` to the matching
+ * `)` is exactly the string literal `'now'` (case-insensitive). Only a
+ * bare literal counts: `datetime('now')` reads the clock, `datetime(:when)`
+ * does not, and a literal nested inside a larger expression is not the
+ * argument itself. Mirrors the Java validator's SqlAnalyzer.
+ */
+function hasNowArg(tokens: SqlToken[], start: number): boolean {
+  let depth = 1;
+  let argTokens = 0;
+  let argIsNow = false;
+  for (let pos = start; pos < tokens.length; pos++) {
+    const token = tokens[pos];
+    if (isPunctAt(token, ")")) {
+      depth--;
+      if (depth === 0) {
+        return argTokens === 1 && argIsNow;
+      }
+    } else if (isPunctAt(token, "(")) {
+      depth++;
+    } else if (isPunctAt(token, ",") && depth === 1) {
+      if (argTokens === 1 && argIsNow) return true;
+      argTokens = 0;
+      argIsNow = false;
+      continue;
+    }
+    if (argTokens === 0) {
+      argIsNow = token.kind === "string" && token.value.toLowerCase() === "now";
+    }
+    argTokens++;
+  }
+  return false;
 }
 
 const SELECT_TERMINATORS = new Set([

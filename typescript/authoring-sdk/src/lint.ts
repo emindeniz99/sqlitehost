@@ -8,7 +8,12 @@
  * manifest's `columns` block, never hardcoded (docs/naming.md).
  */
 
-import { BINDING_TYPE_COMPAT, FEATURE_INLINE_FUNCTIONS } from "@sqlite-host/codegen-core";
+import {
+  BINDING_TYPE_COMPAT,
+  FEATURE_INLINE_FUNCTIONS,
+  NONDETERMINISTIC_FUNCTIONS_ALWAYS,
+  NONDETERMINISTIC_TIME_FUNCTIONS,
+} from "@sqlite-host/codegen-core";
 import {
   validateScript,
   type BindingValue,
@@ -26,6 +31,7 @@ import {
   scanNamedParameters,
   tokenizeSql,
   UNKNOWN_ARGS,
+  type SqlFunctionCall,
 } from "./sql.js";
 
 export type LintCode =
@@ -50,6 +56,7 @@ export type LintCode =
   | "undeclared-feature-use"
   | "unknown-function"
   | "function-arity-mismatch"
+  | "nondeterministic-function"
   | "result-read-unknown-call"
   | "result-read-not-after-call";
 
@@ -72,6 +79,22 @@ function bindingCompatible(column: InsertableColumn, bindingType: string): boole
   if (bindingType === "null") return column.optional;
   const accepted = BINDING_TYPE_COMPAT[column.scalarType];
   return accepted !== undefined && accepted.includes(bindingType);
+}
+
+/**
+ * nondeterministic-function (docs/validation.md): the ALWAYS list is
+ * flagged on every call; a date/time built-in only when it reads the wall
+ * clock — zero arguments, or a top-level `'now'` literal. Both lists are
+ * single-sourced in ir.ts (docs/proposals/rule-parameters-as-data.md) and
+ * consumed by the Java validator through the generated Protocol.java.
+ */
+function isNondeterministic(call: SqlFunctionCall): boolean {
+  const nameLc = call.name.toLowerCase();
+  if (NONDETERMINISTIC_FUNCTIONS_ALWAYS.includes(nameLc)) return true;
+  return (
+    NONDETERMINISTIC_TIME_FUNCTIONS.includes(nameLc) &&
+    (call.argCount === 0 || call.hasNowArg)
+  );
 }
 
 export interface LintFinding {
@@ -334,9 +357,20 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // identifier is unknown-function only when it carries the host's
       // functionPrefix — non-prefix identifiers (max(...), abs(...))
       // are SQLite's business, not the lint's (mirrors the Java engine).
+      // The same pass raises the determinism warning
+      // (nondeterministic-function), which is about built-ins rather than
+      // inline functions but reads the identical call list.
       const reportedFunctions = new Set<string>();
       for (const call of functionCalls(tokens)) {
         const nameLc = call.name.toLowerCase();
+        if (isNondeterministic(call)) {
+          findings.push({
+            code: "nondeterministic-function",
+            severity: "warning",
+            message: `SQL calls the nondeterministic built-in "${call.name}" — replaying this script would diverge from the original run; compute the value in the host and bind it instead`,
+            ...at,
+          });
+        }
         const method = inlineFunctions.get(nameLc);
         if (method === undefined) {
           if (

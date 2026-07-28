@@ -273,6 +273,34 @@ export const SQLITE_BUILTIN_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * SQLite built-ins that return a different value on every evaluation, so a
+ * replay of the same script diverges from the original run (the determinism
+ * lint, docs/validation.md). Every call is flagged regardless of arguments.
+ * Names are compared lowercased (SQLite resolves them case-insensitively).
+ * Single-sourced here and projected into each language's generated protocol
+ * constants (docs/proposals/rule-parameters-as-data.md).
+ */
+export const NONDETERMINISTIC_FUNCTIONS_ALWAYS: readonly string[] = [
+  "random",
+  "randomblob",
+];
+
+/**
+ * SQLite date/time built-ins that are nondeterministic only when they read
+ * the wall clock — i.e. called with no arguments, or with the time value
+ * `'now'`. `date(:day)` and `datetime('2020-01-01')` are reproducible and
+ * must not be flagged. Same lowercased comparison and single-sourcing as
+ * NONDETERMINISTIC_FUNCTIONS_ALWAYS.
+ */
+export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
+  "date",
+  "time",
+  "datetime",
+  "julianday",
+  "strftime",
+];
+
+/**
  * Binding-type compatibility: for each scalar column type, the envelope
  * binding value types (wire names) that may feed it. int64 widens from
  * int32; float64 widens from float32; integers never coerce into float

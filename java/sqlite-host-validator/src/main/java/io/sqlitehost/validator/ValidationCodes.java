@@ -36,6 +36,9 @@ public final class ValidationCodes {
     public static final String UNKNOWN_FUNCTION = "unknown-function";
     public static final String FUNCTION_ARITY_MISMATCH = "function-arity-mismatch";
 
+    // Determinism
+    public static final String NONDETERMINISTIC_FUNCTION = "nondeterministic-function";
+
     // Result-read lineage
     public static final String RESULT_READ_UNKNOWN_CALL = "result-read-unknown-call";
     public static final String RESULT_READ_NOT_AFTER_CALL = "result-read-not-after-call";

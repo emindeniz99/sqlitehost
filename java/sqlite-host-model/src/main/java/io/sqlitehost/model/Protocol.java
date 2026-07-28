@@ -42,6 +42,22 @@ public final class Protocol {
             "float32", Set.of("float32"),
             "float64", Set.of("float32", "float64"));
 
+    /**
+     * Built-ins that return a different value on every evaluation
+     * ({@code ir.ts NONDETERMINISTIC_FUNCTIONS_ALWAYS}): every call is
+     * flagged by the determinism lint, whatever its arguments.
+     */
+    public static final Set<String> NONDETERMINISTIC_FUNCTIONS_ALWAYS =
+            Set.of("random", "randomblob");
+
+    /**
+     * Date/time built-ins ({@code ir.ts NONDETERMINISTIC_TIME_FUNCTIONS})
+     * that are nondeterministic only when they read the wall clock — called
+     * with no arguments, or with the time value {@code 'now'}.
+     */
+    public static final Set<String> NONDETERMINISTIC_TIME_FUNCTIONS =
+            Set.of("date", "time", "datetime", "julianday", "strftime");
+
     private Protocol() {
     }
 }

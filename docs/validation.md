@@ -77,6 +77,12 @@ code (`java` = full engine, `typescript` = static authoring subset).
 | `unknown-function` | error | an identifier call matching the host's `functionPrefix` does not correspond to any manifest inline function |
 | `function-arity-mismatch` | error | an inline function is called with an argument count outside `minArgs..maxArgs` |
 
+### Determinism
+
+| Code | Severity | Rule |
+|---|---|---|
+| `nondeterministic-function` | warning | the SQL calls a nondeterministic SQLite built-in, so replaying the payload would diverge from the original run: `random`/`randomblob` on every call, and `date`/`time`/`datetime`/`julianday`/`strftime` only when they read the wall clock — called with no arguments, or with a top-level `'now'` string literal (case-insensitive). Reproducible forms (`date(:day)`, `datetime('2020-01-01')`) are not flagged. One warning per offending call; the lists are single-sourced in `codegen/core/src/ir.ts` (docs/proposals/rule-parameters-as-data.md) |
+
 ### Result-read lineage (java validator only in v1)
 
 | Code | Severity | Rule |

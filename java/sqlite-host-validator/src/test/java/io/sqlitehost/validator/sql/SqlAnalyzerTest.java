@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -198,6 +199,26 @@ class SqlAnalyzerTest {
     void unterminatedCallHasUnknownArgs() {
         assertEquals(List.of(new FunctionCall("fn_x", FunctionCall.UNKNOWN_ARGS)),
                 SqlAnalyzer.functionCalls(SqlTokenizer.tokenize("SELECT fn_x(1, 2")));
+    }
+
+    @Test
+    void hasNowArgIsSetOnlyByABareTopLevelNowLiteral() {
+        // The determinism lint keys on this flag, so it must distinguish
+        // the wall-clock form from a reproducible one: 'now' as a whole
+        // argument (in any position, any case) reads the clock; a
+        // parameter, a different literal, or a 'now' buried in a larger
+        // expression or a nested call does not.
+        assertTrue(nowArg("SELECT datetime('now')"));
+        assertTrue(nowArg("SELECT strftime('%Y', 'NOW')"));
+        assertTrue(nowArg("SELECT datetime('now', '+1 day')"));
+        assertFalse(nowArg("SELECT datetime('2020-01-01')"));
+        assertFalse(nowArg("SELECT date(:day)"));
+        assertFalse(nowArg("SELECT date('now' || '')"));
+        assertFalse(nowArg("SELECT date(coalesce('now', ''))"));
+    }
+
+    private static boolean nowArg(String sql) {
+        return SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(sql)).get(0).hasNowArg();
     }
 
     @Test

@@ -1,0 +1,21 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-013",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "seed-from-the-environment",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value, text_value) VALUES ('seed', 'int64', random(), NULL), ('started_at', 'text', NULL, datetime('now'))",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

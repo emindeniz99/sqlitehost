@@ -40,9 +40,6 @@ the 3.19.3 floor — steps themselves are a static sequence with no
 jumps, which keeps every script terminating by construction).
 Deliberately absent and proposed:
 
-- **Determinism lint**: warn when payload SQL calls nondeterministic
-  builtins (`random()`, `date('now')` etc.) since script replays would
-  diverge.
 - **Imperative loops/goto across steps**: intentionally NOT proposed —
   unbounded control flow breaks the terminating-by-construction
   guarantee that makes untrusted-ish scripts tractable; recursive CTEs

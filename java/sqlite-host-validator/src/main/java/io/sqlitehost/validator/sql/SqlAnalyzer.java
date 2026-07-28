@@ -184,7 +184,8 @@ public final class SqlAnalyzer {
         for (int i = 0; i + 1 < tokens.size(); i++) {
             if (tokens.get(i).kind() == SqlToken.Kind.IDENT
                     && tokens.get(i + 1).isPunct("(")) {
-                calls.add(new FunctionCall(tokens.get(i).text(), countArgs(tokens, i + 2)));
+                calls.add(new FunctionCall(tokens.get(i).text(),
+                        countArgs(tokens, i + 2), hasNowArg(tokens, i + 2)));
             }
         }
         return calls;
@@ -210,6 +211,46 @@ public final class SqlAnalyzer {
             sawArgToken = true;
         }
         return FunctionCall.UNKNOWN_ARGS;
+    }
+
+    /**
+     * Whether some top-level argument from just after '(' to the matching
+     * ')' is exactly the string literal {@code 'now'} (case-insensitive).
+     * Only a bare literal counts: {@code datetime('now')} reads the clock,
+     * {@code datetime(:when)} does not, and a literal nested inside a
+     * larger expression is not the argument itself.
+     */
+    private static boolean hasNowArg(List<SqlToken> tokens, int start) {
+        int depth = 1;
+        int argTokens = 0;
+        boolean argIsNow = false;
+        for (int pos = start; pos < tokens.size(); pos++) {
+            SqlToken token = tokens.get(pos);
+            if (token.isPunct(")")) {
+                depth--;
+                if (depth == 0) {
+                    return argTokens == 1 && argIsNow;
+                }
+            } else if (token.isPunct("(")) {
+                depth++;
+            } else if (token.isPunct(",") && depth == 1) {
+                if (argTokens == 1 && argIsNow) {
+                    return true;
+                }
+                argTokens = 0;
+                argIsNow = false;
+                continue;
+            }
+            if (argTokens == 0) {
+                argIsNow = isNowLiteral(token);
+            }
+            argTokens++;
+        }
+        return false;
+    }
+
+    private static boolean isNowLiteral(SqlToken token) {
+        return token.kind() == SqlToken.Kind.STRING && "now".equalsIgnoreCase(token.text());
     }
 
     /**
