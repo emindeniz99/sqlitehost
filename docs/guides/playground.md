@@ -56,3 +56,11 @@ differing only in where the compiler reads files from. That equivalence
 is a pinned test, not an aspiration: `typescript/playground/src/test/parity.test.ts`
 compares its output against the same committed goldens
 `tests/cross-language-golden/run.mjs` uses.
+
+The page itself is pinned too. `typescript/playground/e2e/` drives the
+built page in a real Chromium (Playwright): it asserts that the loaded
+page requests nothing but its own two files, that the Manifest tab
+renders the committed golden byte for byte, and that the tabs, the C#
+profile selector, and the debounced recompile behave as described above.
+Run it with `pnpm --dir typescript/playground run test:e2e` after a
+`build:web`; `tests/end-to-end/run-all.sh` includes it.

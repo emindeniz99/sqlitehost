@@ -11,7 +11,8 @@
     "gen:vfs": "node scripts/gen-vfs.mjs",
     "build": "npm run gen:vfs && tsc -p tsconfig.json",
     "build:web": "npm run build && node scripts/build-web.mjs",
-    "test": "npm run build:web && node --test 'dist/test/*.test.js'"
+    "test": "npm run build:web && node --test 'dist/test/*.test.js'",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@sqlite-host/codegen-core": "workspace:*",
@@ -23,6 +24,7 @@
     "@typespec/compiler": "1.13.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.5.0"

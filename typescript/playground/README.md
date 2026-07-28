@@ -84,3 +84,31 @@ pnpm --dir typescript/playground run test
   `line:col`, never a thrown exception.
 - `web-bundle.test.ts` — `build:web` produces a self-contained
   `bundle.js` + `index.html`, and the bundled pipeline runs.
+
+## Browser tests
+
+The tests above all run under Node, so none of them ever renders the
+page. `e2e/` covers what only a real browser can answer — that the
+module bundle loads and the page fetches nothing but itself, that the
+prefilled sample compiles on its own into output byte-identical to the
+committed manifest golden, that the tabs and the C# profile selector are
+wired to what they claim to show, and that a broken source surfaces a
+`line:column` diagnostic and recovers after one debounced recompile.
+
+```bash
+pnpm --dir typescript/playground run build:web   # e2e/ serves web-dist/
+pnpm --dir typescript/playground run test:e2e
+```
+
+It is a separate script from `test` on purpose: the unit suites must
+stay runnable without a browser. `tests/end-to-end/run-all.sh` runs both.
+
+Chromium is expected to be **already installed** — this environment and
+CI provision it and point `PLAYWRIGHT_BROWSERS_PATH` at it, so
+`playwright install` is never run here and installs use
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`. That is why `@playwright/test` is
+pinned to an exact version rather than a caret range: each release
+expects one Chromium revision (1.56.1 → 1194), and a minor bump would
+silently stop resolving the binary that is there. If a run reports a
+missing executable, the fix is to align the pin with the installed
+revision, not to download a second browser.

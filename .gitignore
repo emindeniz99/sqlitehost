@@ -19,3 +19,7 @@ tsp-output/
 # both are reproducible from `pnpm --dir typescript/playground run build:web`
 typescript/playground/web-dist/
 typescript/playground/src/generated/
+
+# playground browser-test output (traces kept only for failures)
+typescript/playground/test-results/
+typescript/playground/playwright-report/
