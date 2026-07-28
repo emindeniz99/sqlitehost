@@ -101,6 +101,40 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
+  typescript/playground:
+    dependencies:
+      '@sqlite-host/codegen-core':
+        specifier: workspace:*
+        version: link:../../codegen/core
+      '@sqlite-host/emitter-csharp':
+        specifier: workspace:*
+        version: link:../../codegen/csharp-emitter
+      '@sqlite-host/emitter-java':
+        specifier: workspace:*
+        version: link:../../codegen/java-emitter
+      '@sqlite-host/emitter-manifest':
+        specifier: workspace:*
+        version: link:../../codegen/manifest-emitter
+      '@sqlite-host/emitter-typescript':
+        specifier: workspace:*
+        version: link:../../codegen/typescript-emitter
+      '@sqlite-host/typespec':
+        specifier: workspace:*
+        version: link:../../typespec/library
+      '@typespec/compiler':
+        specifier: 1.13.0
+        version: 1.13.0(@types/node@22.20.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   typescript/runtime-types:
     devDependencies:
       '@types/node':

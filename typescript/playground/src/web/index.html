@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SqliteHost playground</title>
+    <style>
+      :root {
+        --border: #d5d9e2;
+        --muted: #5b6472;
+        --error: #b00020;
+        --warning: #a05a00;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1.5rem auto;
+        max-width: 84rem;
+        padding: 0 1rem;
+        color: #1f2430;
+      }
+      h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+      p.intro { color: var(--muted); margin-top: 0; }
+      .panes { display: flex; gap: 1rem; flex-wrap: wrap; align-items: stretch; }
+      .pane { flex: 1 1 30rem; display: flex; flex-direction: column; min-width: 0; }
+      label { display: block; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+      textarea, pre {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        line-height: 1.45;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        box-sizing: border-box;
+        width: 100%;
+        margin: 0;
+      }
+      textarea { min-height: 34rem; padding: 0.6rem; resize: vertical; }
+      pre {
+        flex: 1 1 auto;
+        min-height: 34rem;
+        max-height: 34rem;
+        overflow: auto;
+        padding: 0.6rem;
+        background: #f7f8fa;
+        white-space: pre;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 0.25rem 0 0.5rem;
+      }
+      .tab {
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 6px;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      .tab[aria-selected="true"] { background: #1f2430; color: #fff; border-color: #1f2430; }
+      select { border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; font-size: 0.85rem; }
+      .status { font-size: 0.85rem; color: var(--muted); margin-left: auto; }
+      .status.stale { font-style: italic; }
+      #diagnostics { margin-top: 1rem; }
+      #diagnostics ul { list-style: none; padding: 0; margin: 0; }
+      #diagnostics li {
+        font-family: ui-monospace, monospace;
+        font-size: 0.82rem;
+        margin: 0.2rem 0;
+      }
+      .severity {
+        display: inline-block;
+        border-radius: 4px;
+        padding: 0 0.4rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      .severity.error { background: var(--error); }
+      .severity.warning { background: var(--warning); }
+      .loc { color: var(--muted); }
+      .clean { color: #0a6b32; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>SqliteHost playground</h1>
+    <p class="intro">
+      Edit the TypeSpec host definition on the left; the manifest, schema DDL,
+      and generated C#, Java, and TypeScript update as you type. The TypeSpec
+      compiler and every emitter run inside this page — no server, no network.
+    </p>
+    <div class="panes">
+      <div class="pane">
+        <label for="source">Host definition (.tsp)</label>
+        <textarea id="source" spellcheck="false" autocomplete="off"></textarea>
+      </div>
+      <div class="pane">
+        <label id="output-label" for="output">Output</label>
+        <div class="toolbar" role="tablist" id="tabs"></div>
+        <div class="toolbar">
+          <select id="profile" aria-label="C# size profile"></select>
+          <select id="file" aria-label="Generated file"></select>
+          <span class="status" id="status"></span>
+        </div>
+        <pre id="output" tabindex="0"></pre>
+      </div>
+    </div>
+    <div id="diagnostics"></div>
+    <script type="module" src="./bundle.js"></script>
+  </body>
+</html>

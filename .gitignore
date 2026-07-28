@@ -13,3 +13,9 @@ target/
 # tooling scratch
 .tsp-output/
 tsp-output/
+
+# playground build output: the bundle embeds the whole TypeSpec compiler
+# (~2 MB) and src/generated/ is a snapshot of node_modules .tsp files —
+# both are reproducible from `pnpm --dir typescript/playground run build:web`
+typescript/playground/web-dist/
+typescript/playground/src/generated/

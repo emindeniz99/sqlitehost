@@ -1,0 +1,30 @@
+{
+  "name": "@sqlite-host/playground",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser playground for SqliteHost: edit a .tsp host definition and see the generated manifest, DDL, C#, Java, and TypeScript live",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "gen:vfs": "node scripts/gen-vfs.mjs",
+    "build": "npm run gen:vfs && tsc -p tsconfig.json",
+    "build:web": "npm run build && node scripts/build-web.mjs",
+    "test": "npm run build:web && node --test 'dist/test/*.test.js'"
+  },
+  "dependencies": {
+    "@sqlite-host/codegen-core": "workspace:*",
+    "@sqlite-host/emitter-csharp": "workspace:*",
+    "@sqlite-host/emitter-java": "workspace:*",
+    "@sqlite-host/emitter-manifest": "workspace:*",
+    "@sqlite-host/emitter-typescript": "workspace:*",
+    "@sqlite-host/typespec": "workspace:*",
+    "@typespec/compiler": "1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -69,6 +69,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | Doc | What |
 |---|---|
 | [docs/guides/getting-started.md](./docs/guides/getting-started.md) | consumption paths (vendor / packages / emitters), end-to-end walkthrough |
+| [docs/guides/playground.md](./docs/guides/playground.md) | browser playground: edit a `.tsp` host definition, see every generated artifact live |
 | [docs/architecture.md](./docs/architecture.md) | layers, generated-vs-handwritten boundary, lifecycle, resolved decisions |
 | [docs/adapter-contract.md](./docs/adapter-contract.md) | the normative SQLite-adapter contract + conformance suite |
 | [docs/script-envelope.md](./docs/script-envelope.md) | the cross-language script payload contract |

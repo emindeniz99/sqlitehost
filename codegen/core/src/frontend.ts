@@ -20,6 +20,7 @@ import {
   isArrayModelType,
   NodeHost,
   NoTarget,
+  type CompilerHost,
   type Diagnostic,
   type Interface,
   type Model,
@@ -95,17 +96,23 @@ export interface FrontendLibrariesResult {
 }
 
 /**
- * Compile a .tsp entrypoint with the Node host and normalize the
- * single @hostLibrary interface into the IR. Diagnostics (TypeSpec
- * compile errors plus SqliteHost model validation) are returned; `ir`
- * is only set when there are no errors. Errors when the compilation
- * defines more than one @hostLibrary interface — use
- * compileHostLibraries for multi-library programs.
+ * Compile a .tsp entrypoint and normalize the single @hostLibrary
+ * interface into the IR. Diagnostics (TypeSpec compile errors plus
+ * SqliteHost model validation) are returned; `ir` is only set when
+ * there are no errors. Errors when the compilation defines more than
+ * one @hostLibrary interface — use compileHostLibraries for
+ * multi-library programs.
+ *
+ * `host` defaults to the Node host (real file system). Pass a custom
+ * CompilerHost to compile sources that do not live on disk — the
+ * browser playground (typescript/playground) compiles an in-memory
+ * virtual file system this way.
  */
 export async function compileHostLibrary(
   entrypoint: string,
+  host: CompilerHost = NodeHost,
 ): Promise<FrontendResult> {
-  const program = await compile(NodeHost, resolve(entrypoint), { emit: [] });
+  const program = await compile(host, resolve(entrypoint), { emit: [] });
   let ir: HostLibraryIr | undefined;
   if (!program.hasError()) {
     ir = buildHostLibraryIr(program);
@@ -114,14 +121,16 @@ export async function compileHostLibrary(
 }
 
 /**
- * Compile a .tsp entrypoint with the Node host and normalize every
- * @hostLibrary interface into one IR each, in declaration order. `irs`
- * is only set when there are no errors.
+ * Compile a .tsp entrypoint and normalize every @hostLibrary interface
+ * into one IR each, in declaration order. `irs` is only set when there
+ * are no errors. `host` defaults to the Node host — see
+ * compileHostLibrary for the custom-host case.
  */
 export async function compileHostLibraries(
   entrypoint: string,
+  host: CompilerHost = NodeHost,
 ): Promise<FrontendLibrariesResult> {
-  const program = await compile(NodeHost, resolve(entrypoint), { emit: [] });
+  const program = await compile(host, resolve(entrypoint), { emit: [] });
   let irs: HostLibraryIr[] | undefined;
   if (!program.hasError()) {
     irs = buildHostLibraryIrs(program);
