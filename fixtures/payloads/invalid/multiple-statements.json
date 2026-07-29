@@ -1,0 +1,16 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-multiple-statements",
+  "requiredApiLevel": 1,
+  "steps": [
+    {
+      "id": "smuggle-a-pragma-behind-a-noop",
+      "statements": [
+        {
+          "sql": "SELECT 1; PRAGMA writable_schema = ON",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

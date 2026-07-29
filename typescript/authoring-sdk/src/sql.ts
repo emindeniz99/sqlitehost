@@ -414,6 +414,167 @@ function hasNowArg(tokens: SqlToken[], start: number): boolean {
   return false;
 }
 
+/**
+ * Both identifier token kinds. The Java tokenizer emits a single IDENT kind
+ * for bare, double-quoted, bracket- and backtick-quoted names, so every
+ * helper that must agree with the Java validator token-for-token treats them
+ * alike here too — the fixture corpus already carries `[call_get_value]` and
+ * `` `call_get_value` `` targets.
+ */
+function isIdentToken(token: SqlToken | undefined): token is SqlToken {
+  return (
+    token !== undefined &&
+    (token.kind === "identifier" || token.kind === "quoted-identifier")
+  );
+}
+
+function identEquals(token: SqlToken | undefined, word: string): boolean {
+  return isIdentToken(token) && token.value.toLowerCase() === word;
+}
+
+/**
+ * The statement's first meaningful token, lowercased, when that token is an
+ * identifier — the anchor of the forbidden-statement lint
+ * (docs/validation.md). `tokenizeSql` has already dropped whitespace and both
+ * comment forms, so token 0 *is* the first meaningful token; nothing extra is
+ * needed to be comment-aware. Returns null for an empty statement or one
+ * starting with a non-identifier, so a leading `'PRAGMA'` string literal is
+ * never mistaken for the PRAGMA statement. Mirrors the Java SqlAnalyzer.
+ */
+export function leadingKeyword(tokens: SqlToken[]): string | null {
+  if (!isIdentToken(tokens[0])) return null;
+  return tokens[0].value.toLowerCase();
+}
+
+/**
+ * Whether the token stream holds more than one SQL statement: a top-level
+ * (paren depth 0) `;` punctuation token followed by at least one further
+ * token — the anchor of the multiple-statements lint (docs/validation.md).
+ * A trailing `;` that merely terminates a single statement (nothing follows
+ * it) is legal and not flagged. Comments and string literals never trigger
+ * it: the tokenizer already collapsed them, so a `;` inside `'…'` or a `--`
+ * line comment is not a punctuation token here. Mirrors the Java SqlAnalyzer.
+ *
+ * This matters because the protocol contract is one statement per `sql`
+ * field: the native adapter's prepare_v2 compiles only the FIRST statement
+ * and silently drops the tail. Without this check a leading no-op —
+ * `SELECT 1; PRAGMA writable_schema = ON` — anchors leadingKeyword/writeTarget
+ * on the harmless `SELECT`, bypassing the forbidden-statement and
+ * protocol-table-write denylists entirely, and silently discards the
+ * author's real (rejected) statement.
+ */
+export function hasTrailingStatement(tokens: SqlToken[]): boolean {
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (isPunctAt(token, "(")) {
+      depth++;
+    } else if (isPunctAt(token, ")")) {
+      depth--;
+    } else if (depth === 0 && isPunctAt(token, ";")) {
+      return i + 1 < tokens.length;
+    }
+  }
+  return false;
+}
+
+/** Index just past the `)` matching the `(` at `open`. */
+function skipBalanced(tokens: SqlToken[], open: number): number {
+  let depth = 0;
+  for (let pos = open; pos < tokens.length; pos++) {
+    if (isPunctAt(tokens[pos], "(")) depth++;
+    else if (isPunctAt(tokens[pos], ")")) {
+      depth--;
+      if (depth === 0) return pos + 1;
+    }
+  }
+  return tokens.length;
+}
+
+/**
+ * Index of the statement verb after an optional `WITH [RECURSIVE]` CTE prefix
+ * (`name [(cols)] AS [[NOT] MATERIALIZED] (body) [, …]`), or 0 when there is
+ * no such prefix. Each parenthesized group is skipped by a balanced scan, so
+ * a CTE body containing its own commas, subqueries, or the word `begin` never
+ * confuses the walk. Mirrors the Java SqlAnalyzer.
+ */
+function skipCtePrefix(tokens: SqlToken[]): number {
+  if (!identEquals(tokens[0], "with")) return 0;
+  let pos = 1;
+  if (identEquals(tokens[pos], "recursive")) pos++;
+  while (pos < tokens.length) {
+    if (!isIdentToken(tokens[pos])) return tokens.length; // unrecognized shape
+    pos++; // CTE name
+    if (isPunctAt(tokens[pos], "(")) pos = skipBalanced(tokens, pos); // column list
+    if (identEquals(tokens[pos], "as")) pos++;
+    if (identEquals(tokens[pos], "not")) pos++;
+    if (identEquals(tokens[pos], "materialized")) pos++;
+    if (!isPunctAt(tokens[pos], "(")) return tokens.length; // unrecognized shape
+    pos = skipBalanced(tokens, pos); // CTE body
+    if (isPunctAt(tokens[pos], ",")) {
+      pos++;
+      continue; // another CTE
+    }
+    return pos;
+  }
+  return pos;
+}
+
+/** Read `[schema.]table` at `start`, keeping the last component (lowercased). */
+function qualifiedName(tokens: SqlToken[], start: number): string | null {
+  let pos = start;
+  if (!isIdentToken(tokens[pos])) return null;
+  let name = tokens[pos].value;
+  pos++;
+  while (isPunctAt(tokens[pos], ".") && isIdentToken(tokens[pos + 1])) {
+    name = tokens[pos + 1].value;
+    pos += 2;
+  }
+  return name.toLowerCase();
+}
+
+/**
+ * The single table an INSERT / UPDATE / DELETE writes (lowercased), or null
+ * when the statement is not a write — the anchor of the protocol-table-write
+ * lint (docs/validation.md).
+ *
+ * Unlike `analyzeInsert`, the verb is anchored at the start of the statement
+ * (after an optional `WITH …` CTE prefix) instead of being matched anywhere
+ * in the token stream. That matters because this lint raises an ERROR that
+ * blocks publication: a scan-anywhere match would read
+ * `SELECT "delete" FROM result_x` as a DELETE against `result_x` and reject
+ * the single most important legal pattern — reading a result table. Skipping
+ * the CTE prefix rather than only looking at token 0 is equally load-bearing
+ * in the other direction: a bare `WITH d AS (SELECT 1) INSERT INTO result_x …`
+ * would otherwise slip past the lint entirely. Mirrors the Java SqlAnalyzer.
+ */
+export function writeTarget(tokens: SqlToken[]): string | null {
+  let pos = skipCtePrefix(tokens);
+  if (!isIdentToken(tokens[pos])) return null;
+  if (identEquals(tokens[pos], "insert") || identEquals(tokens[pos], "replace")) {
+    pos++;
+    // INSERT OR REPLACE / OR IGNORE / … — at most two idents before INTO.
+    for (let guard = 0; guard < 2 && !identEquals(tokens[pos], "into"); guard++) {
+      if (!isIdentToken(tokens[pos])) return null;
+      pos++;
+    }
+    if (!identEquals(tokens[pos], "into")) return null;
+    return qualifiedName(tokens, pos + 1);
+  }
+  if (identEquals(tokens[pos], "update")) {
+    pos++;
+    // UPDATE OR ROLLBACK / OR ABORT / … — one conflict-clause ident.
+    if (identEquals(tokens[pos], "or") && tokens[pos + 1] !== undefined) pos += 2;
+    return qualifiedName(tokens, pos);
+  }
+  if (identEquals(tokens[pos], "delete")) {
+    pos++;
+    if (!identEquals(tokens[pos], "from")) return null;
+    return qualifiedName(tokens, pos + 1);
+  }
+  return null;
+}
+
 const SELECT_TERMINATORS = new Set([
   "from",
   "where",

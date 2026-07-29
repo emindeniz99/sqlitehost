@@ -1,0 +1,28 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-statement-begin",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "open-a-transaction",
+      "statements": [
+        {
+          "sql": "BEGIN",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

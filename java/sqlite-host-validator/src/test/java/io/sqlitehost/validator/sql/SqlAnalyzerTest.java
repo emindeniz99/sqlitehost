@@ -245,6 +245,27 @@ class SqlAnalyzerTest {
     }
 
     @Test
+    void hasTrailingStatementDetectsOnlyATopLevelSeparatorWithSqlAfterIt() {
+        // A top-level ';' with another statement after it is multi-statement…
+        assertTrue(trailing("SELECT 1; PRAGMA writable_schema = ON"));
+        assertTrue(trailing("SELECT 1; SELECT 2"));
+        assertTrue(trailing("SELECT (SELECT 1); SELECT 2"));
+        // …but a bare trailing ';' terminates a single statement — legal.
+        assertFalse(trailing("SELECT 1"));
+        assertFalse(trailing("SELECT 1;"));
+        // The tokenizer already collapsed strings and comments, so a ';'
+        // living inside either is not a separator token here.
+        assertFalse(trailing("SELECT ';'"));
+        assertFalse(trailing("SELECT ';;; not sql'"));
+        assertFalse(trailing("SELECT 1 -- ; x"));
+        assertFalse(trailing("SELECT 1 /* ; */ + 1"));
+    }
+
+    private static boolean trailing(String sql) {
+        return SqlAnalyzer.hasTrailingStatement(SqlTokenizer.tokenize(sql));
+    }
+
+    @Test
     void comparisonExtractionKeysOnTheManifestCallIdColumn() {
         // Custom call-id column 'cid': cid comparisons are extracted…
         List<ValueExpr> custom = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(

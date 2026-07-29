@@ -2,6 +2,7 @@ package io.sqlitehost.validator.sql;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -298,6 +299,192 @@ public final class SqlAnalyzer {
         return token.kind() == SqlToken.Kind.STRING
                 ? new ValueExpr(ValueExpr.Kind.STRING, token.text())
                 : new ValueExpr(ValueExpr.Kind.PARAM, token.text());
+    }
+
+    /**
+     * The statement's first meaningful token, lowercased, when that token is
+     * an identifier — the anchor of the forbidden-statement lint
+     * (docs/validation.md). The tokenizer has already dropped whitespace and
+     * both comment forms, so token 0 <em>is</em> the first meaningful token;
+     * nothing extra is needed to be comment-aware. Returns {@code null} when
+     * the statement is empty or starts with a non-identifier (a string
+     * literal, punctuation), so a leading {@code 'PRAGMA'} literal is never
+     * mistaken for the PRAGMA statement.
+     */
+    public static String leadingKeyword(List<SqlToken> tokens) {
+        if (tokens.isEmpty() || tokens.get(0).kind() != SqlToken.Kind.IDENT) {
+            return null;
+        }
+        return tokens.get(0).text().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether the token stream holds more than one SQL statement: a top-level
+     * (paren depth 0) {@code ';'} punctuation token followed by at least one
+     * further token — the anchor of the multiple-statements lint
+     * (docs/validation.md). A trailing {@code ';'} that merely terminates a
+     * single statement (nothing follows it) is legal and not flagged. Comments
+     * and string literals never trigger it: the tokenizer already collapsed
+     * them, so a {@code ';'} inside {@code '…'} or a {@code --} line comment is
+     * not a punctuation token here.
+     *
+     * <p>This matters because the protocol contract is one statement per
+     * {@code sql} field: the native adapter's prepare_v2 compiles only the
+     * FIRST statement and silently drops the tail. Without this check a leading
+     * no-op — {@code SELECT 1; PRAGMA writable_schema = ON} — anchors
+     * {@link #leadingKeyword} / {@link #writeTarget} on the harmless
+     * {@code SELECT}, bypassing the forbidden-statement and protocol-table-write
+     * denylists entirely, and silently discards the author's real (rejected)
+     * statement.</p>
+     */
+    public static boolean hasTrailingStatement(List<SqlToken> tokens) {
+        int depth = 0;
+        for (int i = 0; i < tokens.size(); i++) {
+            SqlToken token = tokens.get(i);
+            if (token.isPunct("(")) {
+                depth++;
+            } else if (token.isPunct(")")) {
+                depth--;
+            } else if (depth == 0 && token.isPunct(";")) {
+                return i + 1 < tokens.size();
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The single table an INSERT / UPDATE / DELETE writes, or {@code null}
+     * when the statement is not a write — the anchor of the
+     * protocol-table-write lint (docs/validation.md).
+     *
+     * <p>Unlike {@link #parseInsert}, the verb is anchored at the start of the
+     * statement (after an optional {@code WITH …} CTE prefix) instead of being
+     * matched anywhere in the token stream. That matters because this lint
+     * raises an ERROR that blocks publication: a scan-anywhere match would
+     * read {@code SELECT "delete" FROM result_x} as a DELETE against
+     * {@code result_x} and reject the single most important legal pattern —
+     * reading a result table. Skipping the CTE prefix rather than only
+     * looking at token 0 is equally load-bearing in the other direction: a
+     * bare {@code WITH d AS (SELECT 1) INSERT INTO result_x …} would
+     * otherwise slip past the lint entirely.</p>
+     *
+     * <p>Schema-qualified names keep their last component, mirroring
+     * {@link #parseInsert}.</p>
+     */
+    public static String writeTarget(List<SqlToken> tokens) {
+        int pos = skipCtePrefix(tokens);
+        if (pos >= tokens.size() || tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+            return null;
+        }
+        if (tokens.get(pos).isIdent("insert") || tokens.get(pos).isIdent("replace")) {
+            pos++;
+            // INSERT OR REPLACE / OR IGNORE / … — at most two idents before INTO.
+            for (int guard = 0; guard < 2 && pos < tokens.size()
+                    && !tokens.get(pos).isIdent("into"); guard++) {
+                if (tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+                    return null;
+                }
+                pos++;
+            }
+            if (pos >= tokens.size() || !tokens.get(pos).isIdent("into")) {
+                return null;
+            }
+            return qualifiedName(tokens, pos + 1);
+        }
+        if (tokens.get(pos).isIdent("update")) {
+            pos++;
+            // UPDATE OR ROLLBACK / OR ABORT / … — one conflict-clause ident.
+            if (pos + 1 < tokens.size() && tokens.get(pos).isIdent("or")) {
+                pos += 2;
+            }
+            return qualifiedName(tokens, pos);
+        }
+        if (tokens.get(pos).isIdent("delete")) {
+            pos++;
+            if (pos >= tokens.size() || !tokens.get(pos).isIdent("from")) {
+                return null;
+            }
+            return qualifiedName(tokens, pos + 1);
+        }
+        return null;
+    }
+
+    /**
+     * Index of the statement verb after an optional {@code WITH [RECURSIVE]}
+     * CTE prefix ({@code name [(cols)] AS [[NOT] MATERIALIZED] (body) [, …]}),
+     * or 0 when the statement has no such prefix. Each parenthesized group is
+     * skipped by a balanced scan, so a CTE body containing its own commas,
+     * subqueries, or the word {@code begin} never confuses the walk.
+     */
+    private static int skipCtePrefix(List<SqlToken> tokens) {
+        if (tokens.isEmpty() || !tokens.get(0).isIdent("with")) {
+            return 0;
+        }
+        int pos = 1;
+        if (pos < tokens.size() && tokens.get(pos).isIdent("recursive")) {
+            pos++;
+        }
+        while (pos < tokens.size()) {
+            if (tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+                return tokens.size(); // unrecognized shape — no write target
+            }
+            pos++; // CTE name
+            if (pos < tokens.size() && tokens.get(pos).isPunct("(")) {
+                pos = skipBalanced(tokens, pos); // optional column list
+            }
+            if (pos < tokens.size() && tokens.get(pos).isIdent("as")) {
+                pos++;
+            }
+            if (pos < tokens.size() && tokens.get(pos).isIdent("not")) {
+                pos++;
+            }
+            if (pos < tokens.size() && tokens.get(pos).isIdent("materialized")) {
+                pos++;
+            }
+            if (pos >= tokens.size() || !tokens.get(pos).isPunct("(")) {
+                return tokens.size(); // unrecognized shape — no write target
+            }
+            pos = skipBalanced(tokens, pos); // CTE body
+            if (pos < tokens.size() && tokens.get(pos).isPunct(",")) {
+                pos++;
+                continue; // another CTE
+            }
+            return pos;
+        }
+        return pos;
+    }
+
+    /** Index just past the ')' matching the '(' at {@code open}. */
+    private static int skipBalanced(List<SqlToken> tokens, int open) {
+        int depth = 0;
+        for (int pos = open; pos < tokens.size(); pos++) {
+            if (tokens.get(pos).isPunct("(")) {
+                depth++;
+            } else if (tokens.get(pos).isPunct(")")) {
+                depth--;
+                if (depth == 0) {
+                    return pos + 1;
+                }
+            }
+        }
+        return tokens.size();
+    }
+
+    /** Read {@code [schema.]table} at {@code start}, keeping the last component. */
+    private static String qualifiedName(List<SqlToken> tokens, int start) {
+        int pos = start;
+        if (pos >= tokens.size() || tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+            return null;
+        }
+        String name = tokens.get(pos).text();
+        pos++;
+        while (pos + 1 < tokens.size()
+                && tokens.get(pos).isPunct(".")
+                && tokens.get(pos + 1).kind() == SqlToken.Kind.IDENT) {
+            name = tokens.get(pos + 1).text();
+            pos += 2;
+        }
+        return name;
     }
 
     private static int indexOfIdent(List<SqlToken> tokens, String name) {

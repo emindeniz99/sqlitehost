@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-statement-pragma",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "unlock-the-schema",
+      "statements": [
+        {
+          "sql": "PRAGMA writable_schema = ON",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

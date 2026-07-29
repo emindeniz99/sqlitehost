@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-statement-attach",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "escape-the-workspace",
+      "statements": [
+        {
+          "sql": "ATTACH DATABASE '/data/save-game.db' AS stolen",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-function",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "branch-with-a-post-floor-builtin",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value) VALUES ('tier', 'int64', iif(1 > 0, 10, 20))",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

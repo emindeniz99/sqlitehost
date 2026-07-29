@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-protocol-table-write",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "forge-a-result",
+      "statements": [
+        {
+          "sql": "INSERT INTO result_get_value (call_id, status, result_value) VALUES ('forged-1', 'done', 9999)",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

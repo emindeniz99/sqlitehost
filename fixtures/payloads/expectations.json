@@ -458,6 +458,110 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-begin.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-attach.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-pragma.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/multiple-statements.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "multiple-statements",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/nonportable-function.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "nonportable-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-014-cte-insert.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
     }
   ]
 }

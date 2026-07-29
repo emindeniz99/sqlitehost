@@ -58,6 +58,61 @@ public final class Protocol {
     public static final Set<String> NONDETERMINISTIC_TIME_FUNCTIONS =
             Set.of("date", "time", "datetime", "julianday", "strftime");
 
+    /**
+     * SQLite built-ins introduced above the plan's floor
+     * ({@code ir.ts FUNCTION_MIN_VERSION}), keyed by the SQLITE_VERSION_NUMBER
+     * of the release that added them. The validator compares each entry
+     * against the host manifest's {@code library.minSqliteVersionNumber}.
+     */
+    public static final Map<String, Integer> FUNCTION_MIN_VERSION = Map.ofEntries(
+            Map.entry("row_number", 3025000),
+            Map.entry("rank", 3025000),
+            Map.entry("dense_rank", 3025000),
+            Map.entry("percent_rank", 3025000),
+            Map.entry("cume_dist", 3025000),
+            Map.entry("ntile", 3025000),
+            Map.entry("lag", 3025000),
+            Map.entry("lead", 3025000),
+            Map.entry("first_value", 3025000),
+            Map.entry("last_value", 3025000),
+            Map.entry("nth_value", 3025000),
+            Map.entry("iif", 3032000),
+            Map.entry("format", 3038000),
+            Map.entry("unixepoch", 3038000),
+            Map.entry("octet_length", 3043000),
+            Map.entry("timediff", 3043000),
+            Map.entry("concat", 3044000),
+            Map.entry("concat_ws", 3044000),
+            Map.entry("string_agg", 3044000));
+
+    /**
+     * Version floors for whole function families, keyed by name prefix
+     * ({@code ir.ts FUNCTION_PREFIX_MIN_VERSION}) — the LONGEST matching
+     * prefix wins. Covers the JSON surface, too large to enumerate by hand.
+     */
+    public static final Map<String, Integer> FUNCTION_PREFIX_MIN_VERSION = Map.of(
+            "json", 3038000,
+            "jsonb", 3045000);
+
+    /**
+     * Built-ins whose presence is decided by the device engine's compile
+     * options rather than its version ({@code ir.ts NONPORTABLE_FUNCTIONS}),
+     * so no version floor can make them safe.
+     */
+    public static final Set<String> NONPORTABLE_FUNCTIONS = Set.of(
+            "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "ceil",
+            "ceiling", "cos", "cosh", "degrees", "exp", "floor", "ln", "log",
+            "log10", "log2", "mod", "pi", "pow", "power", "radians", "sin",
+            "sinh", "sqrt", "tan", "tanh", "trunc");
+
+    /**
+     * Statement kinds a script may not use, matched on the statement's first
+     * meaningful token ({@code ir.ts FORBIDDEN_LEADING_KEYWORDS}).
+     */
+    public static final Set<String> FORBIDDEN_LEADING_KEYWORDS = Set.of(
+            "analyze", "attach", "begin", "commit", "detach", "end", "pragma",
+            "reindex", "release", "rollback", "savepoint", "vacuum");
+
     private Protocol() {
     }
 }

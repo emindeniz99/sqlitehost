@@ -245,6 +245,52 @@ public final class ValidationEngine {
             }
         }
 
+        // multiple-statements: exactly one SQL statement per `sql` field is
+        // the protocol contract — the native adapter's prepare_v2 compiles the
+        // first statement and silently drops the tail. That silent drop is both
+        // a general hazard and a denylist bypass: a leading no-op like
+        // `SELECT 1; PRAGMA …` would otherwise anchor forbidden-statement and
+        // protocol-table-write on the harmless first statement. Detected as a
+        // top-level `;` with more SQL after it (a bare trailing `;` is legal).
+        if (SqlAnalyzer.hasTrailingStatement(tokens)) {
+            findings.add(ValidationFinding.error(ValidationCodes.MULTIPLE_STATEMENTS,
+                    stepId, statementIndex,
+                    "statement contains more than one SQL statement (a top-level ';'"
+                            + " is followed by more SQL) — each 'sql' field must hold"
+                            + " exactly one statement; the runtime compiles only the"
+                            + " first and silently drops the rest (docs/validation.md)"));
+        }
+
+        // forbidden-statement: the statement's leading keyword names a
+        // statement kind outside the script surface — transaction control,
+        // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX (docs/validation.md).
+        // Matching only the FIRST token is what keeps `pragma_table_info(...)`
+        // in a SELECT, a `WITH … INSERT`, and the literal 'PRAGMA' legal.
+        String leading = SqlAnalyzer.leadingKeyword(tokens);
+        if (leading != null && Protocol.FORBIDDEN_LEADING_KEYWORDS.contains(leading)) {
+            findings.add(ValidationFinding.error(ValidationCodes.FORBIDDEN_STATEMENT,
+                    stepId, statementIndex,
+                    "statement starts with '" + leading.toUpperCase(Locale.ROOT)
+                            + "' — transaction control, ATTACH/DETACH and"
+                            + " PRAGMA/VACUUM/ANALYZE/REINDEX are not part of the"
+                            + " script surface (docs/validation.md)"));
+        }
+
+        // protocol-table-write: a write against a runtime-owned table. The
+        // protected names are resolved from the manifest, never from a
+        // prefix guess, because every one of them is host-configurable.
+        String writeTarget = SqlAnalyzer.writeTarget(tokens);
+        if (writeTarget != null) {
+            String role = schema.protocolTables.get(lower(writeTarget));
+            if (role != null) {
+                findings.add(ValidationFinding.error(ValidationCodes.PROTOCOL_TABLE_WRITE,
+                        stepId, statementIndex,
+                        "statement writes '" + writeTarget + "' (" + role
+                                + ") — the runtime owns that table; scripts read it,"
+                                + " never write it (docs/validation.md)"));
+            }
+        }
+
         InsertStatement insert = SqlAnalyzer.parseInsert(tokens);
         if (insert != null) {
             analyzeInsert(schema, script, insert, bindings,
@@ -369,8 +415,17 @@ public final class ValidationEngine {
             String stepId, int statementIndex,
             Analysis analysis, List<ValidationFinding> findings) {
         Set<String> reported = new HashSet<>();
+        Set<String> reportedPortability = new HashSet<>();
         for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
             String nameLc = lower(call.name());
+            // Engine portability is only meaningful for SQLite's own
+            // built-ins: a manifest inline function is supplied by the host
+            // adapter through sqlite3_create_function, so neither the engine
+            // version nor its compile options decide whether it exists.
+            if (!schema.inlineFunctions.containsKey(nameLc)) {
+                checkFunctionPortability(schema, nameLc, call, stepId, statementIndex,
+                        reportedPortability, findings);
+            }
             if (isNondeterministic(nameLc, call)) {
                 findings.add(ValidationFinding.warning(
                         ValidationCodes.NONDETERMINISTIC_FUNCTION,
@@ -428,6 +483,80 @@ public final class ValidationEngine {
                                         ? "" : ".." + inline.maxArgs())));
             }
         }
+    }
+
+    /**
+     * Engine-portability lints for one built-in call (docs/validation.md):
+     *
+     * <ul>
+     *   <li>nonportable-function — the built-in is compile-gated, so no
+     *       {@code minSqliteVersion} can make it safe. Checked first: a
+     *       compile-gated function must not be reported as a mere version
+     *       problem, because raising the floor would not fix it.</li>
+     *   <li>sqlite-version-too-low-for-function — the built-in was introduced
+     *       after the host's declared floor
+     *       ({@code manifest.library.minSqliteVersionNumber}). This is the
+     *       check that turns a crash on a player's device into a CI failure;
+     *       the prepare-only layer cannot see it because it compiles on a much
+     *       newer engine than the floor (docs/validation.md §3).</li>
+     * </ul>
+     *
+     * <p>One finding per distinct function name per statement.</p>
+     */
+    private static void checkFunctionPortability(
+            SchemaIndex schema, String nameLc, FunctionCall call,
+            String stepId, int statementIndex,
+            Set<String> reported, List<ValidationFinding> findings) {
+        if (Protocol.NONPORTABLE_FUNCTIONS.contains(nameLc)) {
+            if (reported.add(nameLc)) {
+                findings.add(ValidationFinding.error(ValidationCodes.NONPORTABLE_FUNCTION,
+                        stepId, statementIndex,
+                        "'" + call.name() + "' is only present when the device's SQLite"
+                                + " was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS —"
+                                + " its availability is a compile option, not a version,"
+                                + " so raising minSqliteVersion cannot make it safe;"
+                                + " compute the value in the host and bind it instead"));
+            }
+            return;
+        }
+        int minVersion = minVersionFor(nameLc);
+        if (minVersion > schema.minSqliteVersionNumber && reported.add(nameLc)) {
+            findings.add(ValidationFinding.error(
+                    ValidationCodes.SQLITE_VERSION_TOO_LOW_FOR_FUNCTION,
+                    stepId, statementIndex,
+                    "built-in '" + call.name() + "' requires SQLite "
+                            + formatVersion(minVersion) + " but the host declares a floor of "
+                            + formatVersion(schema.minSqliteVersionNumber)
+                            + " — raise the host's minSqliteVersion or avoid the function"));
+        }
+    }
+
+    /**
+     * Minimum SQLITE_VERSION_NUMBER for a built-in: the exact-name table
+     * first, then the longest matching family prefix (so {@code jsonb_extract}
+     * resolves to the JSONB floor, not the older JSON one). Returns 0 for
+     * anything at or below the plan's floor — i.e. "always safe".
+     */
+    private static int minVersionFor(String nameLc) {
+        Integer exact = Protocol.FUNCTION_MIN_VERSION.get(nameLc);
+        if (exact != null) {
+            return exact;
+        }
+        int best = 0;
+        int bestLength = -1;
+        for (Map.Entry<String, Integer> entry : Protocol.FUNCTION_PREFIX_MIN_VERSION.entrySet()) {
+            if (nameLc.startsWith(entry.getKey()) && entry.getKey().length() > bestLength) {
+                bestLength = entry.getKey().length();
+                best = entry.getValue();
+            }
+        }
+        return best;
+    }
+
+    /** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
+    private static String formatVersion(int versionNumber) {
+        return (versionNumber / 1000000) + "." + ((versionNumber / 1000) % 1000)
+                + "." + (versionNumber % 1000);
     }
 
     /**
@@ -770,12 +899,41 @@ public final class ValidationEngine {
         final Map<String, MethodDescriptor> resultChildTables = new HashMap<>();
         final Map<String, Map<String, ColumnType>> insertableColumns = new HashMap<>();
         final Map<String, MethodDescriptor> inlineFunctions = new HashMap<>();
+        /**
+         * The host's declared SQLite floor, the comparison value of the
+         * sqlite-version-too-low-for-function lint. Parsed from every
+         * manifest since v1 but, before this lint, read by no validator.
+         */
+        final int minSqliteVersionNumber;
+        /**
+         * Runtime-owned tables (lowercased) mapped to a human role, for
+         * protocol-table-write. Resolved from the manifest rather than from
+         * a `result_`/`call_` prefix guess, because every one of these names
+         * is host-configurable (docs/naming.md). Deliberately EXCLUDES the
+         * call tables and their child tables (writing them is how a script
+         * makes a host call), plus script_vars and script_control (the
+         * script's own scratch and control surfaces).
+         */
+        final Map<String, String> protocolTables = new HashMap<>();
 
         SchemaIndex(Manifest manifest) {
             callIdColumn = manifest.columns().callId();
             itemIndexColumn = manifest.columns().itemIndex();
             functionPrefix = manifest.naming().functionPrefix();
             functionPrefixLc = lower(functionPrefix);
+            minSqliteVersionNumber = manifest.library().minSqliteVersionNumber();
+            protocolTables.put(lower(manifest.queueTable().name()),
+                    "the host-call queue table");
+            protocolTables.put(lower(manifest.inputsTable().name()),
+                    "the runtime inputs table");
+            for (MethodDescriptor method : manifest.methods()) {
+                protocolTables.put(lower(method.resultTable()),
+                        "the result table of method '" + method.methodName() + "'");
+                for (ListField listField : method.result().listFields()) {
+                    protocolTables.put(lower(listField.childTable()),
+                            "a result list table of method '" + method.methodName() + "'");
+                }
+            }
             for (MethodDescriptor method : manifest.methods()) {
                 callTables.put(lower(method.callTable()), method);
                 resultTables.put(lower(method.resultTable()), method);

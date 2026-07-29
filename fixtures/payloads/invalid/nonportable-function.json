@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-nonportable-function",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "use-a-compile-gated-builtin",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, real_value) VALUES ('distance', 'float64', sqrt(2.0))",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

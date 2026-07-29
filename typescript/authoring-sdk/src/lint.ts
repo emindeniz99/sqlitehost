@@ -11,8 +11,12 @@
 import {
   BINDING_TYPE_COMPAT,
   FEATURE_INLINE_FUNCTIONS,
+  FORBIDDEN_LEADING_KEYWORDS,
+  FUNCTION_MIN_VERSION,
+  FUNCTION_PREFIX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONPORTABLE_FUNCTIONS,
 } from "@sqlite-host/codegen-core";
 import {
   validateScript,
@@ -28,9 +32,12 @@ import {
   analyzeInsert,
   callIdFilters,
   functionCalls,
+  hasTrailingStatement,
+  leadingKeyword,
   scanNamedParameters,
   tokenizeSql,
   UNKNOWN_ARGS,
+  writeTarget,
   type SqlFunctionCall,
 } from "./sql.js";
 
@@ -57,6 +64,11 @@ export type LintCode =
   | "unknown-function"
   | "function-arity-mismatch"
   | "nondeterministic-function"
+  | "sqlite-version-too-low-for-function"
+  | "nonportable-function"
+  | "multiple-statements"
+  | "forbidden-statement"
+  | "protocol-table-write"
   | "result-read-unknown-call"
   | "result-read-not-after-call";
 
@@ -95,6 +107,33 @@ function isNondeterministic(call: SqlFunctionCall): boolean {
     NONDETERMINISTIC_TIME_FUNCTIONS.includes(nameLc) &&
     (call.argCount === 0 || call.hasNowArg)
   );
+}
+
+/**
+ * Minimum SQLITE_VERSION_NUMBER for a built-in: the exact-name table first,
+ * then the longest matching family prefix (so `jsonb_extract` resolves to the
+ * JSONB floor, not the older JSON one). Returns 0 for anything at or below
+ * the plan's floor — i.e. "always safe". Both tables are single-sourced in
+ * ir.ts (docs/proposals/rule-parameters-as-data.md) and consumed by the Java
+ * validator through the generated Protocol.java.
+ */
+function minVersionFor(nameLc: string): number {
+  const exact = FUNCTION_MIN_VERSION[nameLc];
+  if (exact !== undefined) return exact;
+  let best = 0;
+  let bestLength = -1;
+  for (const [prefix, version] of Object.entries(FUNCTION_PREFIX_MIN_VERSION)) {
+    if (nameLc.startsWith(prefix) && prefix.length > bestLength) {
+      bestLength = prefix.length;
+      best = version;
+    }
+  }
+  return best;
+}
+
+/** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
+function formatVersion(versionNumber: number): string {
+  return `${Math.floor(versionNumber / 1000000)}.${Math.floor(versionNumber / 1000) % 1000}.${versionNumber % 1000}`;
 }
 
 export interface LintFinding {
@@ -205,6 +244,31 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   // never matches, so no identifier is ever flagged unknown-function.
   const functionPrefix = manifest.naming.functionPrefix ?? "";
   const functionPrefixLc = functionPrefix.toLowerCase();
+  // The host's declared SQLite floor — parsed from every manifest since v1
+  // but, before the version lint, read by no validator.
+  const minSqliteVersionNumber = manifest.library.minSqliteVersionNumber;
+  // Runtime-owned tables (lowercased) mapped to a human role, for
+  // protocol-table-write. Resolved from the manifest rather than from a
+  // `result_`/`call_` prefix guess, because every one of these names is
+  // host-configurable (docs/naming.md). Deliberately EXCLUDES the call
+  // tables and their child tables (writing them is how a script makes a host
+  // call), plus script_vars and script_control (the script's own scratch and
+  // control surfaces).
+  const protocolTables = new Map<string, string>();
+  protocolTables.set(manifest.queueTable.name.toLowerCase(), "the host-call queue table");
+  protocolTables.set(manifest.inputsTable.name.toLowerCase(), "the runtime inputs table");
+  for (const method of manifest.methods) {
+    protocolTables.set(
+      method.resultTable.toLowerCase(),
+      `the result table of method "${method.methodName}"`,
+    );
+    for (const listField of method.result.listFields) {
+      protocolTables.set(
+        listField.childTable.toLowerCase(),
+        `a result list table of method "${method.methodName}"`,
+      );
+    }
+  }
   // SQLite resolves table names case-insensitively, so table maps are
   // keyed lowercased (mirrors the Java engine's ValidationEngine).
   for (const method of manifest.methods) {
@@ -311,6 +375,51 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         }
       }
 
+      // multiple-statements: exactly one SQL statement per `sql` field is
+      // the protocol contract — the native adapter's prepare_v2 compiles the
+      // first statement and silently drops the tail. That silent drop is both
+      // a general hazard and a denylist bypass: a leading no-op like
+      // `SELECT 1; PRAGMA …` would otherwise anchor forbidden-statement and
+      // protocol-table-write on the harmless first statement. Detected as a
+      // top-level `;` with more SQL after it (a bare trailing `;` is legal).
+      if (hasTrailingStatement(tokens)) {
+        findings.push({
+          code: "multiple-statements",
+          severity: "error",
+          message: `statement contains more than one SQL statement (a top-level ";" is followed by more SQL) — each "sql" field must hold exactly one statement; the runtime compiles only the first and silently drops the rest (docs/validation.md)`,
+          ...at,
+        });
+      }
+
+      // forbidden-statement: the statement's leading keyword names a
+      // statement kind outside the script surface — transaction control,
+      // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX (docs/validation.md).
+      // Matching only the FIRST token is what keeps `pragma_table_info(...)`
+      // in a SELECT, a `WITH … INSERT`, and the literal 'PRAGMA' legal.
+      const leading = leadingKeyword(tokens);
+      if (leading !== null && FORBIDDEN_LEADING_KEYWORDS.includes(leading)) {
+        findings.push({
+          code: "forbidden-statement",
+          severity: "error",
+          message: `statement starts with "${leading.toUpperCase()}" — transaction control, ATTACH/DETACH and PRAGMA/VACUUM/ANALYZE/REINDEX are not part of the script surface (docs/validation.md)`,
+          ...at,
+        });
+      }
+
+      // protocol-table-write: a write against a runtime-owned table. The
+      // protected names are resolved from the manifest, never from a prefix
+      // guess, because every one of them is host-configurable.
+      const target = writeTarget(tokens);
+      const targetRole = target === null ? undefined : protocolTables.get(target);
+      if (target !== null && targetRole !== undefined) {
+        findings.push({
+          code: "protocol-table-write",
+          severity: "error",
+          message: `statement writes "${target}" (${targetRole}) — the runtime owns that table; scripts read it, never write it (docs/validation.md)`,
+          ...at,
+        });
+      }
+
       const insert = analyzeInsert(tokens, bindings, callIdColumn);
       if (insert !== null) {
         inserts.push({
@@ -361,8 +470,38 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // (nondeterministic-function), which is about built-ins rather than
       // inline functions but reads the identical call list.
       const reportedFunctions = new Set<string>();
+      const reportedPortability = new Set<string>();
       for (const call of functionCalls(tokens)) {
         const nameLc = call.name.toLowerCase();
+        // Engine portability is only meaningful for SQLite's own built-ins:
+        // a manifest inline function is supplied by the host adapter through
+        // sqlite3_create_function, so neither the engine version nor its
+        // compile options decide whether it exists.
+        if (!inlineFunctions.has(nameLc) && !reportedPortability.has(nameLc)) {
+          // nonportable-function is checked FIRST: a compile-gated built-in
+          // must not be reported as a mere version problem, because raising
+          // the floor would not fix it.
+          if (NONPORTABLE_FUNCTIONS.includes(nameLc)) {
+            reportedPortability.add(nameLc);
+            findings.push({
+              code: "nonportable-function",
+              severity: "error",
+              message: `"${call.name}" is only present when the device's SQLite was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe; compute the value in the host and bind it instead`,
+              ...at,
+            });
+          } else {
+            const minVersion = minVersionFor(nameLc);
+            if (minVersion > minSqliteVersionNumber) {
+              reportedPortability.add(nameLc);
+              findings.push({
+                code: "sqlite-version-too-low-for-function",
+                severity: "error",
+                message: `built-in "${call.name}" requires SQLite ${formatVersion(minVersion)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the function`,
+                ...at,
+              });
+            }
+          }
+        }
         if (isNondeterministic(call)) {
           findings.push({
             code: "nondeterministic-function",

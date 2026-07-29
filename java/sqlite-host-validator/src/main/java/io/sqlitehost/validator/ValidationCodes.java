@@ -39,6 +39,16 @@ public final class ValidationCodes {
     // Determinism
     public static final String NONDETERMINISTIC_FUNCTION = "nondeterministic-function";
 
+    // Engine portability (host floor vs the SQLite surface a script uses)
+    public static final String SQLITE_VERSION_TOO_LOW_FOR_FUNCTION =
+            "sqlite-version-too-low-for-function";
+    public static final String NONPORTABLE_FUNCTION = "nonportable-function";
+
+    // Statement denylist
+    public static final String MULTIPLE_STATEMENTS = "multiple-statements";
+    public static final String FORBIDDEN_STATEMENT = "forbidden-statement";
+    public static final String PROTOCOL_TABLE_WRITE = "protocol-table-write";
+
     // Result-read lineage
     public static final String RESULT_READ_UNKNOWN_CALL = "result-read-unknown-call";
     public static final String RESULT_READ_NOT_AFTER_CALL = "result-read-not-after-call";

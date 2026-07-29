@@ -1,0 +1,24 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-014",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "queue-through-a-cte",
+      "statements": [
+        {
+          "sql": "WITH picked(k) AS (SELECT 'example-key') INSERT INTO call_get_value (call_id, input_key) SELECT :callId, k FROM picked",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "cte-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

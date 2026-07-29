@@ -301,6 +301,168 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * SQLite built-ins introduced ABOVE the plan's default floor (3.19.3), keyed
+ * by the SQLITE_VERSION_NUMBER of the release that added them. A script that
+ * calls one of these runs fine on the validator's engine and then fails on a
+ * device whose SQLite predates the entry — the failure the
+ * sqlite-version-too-low-for-function lint moves to authoring time by
+ * comparing against the host's manifest `library.minSqliteVersionNumber`
+ * (docs/validation.md).
+ *
+ * Every entry is sourced from the sqlite.org changelog for that release; only
+ * functions with a citable release are listed (accuracy over breadth). Names
+ * are compared lowercased — SQLite resolves function names case-insensitively.
+ * Deliberately absent because they are AT OR BELOW the floor and therefore
+ * always safe: `printf` (3.8.3), the `trim`/`ltrim`/`rtrim` family, `instr`
+ * (3.7.15), `char`/`unicode` (3.8.3). Math functions are absent for the
+ * opposite reason — a version gate cannot make them safe, see
+ * NONPORTABLE_FUNCTIONS.
+ *
+ * Single-sourced here and projected into each language's generated protocol
+ * constants (docs/proposals/rule-parameters-as-data.md).
+ */
+export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
+  // 3.25.0 (2018-09-15) "Add support for window functions" — the eleven
+  // built-in window functions of sqlite.org/windowfunctions.html.
+  row_number: 3025000,
+  rank: 3025000,
+  dense_rank: 3025000,
+  percent_rank: 3025000,
+  cume_dist: 3025000,
+  ntile: 3025000,
+  lag: 3025000,
+  lead: 3025000,
+  first_value: 3025000,
+  last_value: 3025000,
+  nth_value: 3025000,
+  // 3.32.0 (2020-05-22) "Added the iif() SQL function".
+  iif: 3032000,
+  // 3.38.0 "Rename the printf() SQL function to format()" and "Added the
+  // unixepoch() function". `printf` itself stays legal — it is pre-floor.
+  format: 3038000,
+  unixepoch: 3038000,
+  // 3.43.0 "Added the octet_length(X) SQL function" / "Added the timediff()
+  // SQL function".
+  octet_length: 3043000,
+  timediff: 3043000,
+  // 3.44.0 "Add support for the concat() and concat_ws() scalar SQL
+  // functions" / "Add support for the string_agg() aggregate SQL function".
+  concat: 3044000,
+  concat_ws: 3044000,
+  string_agg: 3044000,
+};
+
+/**
+ * Version floors for whole function FAMILIES, keyed by name prefix — the
+ * longest matching prefix wins. Used for the JSON surface, which is far too
+ * large to enumerate by hand without drift.
+ *
+ * The `json` entry carries a caveat worth stating: JSON1 existed as an
+ * extension well before 3.38.0, but until that release it was **compile-gated**
+ * (`-DSQLITE_ENABLE_JSON1`) and therefore absent from stock builds. 3.38.0 is
+ * the first release where `json_*` is a built-in that is on by default, so it
+ * is the first version at which a version floor alone makes the family safe —
+ * that is why the whole family is treated as 3038000 rather than as its
+ * historical introduction version. The `jsonb_*` family arrived with JSONB in
+ * 3.45.0.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const FUNCTION_PREFIX_MIN_VERSION: Readonly<Record<string, number>> = {
+  json: 3038000,
+  jsonb: 3045000,
+};
+
+/**
+ * Built-ins that a version floor can NEVER make safe, because their presence
+ * is decided by the device engine's **compile options** rather than by its
+ * version. The math functions arrived in 3.35.0 but sqlite.org/lang_mathfunc
+ * states they "are only active if the amalgamation is compiled using the
+ * -DSQLITE_ENABLE_MATH_FUNCTIONS compile-time option" — so a script calling
+ * one passes validation, passes on a device whose engine happens to enable
+ * them, and fails on the next device. Raising `minSqliteVersion` does not
+ * help, which is why these are a separate ERROR (nonportable-function) rather
+ * than a version comparison.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const NONPORTABLE_FUNCTIONS: readonly string[] = [
+  "acos",
+  "acosh",
+  "asin",
+  "asinh",
+  "atan",
+  "atan2",
+  "atanh",
+  "ceil",
+  "ceiling",
+  "cos",
+  "cosh",
+  "degrees",
+  "exp",
+  "floor",
+  "ln",
+  "log",
+  "log10",
+  "log2",
+  "mod",
+  "pi",
+  "pow",
+  "power",
+  "radians",
+  "sin",
+  "sinh",
+  "sqrt",
+  "tan",
+  "tanh",
+  "trunc",
+];
+
+/**
+ * Statement kinds a script may not use, identified by the statement's FIRST
+ * meaningful token (the forbidden-statement lint, docs/validation.md). Three
+ * distinct hazards, all outside the script surface:
+ *
+ *  - transaction control (`begin`/`commit`/`end`/`rollback`/`savepoint`/
+ *    `release`): the runtime's atomicity unit is the step (statements + drain).
+ *    A script that opens a transaction and rolls it back erases the drain's
+ *    result rows and queue updates while the host handlers have already run
+ *    with real side effects — a silent-data-loss shape the run still reports
+ *    as Completed.
+ *  - `attach`/`detach`: the only filesystem escape. On a file-backed
+ *    workspace, ATTACH gives a script read AND write access to any reachable
+ *    database file.
+ *  - `pragma`/`vacuum`/`analyze`/`reindex`: engine/state levers outside the
+ *    contract. PRAGMA in particular can change semantics under the runtime's
+ *    feet (`foreign_keys`, `recursive_triggers`, `case_sensitive_like`) or
+ *    rewrite the schema outright (`writable_schema=ON`).
+ *
+ * Matching the FIRST token only is what keeps this precise: `pragma_table_info`
+ * table-valued functions inside a SELECT, a column named `begin`, and the
+ * string literal `'PRAGMA'` all remain legal, and `WITH … INSERT` is legal
+ * because `with` is not on this list. Names are compared lowercased.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
+  "analyze",
+  "attach",
+  "begin",
+  "commit",
+  "detach",
+  "end",
+  "pragma",
+  "reindex",
+  "release",
+  "rollback",
+  "savepoint",
+  "vacuum",
+];
+
+/**
  * Binding-type compatibility: for each scalar column type, the envelope
  * binding value types (wire names) that may feed it. int64 widens from
  * int32; float64 widens from float32; integers never coerce into float
