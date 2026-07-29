@@ -68,7 +68,16 @@ namespace SqliteHost.Tests
         private static IEnumerable<string> GuardedSourceFiles()
         {
             string csharpRoot = Path.Combine(Directory.GetParent(FixturePaths.Root).FullName, "csharp");
-            string[] projects = { "SqliteHost.Runtime", "SqliteHost.Abstractions", "SqliteHost.Adapters.Native" };
+            string[] projects =
+            {
+                "SqliteHost.Runtime",
+                "SqliteHost.Abstractions",
+                "SqliteHost.Adapters.Native",
+                // Optional, but shipped runtime-side and IL2CPP-targeted just
+                // like the others (docs/proposals/script-delivery.md), so it
+                // is held to the same no-logs/no-reflection contract.
+                "SqliteHost.Delivery"
+            };
             bool any = false;
             foreach (string project in projects)
             {

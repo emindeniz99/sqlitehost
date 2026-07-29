@@ -1,0 +1,177 @@
+{
+  "description": "Cross-language golden matrix for Script Delivery v1 (docs/proposals/script-delivery.md). Every envelope is produced by the TypeScript signer in @sqlite-host/authoring and verified by SqliteHost.Delivery in C#. tests/delivery-golden/run.mjs rebuilds each envelope from its `build` block and byte-compares it against the committed file (regenerate with UPDATE_DELIVERY_GOLDENS=1); the C# DeliveryGoldenTests read `envelope`, `nowUnixMs`, `outcome` and `expect` and ignore `build`. Both sides must agree, which is the point: bytes signed by Node must verify under .NET and nowhere else.",
+  "keys": "dev-keys.json",
+  "payload": "../payloads/valid/example-001-read-then-conditional-write.json",
+  "cases": [
+    {
+      "envelope": "valid-rsa.envelope",
+      "why": "The happy path, and the byte-for-byte cross-language contract: the verified payload must equal the committed script fixture exactly, so the runtime's existing JSON parsing sees bytes unchanged by the delivery layer.",
+      "build": {
+        "kind": "sign",
+        "signWith": "dev-rsa-1",
+        "alg": "rsa-sha256",
+        "kid": "dev-rsa-1",
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": 1785369600000,
+        "minApiLevel": 1
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "ok",
+      "expect": {
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": 1785369600000,
+        "minApiLevel": 1
+      }
+    },
+    {
+      "envelope": "valid-hmac.envelope",
+      "why": "hmac-sha256 with both optional fields absent. Proves empty expiresAt means `never expires` (not `expired at epoch 0`) and empty minApiLevel means `unspecified` (not `0`) — an absent-vs-zero confusion here would silently reject every long-lived script.",
+      "build": {
+        "kind": "sign",
+        "signWith": "dev-hmac-1",
+        "alg": "hmac-sha256",
+        "kid": "dev-hmac-1",
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": null,
+        "minApiLevel": null
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "ok",
+      "expect": {
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": null,
+        "minApiLevel": null
+      }
+    },
+    {
+      "envelope": "expired.envelope",
+      "why": "A genuinely signed envelope past its TTL. The signature is valid, so reaching `expired` also proves the expiry check runs after signature verification, not instead of it.",
+      "build": {
+        "kind": "sign",
+        "signWith": "dev-rsa-1",
+        "alg": "rsa-sha256",
+        "kid": "dev-rsa-1",
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": 1785283201000,
+        "minApiLevel": 1
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "expired"
+    },
+    {
+      "envelope": "unknown-key.envelope",
+      "why": "Correctly signed by the real private key but claiming a kid this build does not trust — the shape of a key that was rotated out. Must not fall back to `try every key`.",
+      "build": {
+        "kind": "sign",
+        "signWith": "dev-rsa-1",
+        "alg": "rsa-sha256",
+        "kid": "retired-2024-01",
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": 1785369600000,
+        "minApiLevel": 1
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "unknown-key"
+    },
+    {
+      "envelope": "wrong-key.envelope",
+      "why": "A well-formed envelope claiming a TRUSTED kid but signed with a private key the client never trusted — i.e. a forgery attempt, not a corrupted download. This is the single most important negative case: it is what an attacker who can serve bytes will actually try.",
+      "build": {
+        "kind": "sign",
+        "signWith": "dev-rsa-2",
+        "alg": "rsa-sha256",
+        "kid": "dev-rsa-1",
+        "scriptId": "daily-quest-rules",
+        "issuedAt": 1785283200000,
+        "expiresAt": 1785369600000,
+        "minApiLevel": 1
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "bad-signature"
+    },
+    {
+      "envelope": "tampered-payload.envelope",
+      "why": "valid-rsa with a single payload byte flipped and payloadLength left intact, so every framing check still passes. Only the signature can catch it — which is exactly the property the whole format exists to provide.",
+      "build": {
+        "kind": "derive",
+        "from": "valid-rsa.envelope",
+        "xorPayloadByte": {
+          "index": 0,
+          "mask": 32
+        }
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "bad-signature"
+    },
+    {
+      "envelope": "alg-substituted.envelope",
+      "why": "valid-rsa rewritten to claim hmac-sha256 — the JWT `alg confusion` attack. Rejected as unknown-key at key selection, because keys are selected by the (kid, alg) PAIR: dev-rsa-1 exists, but not as an HMAC key. It never reaches signature verification.",
+      "build": {
+        "kind": "derive",
+        "from": "valid-rsa.envelope",
+        "replace": [
+          [
+            "alg=rsa-sha256",
+            "alg=hmac-sha256"
+          ]
+        ]
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "unknown-key"
+    },
+    {
+      "envelope": "unknown-alg.envelope",
+      "why": "An algorithm a future signer might use (rsa-pss-sha256) that this build does not implement. Must report unsupported-version, not malformed: the operational answer is `ship an app update`, not `retry the download`.",
+      "build": {
+        "kind": "derive",
+        "from": "valid-rsa.envelope",
+        "replace": [
+          [
+            "alg=rsa-sha256",
+            "alg=rsa-pss-sha256"
+          ]
+        ]
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "unsupported-version"
+    },
+    {
+      "envelope": "unsupported-version.envelope",
+      "why": "A deliveryVersion this build does not implement. Fails closed on an unknown version instead of guessing the v1 layout.",
+      "build": {
+        "kind": "derive",
+        "from": "valid-rsa.envelope",
+        "replace": [
+          [
+            "sqlite-host-delivery/1",
+            "sqlite-host-delivery/2"
+          ]
+        ]
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "unsupported-version"
+    },
+    {
+      "envelope": "crlf-rewritten.envelope",
+      "why": "valid-rsa with the header line endings rewritten to CRLF, as a naive proxy or text-mode file copy would. Must fail loud as malformed rather than as a mysterious bad-signature, so an integrator can tell a broken transport from an attack.",
+      "build": {
+        "kind": "derive",
+        "from": "valid-rsa.envelope",
+        "replace": [
+          [
+            "alg=rsa-sha256\n",
+            "alg=rsa-sha256\r\n"
+          ]
+        ]
+      },
+      "nowUnixMs": 1785286800000,
+      "outcome": "malformed"
+    }
+  ]
+}

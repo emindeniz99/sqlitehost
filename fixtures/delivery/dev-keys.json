@@ -1,0 +1,16 @@
+{
+  "description": "INSECURE dev keys for the Script Delivery golden suite — publicly committed, never use them for anything real. `trusted` is the key set a client would ship; dev-rsa-2 is deliberately absent from it so wrong-key.envelope has something to fail against. The hmac secret is listed in full precisely to make the point that an hmac-sha256 verifier holds the signing key.",
+  "trusted": [
+    {
+      "keyId": "dev-rsa-1",
+      "alg": "rsa-sha256",
+      "modulusBase64": "tcJKbKAQcGVfR9tIfyp6lftSKu6ZQUIpKVcw5CH1dH1k5J01jDG9BFdAAKhcZDN5QOMFkoB7TKgo4H+g+A+Njh6oK4ZjBVoEQWt58CO9ENRnntHoID69ATNgte+v4gebSBkOQ0eWomc4FBxIEy1tGEKXS38ibLSOenb+N81HCng0uBfjHpj4yeIXyHqjKMy8Z014/N3CSdmKviMPSkczUVpYSevzS9oKaBMu4Ok/8ngXUrg2tBQlNaHWADfeo6oI5HhpfKS22yWdefXTlmH9s/iZco8M0KshKynaQyq3kE6m66NhS9G2gVHjOo8sTEFI5nFwcLQuuMNx7GPZIomA9w==",
+      "exponentBase64": "AQAB"
+    },
+    {
+      "keyId": "dev-hmac-1",
+      "alg": "hmac-sha256",
+      "secretBase64": "H9dpGDRXXrCuShihrsb288lxeJ3ZgKIlURDm9VigWUg="
+    }
+  ]
+}

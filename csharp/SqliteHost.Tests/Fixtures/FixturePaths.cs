@@ -14,6 +14,9 @@ namespace SqliteHost.Tests.Fixtures
         public static string Payload(string relativePath)
             => Path.Combine(Root, "payloads", relativePath);
 
+        public static string Delivery(string relativePath)
+            => Path.Combine(Root, "delivery", relativePath);
+
         private static string FindRoot()
         {
             var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -1,0 +1,12 @@
+# Delivery envelopes are signature-bearing byte streams, not text. The
+# repo-root rule (`* text=auto eol=lf`) would normalize line endings on
+# commit and checkout, which changes the signed bytes: every fixture
+# would fail to verify on a Windows checkout, and crlf-rewritten.envelope
+# — which deliberately contains CRLF to prove a line-ending-rewriting
+# transport is reported as `malformed` rather than as a mysterious
+# bad-signature — would silently turn back into a valid envelope and
+# stop testing anything.
+#
+# `-text` (not `binary`) so `git diff` still shows the readable header;
+# the format is plain text precisely so it stays reviewable.
+*.envelope -text

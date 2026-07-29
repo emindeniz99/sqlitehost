@@ -1,0 +1,58 @@
+sqlite-host-delivery/1
+alg=rsa-sha256
+kid=dev-rsa-1
+scriptId=daily-quest-rules
+issuedAt=1785283200000
+expiresAt=1785283201000
+minApiLevel=1
+payloadLength=1133
+
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-001",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "requiredMethods": [
+    "getValue",
+    "setValue"
+  ],
+  "steps": [
+    {
+      "id": "read-current",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "write-value",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_set_value (call_id, input_key, input_value) SELECT :callId, 'example-key', 42 WHERE EXISTS (SELECT 1 FROM result_get_value WHERE call_id = :readCallId AND status = 'done' AND result_value <> 42)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "write-1"
+            },
+            "readCallId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+sig=V37HcZRPonRYxs0P6+++olzZDDpU65g7U0eTHpgVc+oRuUX32yaK9a3fxMrKXUPyiP6WBSeAFZtPyIJKvco30hA8a4v1jzU4Uvi0VzQXqPkgD5MEUoQ8Gg5zeQhrYHQYI/jaRGGWgtQNdbF9zEVEaUGejM00zaqlGhi/+QWQF077uXOOuMb8bJdm1GRJmchwhbrYUu5qfvcd4MZaowYbXbSviBwRYR9uvH+dofNBBN6GNSxHg5FEtAmuoaiP2iCRXvutpNAi2YBzcXVbUw3EkUbkaAufHefzdiLtN+j2Q3QQIYRVCsn8waAaVGwwavQUbeHUq1/Ang0a2yrh74P+7g==

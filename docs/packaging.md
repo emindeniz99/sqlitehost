@@ -8,6 +8,7 @@ NuGet: SqliteHost.Runtime
 NuGet: SqliteHost.Conformance          # adapter conformance suite for consumer test projects
 NuGet: SqliteHost.Adapters.Native      # pure DllImport libsqlite3 adapter (scalar functions incl.)
 NuGet: SqliteHost.Abstractions
+NuGet: SqliteHost.Delivery             # optional signed-envelope verification (docs/guides/script-delivery.md)
 Maven: io.sqlitehost:sqlite-host-model
 Maven: io.sqlitehost:sqlite-host-validator
 Maven: io.sqlitehost:sqlite-host-jdbc

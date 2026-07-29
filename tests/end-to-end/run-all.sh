@@ -38,6 +38,9 @@ echo "==> npm workspace (pnpm -r test)"
 echo "==> Cross-language goldens"
 node "$ROOT/tests/cross-language-golden/run.mjs"
 
+echo "==> Script-delivery goldens (TS signer bytes verify under .NET)"
+node "$ROOT/tests/delivery-golden/run.mjs"
+
 echo "==> Unity package sync check"
 node "$ROOT/unity/sync.mjs" --check
 
