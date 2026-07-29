@@ -35,15 +35,17 @@ Jint, QuickJS/V8 and Wasm comparison — is in
 Have today: variables (`script_vars`), arithmetic/expressions (SQL),
 conditionals (`WHERE`/`CASE`/`EXISTS` gating), functions (host
 methods, plus inline scalar functions for eligible getters), early
-halt/abort (`script_control`), bounded iteration (recursive CTEs, in
-the 3.19.3 floor — steps themselves are a static sequence with no
-jumps, which keeps every script terminating by construction).
+halt/abort (`script_control`), data-driven iteration (recursive CTEs,
+in the 3.19.3 floor — steps themselves are a static sequence with no
+jumps, which keeps every script statically analyzable; it does **not**
+bound run time, since SQLite does not bound a recursive CTE — see
+`docs/why-sql-not-a-vm.md`).
 Deliberately absent and proposed:
 
 - **Imperative loops/goto across steps**: intentionally NOT proposed —
-  unbounded control flow breaks the terminating-by-construction
-  guarantee that makes untrusted-ish scripts tractable; recursive CTEs
-  cover data-driven iteration.
+  unbounded control flow breaks the static-sequence property that makes
+  untrusted-ish scripts tractable to lint; recursive CTEs cover
+  data-driven iteration.
 
 ## Dropped (decided against, not deferred)
 

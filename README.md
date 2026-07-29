@@ -46,7 +46,8 @@ Highlights beyond the core loop:
 - **App-size profiles** (measured under NativeAOT *and* real Unity
   IL2CPP — `docs/reports/il2cpp-size-report.md`): `--profile
   classic|compact|ultra` + `SQLITEHOST_SLIM` + `--dto-fields` take a
-  50-method host down to ~84 KB of compressed download under IL2CPP.
+  50-method host down to ~84 KB of *added* compressed download under
+  IL2CPP (marginal cost on top of an already-linked SQLite).
 
 ## How to run
 
@@ -81,6 +82,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/validation.md](./docs/validation.md) | validation layers + lint codes |
 | [docs/api-levels.md](./docs/api-levels.md) | compatibility / clean-skip rules |
 | [docs/compatibility.md](./docs/compatibility.md) | SQLite 3.19.3 / Unity 2021 / Java 17 / TS 5 floors |
+| [docs/sqlite-surface.md](./docs/sqlite-surface.md) | what script SQL may **not** rely on: features above the floor, compile-gated modules, statements the validators forbid |
 | [docs/testing.md](./docs/testing.md) | test matrix |
 | [docs/packaging.md](./docs/packaging.md) | intended distribution |
 | [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md) | measured Unity IL2CPP app-size matrix (Android/ARM64) |
@@ -92,5 +94,8 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
   see [ROADMAP.md](./ROADMAP.md).
 - The canonical manifest + DDL snapshot under `fixtures/` are the
   keystone: every language golden-tests against the same bytes.
-- v1 non-goals (per plan §30): remote delivery, signing, TTL policy,
-  full SQL sandboxing, durable workflows, ORM/HTTP generation, Lua.
+- Signed script delivery (fetch-friendly envelope + signature + TTL
+  verification, no transport) ships as the optional `SqliteHost.Delivery`
+  package — see [docs/guides/script-delivery.md](./docs/guides/script-delivery.md).
+- v1 non-goals (per plan §30): transport/HTTP for delivery, full SQL
+  sandboxing, durable workflows, ORM/HTTP generation, Lua.

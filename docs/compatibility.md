@@ -23,6 +23,15 @@ and their minimum versions: `AUTOINCREMENT`, `AFTER INSERT` triggers,
 composite primary keys, multi-row `VALUES` (3.7.11), named parameters
 (`:name`/`@name`/`$name`) — all well below 3.19.3.
 
+That paragraph binds **generated** SQL. Script SQL is arbitrary SQL and
+is bounded by the same floor as a contract with the author, not by the
+language — so the mirror image of this page,
+**[docs/sqlite-surface.md](./sqlite-surface.md)**, enumerates what
+script SQL may *not* rely on: the version-gated features above the
+floor (with the release that introduced each), the compile-gated
+modules that no floor can fix (FTS5, R-Tree, ICU, math), and the
+statements the validators forbid outright.
+
 Compatibility is enforced by policy **and by measurement**:
 `tests/compatibility-sqlite/run-matrix.sh` compiles real SQLite
 amalgamations and runs the full C# suite against each binary through a
@@ -108,8 +117,11 @@ Preserve/link.xml guidance becomes mandatory at that point.
 
 ## App size (measured: NativeAOT, and Unity IL2CPP)
 
-For download-cap-constrained games (App Store cellular threshold:
-compressed download size) the runtime's footprint was measured
+For size-constrained games (Apple's build maximums bind — up to 500 MB
+of `__TEXT` on iOS 9+, not a cellular download cap; it is marginal-cost
+discipline against an already-large AOT binary that matters, see
+`docs/why-sql-not-a-vm.md`; compressed download size is the user-facing
+proxy) the runtime's footprint was measured
 empirically, not estimated. Method: a "game-like" baseline app that
 heavily exercises the BCL (collections, interface dispatch, delegates,
 StringBuilder + invariant parse/format, base64/UTF8, sorting, custom
