@@ -1,7 +1,6 @@
-# Self-contained pnpm workspace for the sqlitehost project. Deliberately
-# independent from the repo-root workspace (which covers only the
-# FlatBuffers family) — see CONVENTIONS.md "every project is
-# self-contained". Run pnpm from inside projects/sqlitehost/.
+# Self-contained pnpm workspace for the sqlitehost project — see
+# CONVENTIONS.md "every project is self-contained". Run pnpm from
+# inside projects/sqlitehost/.
 
 packages:
   - "typespec/library"
