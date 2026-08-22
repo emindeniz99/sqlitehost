@@ -6,6 +6,8 @@ dist/
 # .NET
 bin/
 obj/
+# scripts/check-nupkg-shape.sh packs here by default
+nupkgs/
 
 # Java
 target/

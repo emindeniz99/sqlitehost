@@ -1,0 +1,99 @@
+# Playwright end-to-end tests for the browser playground — the repo's only
+# browser coverage.
+#
+# Why this is a separate workflow rather than a job in ci.yml: ci.yml sets
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 at WORKFLOW level so its matrix legs do
+# not each fetch a browser set, and a job-level override cannot undo it —
+# Playwright only tests whether the variable is set, so even "0" would skip
+# the download. Splitting the workflow keeps ci.yml's default intact and
+# lets this one install exactly one browser, deliberately.
+#
+# The 13 tests need no dev server: e2e/fixtures.ts starts its own loopback
+# server that serves exactly index.html and bundle.js and 404s everything
+# else, which is itself the assertion that the bundle fetches nothing.
+#
+# Security posture matches ci.yml: actions pinned by SHA, least privilege,
+# no credentials persisted, no event field interpolated into a `run:`.
+name: playground-e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playground-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: playwright (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      # Same reason as ci.yml during install: @playwright/test's postinstall
+      # would fetch chromium AND firefox AND webkit. The browser this job
+      # actually needs is installed explicitly below, which is also what
+      # pins its revision to the exact @playwright/test version in the
+      # lockfile — the mismatch the playground README warns about locally
+      # cannot happen here.
+      - name: Install workspace
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      # Not optional, and not covered by the install: every package the
+      # playground imports resolves through `main: dist/index.js`, and pnpm
+      # does not build workspace packages on install. ci.yml only gets away
+      # without this because `pnpm -r run test` builds each package as part
+      # of running it; here the very next step type-checks against those
+      # dist/ directories.
+      - name: Build the workspace
+        run: pnpm -r --silent run build
+
+      # Keyed on the manifest that pins @playwright/test: a version bump
+      # invalidates the cache, which is exactly when the browser must change.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browser-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('typescript/playground/package.json') }}
+
+      # --with-deps installs the system libraries chromium needs; it is
+      # cheap and must run even on a cache hit, because the apt packages are
+      # not part of the cached directory.
+      - name: Install chromium
+        run: pnpm --dir typescript/playground exec playwright install --with-deps chromium
+
+      # web-dist/ is gitignored (a 2.4 MB bundle embedding the TypeSpec
+      # compiler); the tests run against exactly what `build:web` produces.
+      - name: Build the web bundle
+        run: pnpm --dir typescript/playground run build:web
+
+      - name: Run the browser tests
+        run: pnpm --dir typescript/playground run test:e2e
+
+      # retries are deliberately 0 in playwright.config.ts ("a test that only
+      # passes on the second attempt is a bug report") and trace is
+      # retain-on-failure, so a red run leaves a trace under test-results/.
+      # Uploading it is what makes a one-off runner hiccup diagnosable
+      # instead of a re-run.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: playwright-traces
+          path: typescript/playground/test-results
+          if-no-files-found: ignore

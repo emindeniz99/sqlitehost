@@ -1,0 +1,132 @@
+# Real-SQLite engine compatibility matrix.
+#
+# docs/compatibility.md claims two tiers: a policy floor of 3.19.3 and an
+# engine-verified tier down to 3.9.0. This workflow is what turns the second
+# claim into a measured fact instead of a remembered one — it downloads
+# official SQLite amalgamations, compiles each with gcc, and runs the entire
+# C# suite against that binary through both override paths (the SQLitePCLRaw
+# dynamic provider and NativeLibrary.SetDllImportResolver).
+#
+# One matrix leg per engine version, so a red run names the version rather
+# than the matrix. The script collects every row and exits 1 if any failed,
+# which maps one-to-one onto a leg.
+#
+# Nothing here needs a secret or a licence, so it runs on fork pull requests
+# unchanged. It is not in ci.yml because a cold leg spends most of its time
+# compiling sqlite3.c.
+#
+# Security posture matches ci.yml: actions pinned by SHA, least privilege,
+# no credentials persisted, no event field interpolated into a `run:`. The
+# amalgamation downloads are SHA-256 pinned inside run-matrix.sh — this job
+# compiles and executes C it fetched over the network, so the bytes are
+# pinned too, not just the URL.
+name: engine-matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "csharp/**"
+      - "tests/compatibility-sqlite/**"
+      - "docs/compatibility.md"
+      - ".github/workflows/engine-matrix.yml"
+  # Same list as above; GitHub Actions does not expand YAML anchors.
+  pull_request:
+    paths:
+      - "csharp/**"
+      - "tests/compatibility-sqlite/**"
+      - "docs/compatibility.md"
+      - ".github/workflows/engine-matrix.yml"
+  schedule:
+    # Nightly at 03:41 UTC. The nightly run is what catches an upstream
+    # SQLite release changing the "latest" leg's answer.
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: sqlite ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    # An advisory leg must not fail the workflow.
+    continue-on-error: ${{ matrix.advisory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The four pinned versions, with the amalgamation number the
+          # cache path needs. run-matrix.sh owns the pins (URL + SHA-256);
+          # this list only says which leg runs which one.
+          - version: "3.9.0"
+            zip: "3090000"
+            advisory: false
+          - version: "3.9.2"
+            zip: "3090200"
+            advisory: false
+          - version: "3.19.3"   # the documented floor
+            zip: "3190300"
+            advisory: false
+          - version: "3.28.0"
+            zip: "3280000"
+            advisory: false
+          # The fifth version is whatever sqlite.org publishes today,
+          # resolved by the script at run time. That is deliberately
+          # non-hermetic, and this leg is therefore ADVISORY
+          # (continue-on-error): an upstream SQLite release, or a network
+          # hiccup that drops the resolution back to the pinned fallback,
+          # must not turn a healthy repository red without a human deciding
+          # it should. When this leg goes red, that is a signal to read —
+          # either the new release broke something real, in which case a
+          # pinned leg is added for it, or the harness needs adjusting.
+          # It also gets no cache: its key would have to change whenever
+          # upstream releases, which is exactly when the cache is useless.
+          - version: "latest"
+            zip: ""
+            advisory: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+
+      # The source ARCHIVE only — deliberately not the compiled .so. This
+      # job loads that library into the test process, and a cache entry is
+      # not evidence of anything: whatever is restored under a key is
+      # trusted as-is. The archive has a SHA-256 pin in run-matrix.sh and
+      # is re-checked on every run, so caching it costs nothing in trust;
+      # the ~1 min of gcc -O2 that a cached .so would have saved is the
+      # price of the library being compiled from bytes that just verified.
+      # The per-run test logs in the same directory are not cached.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.version != 'latest'
+        with:
+          path: tests/compatibility-sqlite/.cache/sqlite-amalgamation-${{ matrix.zip }}.zip
+          key: sqlite-engine-src-${{ runner.os }}-${{ matrix.version }}
+
+      # The version travels through the environment rather than being
+      # interpolated into the script line.
+      - name: Run the C# suite against SQLite ${{ matrix.version }}
+        env:
+          SQLITE_VERSION: ${{ matrix.version }}
+        run: bash tests/compatibility-sqlite/run-matrix.sh "$SQLITE_VERSION"
+
+      - name: Record the row in the job summary
+        if: always()
+        env:
+          SQLITE_VERSION: ${{ matrix.version }}
+          LEG_RESULT: ${{ job.status }}
+        run: |
+          {
+            printf '### SQLite %s — %s\n\n' "$SQLITE_VERSION" "$LEG_RESULT"
+            printf '```\n'
+            tail -n 20 "tests/compatibility-sqlite/.cache/test-"*.log 2>/dev/null || echo "(no test log)"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"

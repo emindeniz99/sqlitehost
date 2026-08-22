@@ -1,0 +1,19 @@
+# Everything Unity or the row assembly regenerates. Only the Editor driver,
+# the package manifest and the editor-version stamp are committed; Unity
+# writes the rest of ProjectSettings/ on first open.
+Library/
+Temp/
+Logs/
+obj/
+Builds/
+UserSettings/
+*.csproj
+*.sln
+ProjectSettings/*
+!ProjectSettings/ProjectVersion.txt
+
+# Written by prepare-row.sh for the row currently being measured.
+Assets/Sources/
+Assets/Sources.meta
+Assets/Main.unity
+Assets/Main.unity.meta

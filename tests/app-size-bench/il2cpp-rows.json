@@ -1,0 +1,14 @@
+[
+  { "row": 0, "label": "baseline", "sources": "GameWork only", "defines": "", "validate": "game", "ddl": null },
+  { "row": 1, "label": "classic50", "sources": "unity-src/classic", "defines": "", "validate": "bench", "ddl": 22231 },
+  { "row": 2, "label": "compact50", "sources": "unity-src/compact", "defines": "", "validate": "bench", "ddl": 22231 },
+  { "row": 3, "label": "compact50-slim", "sources": "unity-src/compact", "defines": "SQLITEHOST_SLIM", "validate": "bench", "ddl": 22231 },
+  { "row": 4, "label": "ultra50", "sources": "unity-src/ultra", "defines": "", "validate": "bench", "ddl": 22231 },
+  { "row": 5, "label": "ultra50-slim", "sources": "unity-src/ultra", "defines": "SQLITEHOST_SLIM", "validate": "bench", "ddl": 22231 },
+  { "row": 6, "label": "compact50-fields", "sources": "unity-src/compact + compact-fields DTOs", "defines": "", "validate": "bench", "ddl": 22231 },
+  { "row": 7, "label": "probe-gvm", "sources": "probes/gvm", "defines": "", "validate": "probe", "ddl": null },
+  { "row": 8, "label": "probe-nogvm", "sources": "probes/nogvm", "defines": "", "validate": "probe", "ddl": null },
+  { "row": 9, "label": "classic5", "sources": "unity-src/classic-5", "defines": "", "validate": "bench", "ddl": 2771 },
+  { "row": 10, "label": "compact5", "sources": "unity-src/compact-5", "defines": "", "validate": "bench", "ddl": 2771 },
+  { "row": 11, "label": "ultra5", "sources": "unity-src/ultra-5", "defines": "", "validate": "bench", "ddl": 2771 }
+]

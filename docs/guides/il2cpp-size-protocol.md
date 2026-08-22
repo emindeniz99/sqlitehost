@@ -12,6 +12,17 @@ IL2CPP and produce the definitive report** without asking anything.
 Everything to build lives in the repo: `tests/app-size-bench/` generates
 identical source sets for both toolchains from the repo's own emitters.
 
+CI runs both halves, at cadences their cost justifies. The NativeAOT
+sweep (§3) is a per-pull-request job — `ci.yml`, `app size (NativeAOT)`,
+driven by `tests/app-size-bench/measure-nativeaot.mjs`. The Unity matrix
+(§4) is `il2cpp-size-bench.yml`, monthly and on demand, driven by
+`tests/app-size-bench/unity-project/` plus `prepare-row.sh`,
+`measure-il2cpp.mjs` and `summarize-il2cpp.mjs`. It stays a measurement:
+IL2CPP byte counts move with the editor patch, the NDK and the engine, so
+it publishes a table and an artifact instead of blocking a merge. The
+hand-run instructions below still work unchanged, and are what you want
+when you are investigating rather than monitoring.
+
 ---
 
 ## 1. Hypothesis ledger — what was tested, what must be re-tested

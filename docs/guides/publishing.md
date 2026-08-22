@@ -166,8 +166,12 @@ For each of `typespec/library`, `typescript/runtime-types`,
 - [ ] `private` removed (`"license"` and the repository/author
   metadata are already present).
 - [ ] `pnpm run build && pnpm run test` green in the package dir.
-- [ ] `pnpm pack` and inspect the tarball
-  (`tar -tzf *.tgz`) — no `src/`, no test output missing/extra files.
+- [x] `pnpm pack` and inspect the tarball — automated as
+  `node scripts/check-pack-shape.mjs`, run by `packaging.yml` on every
+  pull request that touches these packages. It asserts that every path
+  `main`/`types`/`exports` promises is in the tarball, that no `src/` or
+  `dist/test/` leaked in, and that `@sqlite-host/typespec` really ships
+  `lib/main.tsp`. A missing package README is still only a warning.
 - [ ] Workspace deps: `@sqlite-host/authoring` depends on
   `@sqlite-host/runtime-types` via `workspace:*` — `pnpm publish`
   rewrites this to the real version automatically (one reason to

@@ -8,7 +8,9 @@ banned-feature policy" of `docs/compatibility.md` into a measured result.
 ## How to run
 
 ```bash
-bash tests/compatibility-sqlite/run-matrix.sh
+bash tests/compatibility-sqlite/run-matrix.sh            # every version
+bash tests/compatibility-sqlite/run-matrix.sh 3.19.3     # just the floor
+bash tests/compatibility-sqlite/run-matrix.sh latest     # just the newest
 ```
 
 Requirements: `gcc`, `unzip`, `curl`, and `dotnet` (found on `PATH` or at
@@ -20,6 +22,25 @@ Versions tested: pinned `3.9.0`, `3.9.2`, `3.19.3` (the documented floor),
 `3.28.0`, plus the **newest** amalgamation resolved at runtime from
 `https://sqlite.org/download.html` (fallback pin if the page is unreachable:
 3.53.3, the newest at the time this harness was written).
+
+Each pinned version also carries the SHA-256 of its amalgamation zip, and
+the script verifies it on every run — including after a cache restore. This
+downloads C source and then compiles and *executes* it, so the bytes are
+pinned, not just the URL. The runtime-resolved newest version has no
+checksum by construction; that is why CI treats it as an advisory leg.
+
+## In CI
+
+`.github/workflows/engine-matrix.yml` runs this nightly, on any pull
+request touching `csharp/` or this directory, and on demand. One matrix leg
+per version — that is what the version argument above exists for — so a red
+run names the engine. Only the source zip is cached, per version, and never
+the compiled `.so`: a cache entry proves nothing about its own contents, and
+this harness loads that library into the test process. Compiling from an
+archive that just passed its pin costs about a minute per leg and is what
+the pins are for. The advisory "latest" leg is not cached at all, because
+its key would have to change on exactly the upstream release that makes the
+cache useless.
 
 The script exits non-zero if **any** version fails. 3.9.0 and 3.9.2 are
 below the documented floor, but their rows are expected green too: on those
