@@ -16,24 +16,31 @@ EditMode tests headlessly.
 | Path | Authored | Why |
 |---|---|---|
 | `Packages/manifest.json` | yes | Consumes the package from the worktree (`file:../../com.sqlitehost.runtime`) plus `com.unity.test-framework`. |
-| `ProjectSettings/ProjectVersion.txt` | yes | Pins the editor to **2021.3.45f2**. |
+| `ProjectSettings/ProjectVersion.txt` | yes | Pins the committed project to the package floor, **2021.3.45f2**. Newer matrix legs open this same project with a newer editor and let it upgrade in place on the runner. |
 | `Assets/Tests/EditMode/` | yes | The asmdef and the tests. |
 | everything else | no | `Library/`, the rest of `ProjectSettings/`, every `.meta`, `packages-lock.json`. Unity writes them on first open and `.gitignore` keeps them out. |
 
-## Why 2021.3.45f2 and not something newer
+## Why the committed pin is 2021.3.45f2
 
 Two constraints meet at that patch:
 
 - `com.sqlitehost.runtime/package.json` declares `"unity": "2021.3"`, and
-  the floor is the version that actually breaks. Proving the package on a
-  modern editor proves nothing about the version consumers are promised.
+  the floor is the version that actually breaks. An editor above the floor
+  cannot prove the version consumers are promised, which is why the
+  committed project sits at the floor and the guard job keeps it there.
 - 2021.3.45f2 is the newest 2021.3 patch a **free personal licence** can
-  activate. Later patches are Extended LTS and need an Industry or
-  Enterprise licence, so CI cannot run them.
+  activate. From .46f1 the line is Extended LTS, which needs a Unity
+  Industry or Enterprise licence in CI and on a laptop alike. That also
+  covers the 2021.3.55f1 in `unity/SampleProject`, so nobody should copy
+  that pin here.
 
-`unity/SampleProject` pins 2021.3.55f1 — an Extended LTS patch. That is
-fine for a human with their own editor install and is deliberately not
-copied here.
+CI does not stop at the floor. `unity-ci.yml` runs this project through
+eight editors in sequence: 2021.3.45f2, 2022.3.62f3 and the six Unity 6
+lines. The workflow passes each editor version explicitly, so
+`ProjectVersion.txt` is never consulted, and the in-place upgrade a newer
+editor performs happens on the runner's throwaway checkout.
+`docs/compatibility.md` carries the full table and the lines a personal
+licence cannot reach.
 
 ## The sample is copied in, never committed
 
@@ -45,7 +52,11 @@ copies `com.sqlitehost.runtime/Samples~/GeneratedSample` into
 gitignored: the package folder holds the only copy.
 
 To reproduce a CI run locally, do the same copy, then open this folder in
-Unity 2021.3.45f2 and run `Window > General > Test Runner > EditMode`.
+Unity 2021.3.45f2 (or any editor from the workflow matrix) and run
+`Window > General > Test Runner > EditMode`. The committed
+`Packages/manifest.json` pins `com.unity.test-framework` at the floor's
+1.1.33; each newer matrix leg overwrites that pin on the runner before the
+editor starts.
 
 ## What the tests check
 

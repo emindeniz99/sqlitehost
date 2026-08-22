@@ -62,12 +62,44 @@ SqliteHost.Adapters.Native (shippable pure-DllImport adapter — the
 native-style reference, scalar functions included). The Java suite runs on xerial
 sqlite-jdbc (bundled modern SQLite).
 
-## C# / Unity — Unity 2021 LTS and newer
+## C# / Unity: floor 2021.3, CI-verified on eight editors
 
-Pinned verification targets: **Unity 2021.3.55f1 and 2022.3.39f1**
-(the latest LTS patch releases of each line at the time of writing) —
-the in-editor spike (see `docs/guides/unity-2021-spike.md`) should be
-run on both.
+`unity/com.sqlitehost.runtime/package.json` declares `"unity": "2021.3"`,
+and that floor is the contract. `.github/workflows/unity-ci.yml` puts the
+package in front of a real editor and runs its EditMode tests on every
+editor version a free personal Unity licence can activate:
+
+| Editor | Line | Why this patch |
+|---|---|---|
+| 2021.3.45f2 | 2021 LTS | the declared floor, and the newest 2021.3 patch a personal licence activates |
+| 2022.3.62f3 | 2022 LTS | newest publicly activatable 2022.3 patch |
+| 6000.0.82f1 | Unity 6.0 LTS | Unity supports this line through October 2026 |
+| 6000.1.17f1 | Unity 6.1 | Supported Update release, last patched October 2025 |
+| 6000.2.15f1 | Unity 6.2 | Supported Update release, retired by Unity |
+| 6000.3.22f1 | Unity 6.3 LTS | supported until December 2027, so most consumers land here |
+| 6000.4.12f1 | Unity 6.4 | Supported Update release, superseded by 6.5 |
+| 6000.5.9f1 | Unity 6.5 | current Supported Update release, forward warning for the next LTS |
+
+Read that table as exactly one claim: on each of those editors, the UPM
+package compiles and its EditMode tests pass, headless, on a Linux x64
+runner. Play mode, IL2CPP player builds, the macOS and Windows editors
+and the mobile players are not covered there. For those, see the manual
+spike (`docs/guides/unity-2021-spike.md`) and the measured IL2CPP report
+(`docs/reports/il2cpp-size-report.md`).
+
+Three gaps CI cannot close, so you know they are gaps and not oversights:
+
+- **2021.3 above .45f2 and 2022.3 above .62f3 are Extended LTS.**
+  Activating one needs a Unity Industry or Enterprise licence, in CI or
+  on a laptop. `unity/SampleProject` pins 2021.3.55f1, which sits inside
+  that window. GameCI publishes editor images well past both cutoffs
+  (`ubuntu-2022.3.76f1-linux-il2cpp-3` exists), so an available image
+  says nothing about whether a licence can run it.
+- **2020.3 and 2019.4 stay publicly activatable but sit below the
+  declared floor**, where a passing test would prove nothing the package
+  promises.
+- **arm64 runners have no editor image.** Every `unityci/editor`
+  manifest list ships amd64 only, so every leg runs on x64.
 
 ### C# language level: 8 (9 evaluated and declined)
 
@@ -100,10 +132,11 @@ API would simplify real code.
 `netstandard2.0`, C# 8 subset: no records, no `required`, no `init`, no
 default interface members, no `System.Text.Json`, no source generators,
 no modern hosting abstractions. Ordinary classes, interfaces,
-delegates, lists, explicit null checks. The literal 2021.3 in-editor
-spike is a ROADMAP item, since it needs a 2021.3 editor on a real
-machine; the source is kept vendorable (copy the two folders +
-generated sample).
+delegates, lists, explicit null checks. A 2021.3.45f2 editor compiles
+this subset on every CI run of `unity-ci.yml`; what still waits on a
+human with an editor installed is the Play-mode pass and the API-level
+check in `docs/guides/unity-2021-spike.md`. The source is kept
+vendorable (copy the two folders + generated sample).
 
 ### IL2CPP guardrail
 

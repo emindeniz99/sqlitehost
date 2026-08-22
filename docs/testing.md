@@ -95,8 +95,13 @@ Orchestrates the full matrix locally: `dotnet test`, `mvn -q test`,
 | `zizmor` | workflow security lint |
 
 `.github/workflows/unity-ci.yml` compiles `com.sqlitehost.runtime`
-inside a Unity 2021.3.45f2 editor and runs its EditMode tests; it needs
-the licence secrets, which GitHub does not pass to fork pull requests.
+inside eight real Unity editors, one after another, and runs its EditMode
+tests in each: the 2021.3.45f2 floor, 2022.3.62f3, and the six Unity 6
+lines (6000.0.82f1, 6000.1.17f1, 6000.2.15f1, 6000.3.22f1, 6000.4.12f1,
+6000.5.9f1). Those are the versions a free personal licence can activate;
+`docs/compatibility.md` lists the lines it therefore cannot reach. The job
+needs the licence secrets, which GitHub does not pass to fork pull
+requests, so a fork gets the licence-free scaffold-guard instead.
 
 Neither workflow runs the engine matrix or the playground browser
 tests. Run those two locally.

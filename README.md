@@ -81,7 +81,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/errors.md](./docs/errors.md) | runtime statuses + error codes |
 | [docs/validation.md](./docs/validation.md) | validation layers + lint codes |
 | [docs/api-levels.md](./docs/api-levels.md) | compatibility / clean-skip rules |
-| [docs/compatibility.md](./docs/compatibility.md) | SQLite 3.19.3 / Unity 2021 / Java 17 / TS 5 floors |
+| [docs/compatibility.md](./docs/compatibility.md) | SQLite 3.19.3 / Unity 2021.3 / Java 17 / TS 5 floors, and the eight Unity editors CI tests |
 | [docs/sqlite-surface.md](./docs/sqlite-surface.md) | what script SQL may **not** rely on: features above the floor, compile-gated modules, statements the validators forbid |
 | [docs/testing.md](./docs/testing.md) | test matrix |
 | [docs/packaging.md](./docs/packaging.md) | intended distribution |

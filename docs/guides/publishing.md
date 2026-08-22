@@ -482,21 +482,32 @@ committed, so the job's `edit-mode-tests` half fails — with an explicit
    | `UNITY_EMAIL` | the Unity ID email |
    | `UNITY_PASSWORD` | the Unity ID password |
 
-   All three are needed: the editor re-validates the account when it
-   applies the licence file, so the `.ulf` alone is not enough.
+   `UNITY_LICENSE` is the one the workflow activates with: game-ci's
+   `activate.sh` takes its personal-licence branch when `UNITY_LICENSE` is
+   set and `UNITY_SERIAL` is not, and that branch runs
+   `unity-editor -manualLicenseFile` without reading the account
+   credentials. The guard step still demands all three, because
+   `UNITY_EMAIL` and `UNITY_PASSWORD` are what a switch to the serial
+   branch needs and a half-configured secret set fails later and less
+   clearly.
 
 Two constraints are baked into the workflow and should not be "simplified"
 away:
 
-- **A personal licence allows only a couple of concurrent activations.**
-  The version matrix therefore runs `max-parallel: 1`. Adding editor
-  versions makes the job longer, not wider.
-- **Unity 2021.3 patches newer than 2021.3.45f2 are Extended LTS** and
-  refuse to activate under a personal licence, which is why CI pins
-  2021.3.45f2 — the newest patch a personal licence can run, and still on
-  the `2021.3` line the package declares as its floor. `unity/SampleProject`
-  pins a later patch on purpose; it is opened by a human with their own
-  editor, not by CI.
+- **The editor matrix runs `max-parallel: 1`.** Personal activation here
+  is `-manualLicenseFile` against a randomized machine ID per container,
+  so parallel legs would probably work, but Unity publishes no rate limit
+  for a path game-ci itself calls unsupported, and one throttled
+  activation would redden all eight legs at once. Adding editor versions
+  makes the job longer, not wider: eight legs take roughly 45 minutes.
+- **Which editor patches CI can run is decided by Unity's public release
+  feed, not by Docker Hub.** 2021.3 patches above .45f2 and 2022.3 patches
+  above .62f3 are Extended LTS and refuse to activate under a personal
+  licence, even though GameCI publishes images for them
+  (`ubuntu-2022.3.76f1-linux-il2cpp-3` is real and unusable here). Probe
+  `https://services.api.unity.com/unity/editor/release/v1/releases?version=<exact>`
+  before adding a leg: a withheld patch returns `total=0`. The eight
+  versions currently tested are listed in `docs/compatibility.md`.
 
 A Unity Pro/Plus seat activates from a serial (`UNITY_SERIAL`) instead and
 would need the workflow's licence env adjusted; nothing else changes.

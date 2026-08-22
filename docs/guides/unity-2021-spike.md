@@ -43,10 +43,14 @@ Deliberately **not** authored (Unity regenerates them on first open):
    Archive` and pick a **2021.3.x LTS** release (the project is pinned to
    `2021.3.55f1`; any 2021.3.x works — Hub will offer to open with your
    installed version, accept and note the exact version for step 7).
-   Run the spike on **both pinned LTS targets** — `2021.3.55f1` and
-   `2022.3.39f1`: for the 2022.3 pass, duplicate `SampleProject` (or
-   let Hub upgrade a copy) and record both results in
-   docs/compatibility.md.
+   `2021.3.55f1` and every later 2021.3 patch are Extended LTS, so a free
+   personal licence cannot activate them; pick `2021.3.45f2` or lower
+   unless you hold an Industry or Enterprise licence. The headless compile
+   is already covered on eight editors by `unity-ci.yml`
+   (docs/compatibility.md), so what this spike adds is the API-level
+   setting and the Play-mode pass. Running it a second time on a Unity 6
+   editor is worthwhile: duplicate `SampleProject`, let Hub upgrade the
+   copy, and record both results in docs/compatibility.md.
    No extra modules are needed for the editor gate; add a platform module
    (e.g. Windows/Linux IL2CPP) only for the stretch build in step 8.
 

@@ -3,16 +3,17 @@
 Items that still need hardware, accounts or credentials the repository
 and its CI cannot hold. Delete entries when shipped.
 
-- **Unity 2021.3 in-editor spike (manual, partially superseded)**: the
-  sources have since been compiled and shipped as IL2CPP builds on
-  Unity 2022.3 (Android/ARM64 — see
-  [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md)),
-  so the compile + IL2CPP gates are de-facto proven one LTS up. What
-  remains is the literal 2021.3 floor check: open `unity/SampleProject`
-  with a 2021.3 editor per
-  [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md)
-  (.NET Standard 2.0 API level, zero-compile-error gate, Play-mode
-  smoke, record results in docs/compatibility.md).
+- **Unity in-editor spike (manual, mostly superseded)**: CI now compiles
+  the package and runs its EditMode tests inside eight real editors, from
+  the 2021.3.45f2 floor up to 6000.5.9f1
+  ([docs/compatibility.md](./docs/compatibility.md)), and the sources have
+  shipped as IL2CPP builds on Unity 2022.3 (Android/ARM64, see
+  [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md)).
+  What a headless run cannot cover is what remains: open
+  `unity/SampleProject` in an editor per
+  [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md) and
+  record the .NET Standard 2.0 API-level setting and a Play-mode smoke
+  pass.
 - **Registry bootstrap (owner-only)**: the release pipeline is written
   and wired (`.github/workflows/release-please.yml` cuts the version,
   `release.yml` publishes npm, Maven Central and NuGet from the tag).
