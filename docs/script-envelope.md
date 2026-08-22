@@ -85,5 +85,5 @@ v1.
 - JSON parsing is not part of the core C# runtime: the runtime consumes
   a parsed `SqliteHostScript` object. Java (`sqlite-host-model`) and
   TypeScript (`@sqlite-host/runtime-types`) provide JSON parsing for
-  tooling/validation. An optional `SqliteHost.Json` package may add C#
-  JSON helpers later (see ROADMAP).
+  tooling/validation. A C# JSON helper package was considered and
+  declined (ROADMAP.md, "Dropped") — bring your own serializer.

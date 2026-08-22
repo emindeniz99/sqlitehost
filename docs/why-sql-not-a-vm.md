@@ -1,7 +1,7 @@
 # Why SQL, not an embedded VM
 
-The README says SqliteHost "is not a Lua-style embedded VM"; the plan
-lists Lua under v1 non-goals. This document records *why* — which
+The README says SqliteHost "is not a Lua-style embedded VM", and lists
+Lua under the v1 non-goals. This document records *why* — which
 alternatives were considered, the criteria they were judged against, and
 what the SQL choice costs us. It is rationale, not a claim that embedded
 VMs are bad: the last section says when you should pick one instead.
@@ -196,9 +196,10 @@ ahead-of-time: no `Reflection.Emit`, no runtime code generation.
   shipping the app is a new **host method** — the typed C#/Java/TS
   surface is generated and compiled in. What v1 lacked was not the
   capability but the **delivery plumbing**: remote fetch, signature
-  verification, TTL and rollback policy. That layer is being specified
-  in `docs/proposals/script-delivery.md`; until it lands you supply the
-  transport yourself. Lua still wins outright when the thing that must
+  verification, TTL and rollback policy. Signature verification, TTL and
+  rollback now ship as the optional `SqliteHost.Delivery` package
+  (`docs/guides/script-delivery.md`); the transport stays yours, by
+  design. Lua still wins outright when the thing that must
   change without a release is the *logic itself* rather than rules
   expressed over host methods.
 - **Not a sandbox claim.** Full SQL sandboxing is a v1 non-goal. The threat

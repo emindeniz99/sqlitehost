@@ -5,9 +5,9 @@ Every app-size number in `docs/compatibility.md` was measured with .NET 8
 trim). The mechanisms transfer; the exact bytes do not — and for two
 findings the *magnitude* could genuinely differ, because IL2CPP ships
 engine infrastructure unconditionally that NativeAOT only pays for on
-demand. This document is a complete, self-contained protocol so that a
-**Unity-equipped agent (or person) can re-run every hypothesis under
-real IL2CPP and produce the definitive report** without asking anything.
+demand. This document is a complete, self-contained protocol so that
+**anyone with a Unity editor can re-run every hypothesis under real
+IL2CPP and produce the definitive report** without asking anything.
 
 Everything to build lives in the repo: `tests/app-size-bench/` generates
 identical source sets for both toolchains from the repo's own emitters.
@@ -165,11 +165,10 @@ Produce `docs/reports/il2cpp-size-report.md` (new folder is fine) with:
 5. **Raw artifacts**: attach or link build logs and the size listings
    (`unzip -lv` of the APK) so numbers are auditable.
 
-## 6. Hand-off prompt (copy-paste to a Unity-equipped agent)
+## 6. Hand-off brief (for whoever runs it on a Unity machine)
 
-> In the repo `emindeniz99/playground`, read
-> `docs/guides/il2cpp-size-protocol.md` and execute
-> it fully: regenerate the bench sources (`tests/app-size-bench/
+> Read `docs/guides/il2cpp-size-protocol.md` in this repository and
+> execute it fully: regenerate the bench sources (`tests/app-size-bench/
 > generate.mjs`), build the 12-row Unity IL2CPP matrix in §4 on
 > Android/ARM64 with Unity 2022.3.39f1 (and 2021.3.55f1 if available),
 > measure per §2, and write the report described in §5 to

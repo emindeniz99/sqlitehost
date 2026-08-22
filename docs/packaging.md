@@ -2,7 +2,7 @@
 
 Nothing is published yet: the release pipeline exists, the registry
 accounts do not (`docs/guides/publishing.md`, ROADMAP.md). Licence is
-settled — MIT. Intended artifacts (plan §27):
+settled — MIT. Intended artifacts:
 
 ```text
 NuGet: SqliteHost.Runtime

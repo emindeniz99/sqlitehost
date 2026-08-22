@@ -1,7 +1,8 @@
 # Testing strategy
 
-Maps plan §28 onto concrete suites. Everything runs on Linux in this
-repo; Unity compile tests are a ROADMAP item.
+What each suite covers, and which of them CI runs. The C# legs run on
+Linux and Windows; everything else runs on Linux, plus a Unity editor
+job for the UPM package.
 
 ## C# (`csharp/SqliteHost.Tests`, `dotnet test`)
 
@@ -52,8 +53,50 @@ Identical manifest, identical DDL, identical envelope contract,
 identical table/column names, identical optional/required semantics,
 identical API-level metadata.
 
+## Script delivery (`tests/delivery-golden`)
+
+Envelopes signed by the TypeScript signer are verified byte-for-byte by
+`SqliteHost.Delivery` under .NET, against the committed
+`fixtures/delivery/` matrix.
+
+## Vendoring (`unity/sync.mjs --check`, `tests/vendor-trim`)
+
+The UPM copies under `unity/com.sqlitehost.runtime/` must match
+`csharp/`, and each vendoring profile must compile on its own.
+
+## Engine matrix (`tests/compatibility-sqlite/run-matrix.sh`)
+
+Compiles real SQLite amalgamations (3.9.0 through the newest release)
+and runs the full C# suite against each binary. It needs gcc, curl and
+unzip plus a local amalgamation cache, so it runs on demand rather than
+in CI — see `docs/compatibility.md` for the measured results.
+
+## Playground browser tests (`typescript/playground`)
+
+Playwright end-to-end tests over the built web bundle. They need a
+browser download, so they are outside the main matrix too; run them
+locally per `CONTRIBUTING.md`.
+
 ## End-to-end (`tests/end-to-end`)
 
-Orchestrates the full matrix: `dotnet test`, `mvn -q test`,
-`pnpm -r test`, then the cross-language golden runner. This is the
-single entry point CI would call.
+Orchestrates the full matrix locally: `dotnet test`, `mvn -q test`,
+`pnpm -r test`, then the cross-language golden runner.
+
+## What CI runs
+
+`.github/workflows/ci.yml` on every push and pull request:
+
+| Job | What |
+|---|---|
+| `node 20/22/24/26` | `pnpm -r test` across the declared Node lines |
+| `jdk 17/21/25` | `mvn -q test` across the LTS lines at or above the pom floor |
+| `dotnet (ubuntu-latest, windows-latest)` | `dotnet test` — runtime, adapters, integration fixtures |
+| `goldens` | emitter goldens, delivery goldens, `unity/sync.mjs --check`, vendor-trim |
+| `zizmor` | workflow security lint |
+
+`.github/workflows/unity-ci.yml` compiles `com.sqlitehost.runtime`
+inside a Unity 2021.3.45f2 editor and runs its EditMode tests; it needs
+the licence secrets, which GitHub does not pass to fork pull requests.
+
+Neither workflow runs the engine matrix or the playground browser
+tests. Run those two locally.

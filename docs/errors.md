@@ -1,7 +1,7 @@
 # Runtime error model
 
 `SqliteHostRuntime<THandlers>.Run()` never throws for script-level
-problems; it returns a structured `SqliteHostRunResult` (plan §25). The
+problems; it returns a structured `SqliteHostRunResult`. The
 host application decides logging/telemetry policy.
 
 ## Statuses
@@ -87,3 +87,9 @@ identifier character continues that identifier instead of starting a
 parameter — `a$b` and `foo$bar` contain no parameters, while `$v` at a
 token boundary does. `:` and `@` are not identifier characters and
 always start a parameter outside quoted regions.
+
+A parameter's *name* runs over SQLite's full IdChar set (letters,
+digits, `_`, `$`, and any character above 0x7f), so `:anahtarİsmi` is one
+parameter named `anahtarİsmi` rather than `anahtar` followed by stray
+text. The adapter conformance suite requires adapters to bind such names
+unmangled, so the scanners accept what the engine accepts.

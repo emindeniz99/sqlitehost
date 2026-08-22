@@ -2,8 +2,8 @@
 
 This document pins the public surface of `SqliteHost.Abstractions` and
 `SqliteHost.Runtime` that generated code and consumer code compile
-against. The plan's code snippets (README examples, generated sample)
-must compile **as written** against this surface. Internals are free;
+against. Every code snippet in the docs (README examples, generated
+sample) must compile **as written** against this surface. Internals are free;
 this surface is not — the C# emitter emits code against it, so changes
 here require regenerating everything.
 
@@ -628,7 +628,7 @@ savings in `docs/compatibility.md`. Use it only for final size-critical
 builds and keep CI/dev builds full: the stripped checks are the
 fail-loud layer that catches authoring bugs.
 
-### Runtime lifecycle (pinned semantics, plan §18)
+### Runtime lifecycle (pinned semantics)
 
 `Run(script)` must:
 
@@ -668,7 +668,7 @@ where the accessors cost real bytes; measured in
 | `HostMethodDtos.g.cs` | input/result/item DTO classes — plain classes, public auto-properties, `List<T>` properties initialized to `new List<T>()` |
 | `IGeneratedHostHandlers.g.cs` | handler interface, one method per op: `GetValueResult GetValue(GetValueInput input);` |
 | `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API |
-| `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` per plan §11 — the `.Naming(...)` block always emits all nine naming values explicitly (six prefixes + queue/inputs/vars table names) |
+| `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all nine naming values explicitly (six prefixes + queue/inputs/vars table names) |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
 
 Profile deltas (committed goldens:

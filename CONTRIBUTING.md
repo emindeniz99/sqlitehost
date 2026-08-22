@@ -15,7 +15,7 @@ goldens fail.
 | JDK | 17 | `maven.compiler.release=17` in `java/pom.xml` |
 | Maven | 3.x | builds the three Java modules; the POM declares no floor |
 | Node | 20 | `engines.node` on every npm package; CI runs 20, 22, 24 and 26 |
-| pnpm | 9 | the workspace root is this repo root; CI pins 10.34.5, the version the committed lockfile was written with |
+| pnpm | 10.34.5 | the version the committed lockfile was written with, and the version CI pins; pnpm 10 blocks dependency lifecycle scripts that pnpm 9 runs, so an older pnpm installs a tree CI never exercises |
 
 Optional, for the suites that need them: `gcc`/`curl`/`unzip` for the
 real-SQLite matrix, and a Chromium for the playground browser tests.
@@ -188,6 +188,13 @@ Nothing publishes from a laptop, and nothing publishes by accident:
   silently.
 - `docs/guides/publishing.md` has the per-registry checklists, including
   the one-time account and trusted-publisher setup only the owner can do.
+
+## Licence
+
+By opening a pull request you agree that your contribution is licensed
+under the MIT License in `LICENSE`, and that you have the right to grant
+that licence. Inbound terms are the outbound terms; there is no CLA and no
+separate sign-off.
 
 ## Where the rules live
 

@@ -7,8 +7,8 @@ seed, same validity checks).
 ## 1. Environment
 
 - **Unity**: 2022.3.9f1 (Linux editor, headless batchmode). The protocol
-  prefers 2022.3.39f1; only 2022.3.9f1 was installed in the measurement
-  container — same 2022.3 LTS line, noted per §2. 2021.3 was not available.
+  prefers 2022.3.39f1; only 2022.3.9f1 was installed on the measurement
+  machine — same 2022.3 LTS line, noted per §2. 2021.3 was not available.
 - **Platform**: Android, release APK, **IL2CPP**, **ARM64 only**.
 - **Managed Stripping Level**: **High** (all rows).
 - **IL2CPP Code Generation**: **Faster (smaller) builds** (`OptimizeSize`).
@@ -20,11 +20,11 @@ seed, same validity checks).
   `SizeBench.cs`, archived in §6).
 - **Date**: 2026-07-18.
 
-### Validity-check deviation (no device in the container)
+### Validity-check deviation (no device on the measurement machine)
 
 The protocol asks for the four expected log lines "on device or in the
-editor's IL2CPP player log". This container has no Android device or
-emulator, so each row's code was executed **in the editor (Mono) in the
+editor's IL2CPP player log". No Android device or emulator was attached,
+so each row's code was executed **in the editor (Mono) in the
 same batch invocation that produced the build**, via reflection on the
 compiled `Assembly-CSharp` — the same sources the IL2CPP build compiled.
 Rows 1–6 must print `104006 / <ddl-len> / Completed / Completed` (5-method
@@ -205,11 +205,14 @@ Per-row artifacts (build log, `unzip -lv` APK listing, extracted
 `libil2cpp.so` / `global-metadata.dat` sizes, gzip -9 sizes, validity
 output) were produced under the measurement workspace; the size listings
 and validity outputs are reproduced in §6 so the numbers are auditable
-without the container.
+without that workspace.
 
 ## 6. Appendix
 
-Per-row extracted sizes (bytes) and validity output:
+Per-row extracted sizes (bytes) and validity output. The absolute paths
+below are the measurement machine's build workspace, kept verbatim as
+raw evidence; only the row assembly script was rewritten to resolve the
+repository paths itself.
 
 **Row 0 — baseline (GameWork only)**
 ```
@@ -472,9 +475,10 @@ public static class SizeBench
 # Assembles proj/Assets/Sources for one matrix row (il2cpp-size-protocol.md §4).
 set -euo pipefail
 ROW="$1"
-BENCH=/home/user/zen/projects/sqlitehost/tests/app-size-bench
-CS=/home/user/zen/projects/sqlitehost/csharp
-PROJ=/home/user/zen-bench/proj
+REPO="$(git rev-parse --show-toplevel)"
+BENCH="$REPO/tests/app-size-bench"
+CS="$REPO/csharp"
+PROJ="${BENCH_WORKSPACE:-$HOME/zen-bench}/proj"
 SRC="$PROJ/Assets/Sources"
 rm -rf "$SRC" "$PROJ/Assets/Sources.meta" "$PROJ/Assets/Main.unity" "$PROJ/Assets/Main.unity.meta"
 mkdir -p "$SRC"

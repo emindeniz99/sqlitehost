@@ -322,8 +322,8 @@ Stated so the guide does not have to overclaim, and consistent with
 
 - **A rooted/jailbroken device or a patched binary.** The client holds
   the verification code; an attacker who owns the process can remove
-  the call. Client-executed logic is client-trusted — §3.1 of the
-  market audit, and unchanged here.
+  the call. Client-executed logic is client-trusted, and that does not
+  change here.
 - **A malicious script signed by a *valid* key.** Signing proves
   origin, not safety. Script content is the validators' job.
 - **Confidentiality.** Envelopes are signed, not encrypted; the

@@ -53,6 +53,32 @@ failures:
 - A statement error mid-step must abort the step: later statements do
   not execute and pending host calls are **not** drained for that step
   (runtime guarantee, but the adapter must not mask the trigger).
+- One statement per call. Scripts are single-statement by validation
+  (the `multiple-statements` error, `docs/validation.md`), so an adapter
+  that receives a trailing statement is looking at a payload no
+  validator passed. Compiling the first statement and dropping the rest
+  without a word is the one response the contract forbids. The shipped
+  native adapter throws before stepping anything, since
+  `sqlite3_prepare_v2` hands the tail back rather than running it; an
+  ADO.NET-style wrapper that executes the whole batch is also
+  conformant.
+
+## Workspace lifecycle
+
+`ISqliteHostConnectionFactory.OpenWorkspace()` is called once per
+`Run(script)`, and the runtime creates its whole generated schema on the
+connection it gets back (plain `CREATE TABLE`, no `IF NOT EXISTS`). A
+factory therefore has to hand back an **empty** database. The workspace
+holds one run's scratch state and nothing a player would miss.
+
+The shipped `NativeSqliteHostConnectionFactory` honours that two ways:
+the default constructor opens `:memory:`, and the constructor taking a
+path deletes any file already at that path, plus its `-wal` and `-shm`
+siblings, before opening it. Passing the path of a database you care
+about (a save file, an asset database) destroys it on the next `Run`,
+and deleting the `-wal`/`-shm` of a database another process holds open
+corrupts that database. Point it at a temporary path, or use the
+in-memory default.
 
 ## Binding resolution policy
 

@@ -1,6 +1,6 @@
 # Validation layers
 
-Four layers (plan §24). The validator is an authoring correctness tool,
+Four layers. The validator is an authoring correctness tool,
 not a security sandbox.
 
 ## Where enforcement lives — and where it deliberately does not
@@ -68,7 +68,7 @@ without stepping. Reported as `sql-prepare-error`.
 ### Prepare-only is not a floor check — and cannot become one
 
 This layer runs on whatever engine `org.xerial:sqlite-jdbc` bundles
-(pinned in `java/pom.xml`), currently **3.45.3**, while the plan's
+(pinned in `java/pom.xml`), currently **3.45.3**, while the
 default contract floor is **3.19.3**. Everything added across those 26
 minor versions therefore *compiles clean here* and fails on a device at
 the floor. Pinning the driver down was considered and rejected, on three
@@ -212,12 +212,13 @@ list lives in `docs/sqlite-surface.md`.
 Why these are errors rather than warnings:
 
 - **One statement per `sql` field is the contract, and a second statement
-  is a silent-drop hazard.** The native adapter's `prepare_v2` compiles the
-  first statement and discards the rest without error, so a script that
-  writes two statements loses the tail with no diagnostic — and, worse, a
-  harmless leading statement (`SELECT 1; …`) becomes a denylist bypass,
-  because `forbidden-statement` and `protocol-table-write` both anchor on the
-  first statement's tokens.
+  is a denylist bypass.** Adapters disagree about the tail: the shipped
+  native adapter rejects a trailing statement outright and steps nothing
+  (`docs/adapter-contract.md`), while an ADO.NET wrapper runs the whole
+  batch, so one script means two different things on two hosts. Either
+  way a harmless leading statement (`SELECT 1; …`) hides the real one,
+  because `forbidden-statement` and `protocol-table-write` both anchor on
+  the first statement's tokens.
 - **Transaction control is a silent-data-loss shape.** The unit of
   atomicity is the *step* (its statements plus the drain), not a
   transaction. A script that opens a transaction and rolls it back
@@ -228,6 +229,10 @@ Why these are errors rather than warnings:
   private in-memory, but the connection factory also takes a database
   path; on a file-backed workspace `ATTACH` grants read **and** write
   access to any reachable database file, including the app's own saves.
+  That path is scratch space rather than storage: the shipped native
+  factory deletes whatever sits there, plus its `-wal` and `-shm`
+  siblings, on every open (`docs/adapter-contract.md`, Workspace
+  lifecycle).
 - **`PRAGMA` changes semantics under the runtime.** `foreign_keys`,
   `recursive_triggers` and `case_sensitive_like` alter behaviour the
   other lints cannot see, and `writable_schema=ON` lets a script rewrite
@@ -250,6 +255,17 @@ What stays legal, and is pinned by tests in both validators:
 - **Reading** any runtime-owned table. Only writes are denied.
 - Writing **call tables** and their input list child tables (that is how
   a script makes a host call), `script_vars`, and `script_control`.
+
+**Known limit — DDL is not covered.** `DROP`, `ALTER` and `CREATE` are
+not denied keywords, and `protocol-table-write` resolves a target only
+for `INSERT`/`REPLACE`/`UPDATE`/`DELETE`, so a statement like
+`DROP TRIGGER trg_call_<method>_queue` or
+`ALTER TABLE result_<method> RENAME TO …` passes all three lints today.
+The effect matches what the denylist exists to prevent: with the queue
+trigger gone, inserts into a call table enqueue nothing, the drain finds
+nothing, and the run reports `Completed` with zero executed calls. The
+runtime owns the schema and a script has no reason to change it, so
+treat DDL as out of bounds even though nothing stops you yet.
 
 ### Result-read lineage (java validator only in v1)
 

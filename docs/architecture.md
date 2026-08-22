@@ -1,7 +1,7 @@
 # Architecture
 
 SqliteHost is a generic, adapter-based, SQLite 3.19.3-compatible SQL
-scripting and typed host-function binding toolkit (plan v2.1).
+scripting and typed host-function binding toolkit.
 
 ```text
 Script author / backend / tooling = orchestrator
@@ -39,7 +39,7 @@ metadata/DDL constants, manifest — for all three languages.
 Analogy: the runtime is a generic protobuf runtime; TypeSpec output is
 the generated message/service binding code.
 
-## Envelope vendoring policy (resolves plan §31 open decision 3)
+## Envelope vendoring policy (resolved decision 3 below)
 
 The script envelope is defined once in TypeSpec. Each language runtime
 package ships a **vendored generated copy** (C#:
@@ -50,7 +50,7 @@ copies are byte-identical to fresh output. The `BindingValue` union is
 emitted as a Unity-friendly manual representation (type discriminator +
 typed accessors) rather than a language union.
 
-## Runtime lifecycle (plan v2.1 §18)
+## Runtime lifecycle
 
 ```text
 .Run(script)
@@ -73,7 +73,7 @@ invoked only through the generated interface; the runtime never invents
 calls, infers effects, or adds refresh/sync/log behavior; read-after-
 write is an explicit script step.
 
-## Resolved open decisions (plan §31)
+## Resolved open decisions
 
 1. Name decided (2026-08-22): **SqliteHost** / `sqlitehost`, kept — availability sweep + trademark screen recorded in docs/guides/publishing.md §a (outcome block); residual mark-leading risk accepted by the owner.
 2. C# floor: netstandard2.0 + C# 8 (Unity 2021-safe subset; in-Unity compile spike — ROADMAP).

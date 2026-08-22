@@ -26,10 +26,11 @@ engine plus its Jackson dependency) at:
 sqlite-host-validator/target/sqlite-host-validator-<version>-cli.jar
 ```
 
-Run it via the launcher script or `java -jar` directly:
+Run it with `java -jar`:
 
 ```sh
-bin/sqlite-host-validate <manifest.json> <script.json>
+java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
+    <manifest.json> <script.json>
 
 java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
     ../fixtures/manifests/sample-host.manifest.json \

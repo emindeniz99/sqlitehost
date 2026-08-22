@@ -19,13 +19,17 @@ response within a week.
 
 | Version | Supported |
 |---|---|
-| latest 0.x release | yes |
-| everything older | no |
+| `main` | yes |
+| everything else | no releases yet |
 
-The project is pre-1.0. Fixes ship on the newest release across every
-artifact at once, and there are no backports.
+The project is pre-1.0 and nothing has been released, so report against
+`main`. Once releases start, fixes will ship on the newest one across
+every artifact at once, with no backports.
 
 ## Artifacts
+
+Nothing is published yet: these are the planned artifact ids, and the
+registry accounts do not exist (`docs/packaging.md`, ROADMAP.md).
 
 | Registry | Package |
 |---|---|
@@ -34,8 +38,8 @@ artifact at once, and there are no backports.
 | Maven Central | `io.github.emindeniz99:sqlite-host-model`, `:sqlite-host-validator`, `:sqlite-host-jdbc` |
 | UPM | `com.sqlitehost.runtime` |
 
-All of them are built from one tag in this repository. A report against any
-of them belongs here.
+Once they ship, all of them will be built from one tag in this
+repository, and a report against any of them belongs here.
 
 ## Threat model
 

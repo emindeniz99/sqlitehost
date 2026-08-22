@@ -1,9 +1,9 @@
 # Unity 2021 compile spike — manual procedure
 
-The Unity 2021 compile spike (plan Phase 0 / §29.6, ROADMAP item) cannot
-run in this Linux container — it needs a real Unity editor. Everything
-else is scaffolded under `unity/`; the only remaining manual step is
-opening the project in Unity Hub and following this checklist.
+The Unity 2021 compile spike (ROADMAP item) needs a real Unity editor on
+a desktop machine. Everything else is scaffolded under `unity/`; the
+only remaining manual step is opening the project in Unity Hub and
+following this checklist.
 
 > The *compile* half of this spike is now automated: `unity/ci-project/`
 > runs the package through a real 2021.3 editor on GitHub Actions once the

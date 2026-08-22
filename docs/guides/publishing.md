@@ -1,7 +1,7 @@
 # Publishing SqliteHost — master guide
 
-Publishing (plan Phase 6, ROADMAP item) cannot be completed in this
-container — it needs accounts, keys, and legal signoff. Everything
+Publishing is a ROADMAP item: it needs accounts, keys and legal
+signoff, none of which the repository can hold. Everything
 mechanical is prepared in-repo (npm metadata, the Maven `central` profile,
 this guide); what remains is a checklist. Work top to bottom: the
 MANUAL-ONLY list first, then the per-registry sections.
@@ -22,17 +22,16 @@ Each links to the section with full detail.
 
 | # | Step | Section |
 |---|------|---------|
-| 1 | Name/legal signoff: availability sweep + `Sqlite` trademark review (read [sqlite.org/copyright.html](https://sqlite.org/copyright.html)); decide SqliteHost vs fallback (SqliteScriptBridge / SqliteHostBridge) | §a |
+| 1 | ~~Name/legal signoff~~ — done: availability sweep + `Sqlite` trademark review, name kept (§a outcome) | §a |
 | 2 | ~~License decision~~ — done: MIT, applied everywhere | §b |
 | 3 | npmjs.com account + `@sqlite-host` org/scope creation + 2FA enabled | §c |
 | 4 | nuget.org account + API key | §d |
 | 5 | Maven Central Portal account — decided: the already-verified `io.github.emindeniz99` namespace (§a outcome) | §e |
 | 6 | GPG key pair generation + publish public key to a keyserver | §e |
-| 7 | Fill placeholder metadata: repo URL / author / developers / scm in the npm `package.json`s and `java/pom.xml` (search for `TODO`) | §c, §e |
-| 8 | Flip the publish gates: remove `"private": true` from the three npm packages (versions are release-please's job, never hand-edited) | §c |
-| 9 | OpenUPM package submission PR (or decide git-URL-only) | §f |
-| 10 | Bootstrap publish: one manual publish per npm package at the current version, then merge the first release-please PR | §h |
-| 11 | Unity CI licence: create a free personal licence and add the `UNITY_LICENSE` / `UNITY_EMAIL` / `UNITY_PASSWORD` repository secrets | §i |
+| 7 | Flip the publish gates: remove `"private": true` from the three npm packages (versions are release-please's job, never hand-edited) | §c |
+| 8 | OpenUPM package submission PR (or decide git-URL-only) | §f |
+| 9 | Bootstrap publish: one manual publish per npm package at the current version, then merge the first release-please PR | §h |
+| 10 | Unity CI licence: create a free personal licence and add the `UNITY_LICENSE` / `UNITY_EMAIL` / `UNITY_PASSWORD` repository secrets | §i |
 
 Everything not in this table (pack commands, publish commands, POM
 profiles, package metadata) is already scripted or written down below.
@@ -40,9 +39,9 @@ profiles, package metadata) is already scripted or written down below.
 ## a. Naming / trademark availability
 
 The working name is **SqliteHost** (architecture.md resolved decision 1
-— kept pending exactly this check). Fallbacks from the plan:
-**SqliteScriptBridge**, **SqliteHostBridge**. Run the same sweep for a
-fallback if the primary fails anywhere.
+— kept pending exactly this check). The fallbacks considered were
+**SqliteScriptBridge** and **SqliteHostBridge**. Run the same sweep for
+a fallback if the primary ever fails anywhere.
 
 > **Outcome (2026-08-22) — name decided: `sqlitehost` / SqliteHost, kept.**
 > Availability sweep run against live registry APIs: npm name + `@sqlite-host`
@@ -63,7 +62,7 @@ fallback if the primary fails anywhere.
 | Registry | Check | How |
 |---|---|---|
 | nuget.org | `SqliteHost.Runtime`, `SqliteHost.Abstractions` free | Search <https://www.nuget.org/packages?q=SqliteHost> and try the direct URLs <https://www.nuget.org/packages/SqliteHost.Runtime> / `…/SqliteHost.Abstractions` (404 = free). Also check the bare prefix `SqliteHost` and consider [NuGet package ID prefix reservation](https://learn.microsoft.com/nuget/nuget-org/id-prefix-reservation) for `SqliteHost.*` once the first package is up. |
-| Maven Central | `io.sqlitehost` groupId free | Search <https://search.maven.org/search?q=g:io.sqlitehost> and <https://central.sonatype.com/search?q=io.sqlitehost> (no results = free). The groupId is only truly yours after **namespace verification** in the Central Portal: register at <https://central.sonatype.com>, add namespace `io.sqlitehost`, and verify by publishing a DNS TXT record on `sqlitehost.io` with the token they give you. This requires owning the domain — if you don't, the zero-cost alternative is a GitHub-verified namespace `io.github.<owner>` (verified via a temporary public repo named after the token), at the cost of the nicer groupId. |
+| Maven Central (superseded by the outcome block above — the project ships under `io.github.emindeniz99`) | `io.sqlitehost` groupId free | Search <https://search.maven.org/search?q=g:io.sqlitehost> and <https://central.sonatype.com/search?q=io.sqlitehost> (no results = free). The groupId is only truly yours after **namespace verification** in the Central Portal: register at <https://central.sonatype.com>, add namespace `io.sqlitehost`, and verify by publishing a DNS TXT record on `sqlitehost.io` with the token they give you. This requires owning the domain — if you don't, the zero-cost alternative is a GitHub-verified namespace `io.github.<owner>` (verified via a temporary public repo named after the token), at the cost of the nicer groupId. |
 | npmjs.com | `@sqlite-host` scope free | Visit <https://www.npmjs.com/org/sqlite-host> (404 = free) and search <https://www.npmjs.com/search?q=%40sqlite-host>. A scope is claimed by creating the org: npm website → avatar → *Add an Organization* → name `sqlite-host` (free plan is fine for public packages). Also check the unscoped names aren't confusingly squatted: <https://www.npmjs.com/search?q=sqlite-host>. |
 | UPM | `com.sqlitehost.runtime` | Unity package names are reverse-DNS ([Unity naming rules](https://docs.unity3d.com/Manual/cus-naming.html)): lowercase, `com.<company>.<package>`, ≤50 chars for visibility in the editor. `com.sqlitehost.runtime` complies. There is no central registry to reserve against; check OpenUPM for collisions: <https://openupm.com/packages/?q=sqlitehost>. Reverse-DNS convention implies you should control `sqlitehost.com` or at least not conflict with someone who does — fold into the domain/trademark check. |
 
@@ -135,15 +134,15 @@ repo); publish them later with the same recipe if demand appears.
 ### Prepared metadata and the publish gate
 
 The three packages already carry (added by this track):
-`"repository"` (git+https **placeholder** URL + `"directory"`),
-`"keywords"`, `"author"` (placeholder), and
+`"repository"` (git+https URL + `"directory"`), `"keywords"`,
+`"author"`, `"license"`, and
 `"publishConfig": {"access": "public"}`.
 
 They also still carry **`"private": true` — that is the safety gate.**
 `npm`/`pnpm` refuse to publish a private package, so nothing can ship
 by accident. **Flipping the gate = the publish action:** remove
-`"private": true`, set the real `"version"`, add `"license"` (§b), and
-replace the `TODO` placeholders in `repository`/`author`.
+`"private": true`. That is all — the version is release-please's job
+and the rest of the metadata is already in place.
 
 ### Per-package pre-publish checklist
 
@@ -159,8 +158,8 @@ For each of `typespec/library`, `typescript/runtime-types`,
   all three**; npm renders it as the package page. Write one per
   package before publishing (what it is, install line, minimal usage,
   link back to the repo docs).
-- [ ] `"license"` present (§b), placeholders replaced, `private`
-  removed.
+- [ ] `private` removed (`"license"` and the repository/author
+  metadata are already present).
 - [ ] `pnpm run build && pnpm run test` green in the package dir.
 - [ ] `pnpm pack` and inspect the tarball
   (`tar -tzf *.tgz`) — no `src/`, no test output missing/extra files.
@@ -275,10 +274,9 @@ metadata here.
 
 `java/pom.xml` (parent, inherited by all three modules) now carries:
 
-- `<name>`/`<description>` (pre-existing on parent and every module),
-  `<url>` placeholder, `<developers>` placeholder, `<scm>` placeholder
-  — **search for `TODO` and fill before releasing**;
-- a commented `<licenses>` skeleton — uncomment when §b resolves;
+- `<name>`/`<description>` (on the parent and every module), `<url>`,
+  `<developers>` and `<scm>`, all filled in;
+- `<licenses>` declaring MIT (§b);
 - a **`central` profile** containing `maven-source-plugin`
   (sources jar), `maven-javadoc-plugin` (javadoc jar),
   `maven-gpg-plugin` (signing, bound inside the profile so normal

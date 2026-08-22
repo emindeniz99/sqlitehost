@@ -1,11 +1,11 @@
 # sqlitehost — Roadmap / deferred follow-ups
 
-Items that still require action outside this environment. Delete
-entries when shipped.
+Items that still need hardware, accounts or credentials the repository
+and its CI cannot hold. Delete entries when shipped.
 
-- **Unity 2021.3 in-editor spike (manual, partially superseded)**: a
-  Unity-equipped agent has since compiled the sources and shipped
-  IL2CPP builds on Unity 2022.3 (Android/ARM64 — see
+- **Unity 2021.3 in-editor spike (manual, partially superseded)**: the
+  sources have since been compiled and shipped as IL2CPP builds on
+  Unity 2022.3 (Android/ARM64 — see
   [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md)),
   so the compile + IL2CPP gates are de-facto proven one LTS up. What
   remains is the literal 2021.3 floor check: open `unity/SampleProject`
@@ -31,6 +31,14 @@ entries when shipped.
   `scripts/check-npm-publishable.mjs` blocks the publish until this is
   resolved — publish codegen-core too, bundle it, or drop the
   dependency.
+- **Statement denylist has no DDL coverage**: `FORBIDDEN_LEADING_KEYWORDS`
+  (codegen/core/src/ir.ts) stops `DELETE`/`UPDATE`-class statements but not
+  `DROP TABLE`/`DROP TRIGGER`/`ALTER TABLE` against runtime-owned objects.
+  Closing it changes a cross-language golden (the keyword list is projected
+  into the generated Java `Protocol` and the shared fixtures), so it needs
+  the full golden-regeneration dance across all three languages in one
+  deliberate change — not a quick patch. Lints are not a sandbox either
+  way (docs/validation.md), but this one is cheap signal worth adding.
 - **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
   now ships the DllImport adapter (scalar functions included; Unity
   consumers vendoring it add `[MonoPInvokeCallback]` on two callbacks

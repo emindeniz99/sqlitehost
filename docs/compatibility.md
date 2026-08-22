@@ -11,7 +11,9 @@ Two tiers, deliberately distinct:
   Lowering the floor would shrink what script authors can rely on, so
   it stays at 3.19.3 even though the runtime itself needs less.
 - **Engine-verified tier: 3.9.0.** The full C# suite passes on real
-  3.9.0 and 3.9.2 builds and both stay in the CI matrix permanently.
+  3.9.0 and 3.9.2 builds, and both stay in the on-demand engine matrix
+  (`tests/compatibility-sqlite/run-matrix.sh`, run locally rather than
+  in CI).
   This is a measured fact consumers below the floor can use at their
   own judgment — their own script SQL, not ours, becomes the limiting
   factor. It is not a contractual promise.
@@ -98,9 +100,10 @@ API would simplify real code.
 `netstandard2.0`, C# 8 subset: no records, no `required`, no `init`, no
 default interface members, no `System.Text.Json`, no source generators,
 no modern hosting abstractions. Ordinary classes, interfaces,
-delegates, lists, explicit null checks. An in-Unity compile spike is a
-ROADMAP item (no Unity available in this environment); the source is
-kept vendorable (copy the two folders + generated sample).
+delegates, lists, explicit null checks. The literal 2021.3 in-editor
+spike is a ROADMAP item, since it needs a 2021.3 editor on a real
+machine; the source is kept vendorable (copy the two folders +
+generated sample).
 
 ### IL2CPP guardrail
 
@@ -131,8 +134,8 @@ linux-x64), then the same app is republished with SqliteHost actually
 executing a script. The delta is the honest marginal cost; gzip -9 of
 the binary is the download proxy. NativeAOT is a *proxy* for IL2CPP
 (both AOT + whole-program trim) — magnitudes transfer, exact bytes
-don't. The self-contained re-measurement protocol for a Unity-equipped
-agent (bench kit, hypothesis ledger incl. the two findings that can
+don't. The self-contained re-measurement protocol for anyone with a
+Unity editor (bench kit, hypothesis ledger incl. the two findings that can
 genuinely differ under IL2CPP, build matrix, report template) is
 `docs/guides/il2cpp-size-protocol.md`; it has now been executed —
 **`docs/reports/il2cpp-size-report.md`** pins the real IL2CPP numbers

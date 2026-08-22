@@ -81,9 +81,9 @@ See `docs/guides/unity-2021-spike.md` for the editor checklist.
 Without Node you cannot run the TypeSpec codegen. You are not stuck;
 you have exactly two options.
 
-**Option 1 — hand-write the generated-style files.** Plan §31
-(resolved decisions, `docs/architecture.md`) makes generated DTOs the
-*default*, not a requirement: the fluent descriptor API is public and
+**Option 1 — hand-write the generated-style files.** The resolved
+decisions in `docs/architecture.md` make generated DTOs the *default*,
+not a requirement: the fluent descriptor API is public and
 pinned (`docs/csharp-api.md`), so hand-written registrations are
 first-class. Use `csharp/SqliteHost.Generated.Sample/` as the
 template. It is five files:
@@ -399,7 +399,7 @@ serving the stale cached copy. Bump a local suffix on repack
 
 For adapter tests, add `SqliteHost.Conformance` plus a runner to your
 test project and subclass the suite — full snippet and csproj
-`ItemGroup` in `docs/adapter-contract.md`. xunit discovers the 23
+`ItemGroup` in `docs/adapter-contract.md`. xunit discovers the
 inherited tests automatically.
 
 ### C.2 npm — the authoring/validation trio
@@ -432,8 +432,8 @@ Today: `cd java && mvn -q install` puts the current version
 coordinates normally. The shaded validator CLI is a *local tool*, not
 a published contract — `mvn -q package` builds
 `sqlite-host-validator/target/sqlite-host-validator-<version>-cli.jar`
-plus the `java/bin/sqlite-host-validate` launcher (usage and exit
-codes: `java/README.md` and Path D below).
+and you run it with `java -jar` (usage and exit codes:
+`java/README.md` and Path D below).
 
 ### C.4 UPM — Unity Package Manager
 
@@ -486,8 +486,8 @@ publishable; warnings don't block.**
 ```sh
 cd java
 mvn -q package
-bin/sqlite-host-validate path/to/your-host.manifest.json path/to/payload.json
-# or: java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar <manifest> <payload>
+java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
+    path/to/your-host.manifest.json path/to/payload.json
 ```
 
 One finding per line (`ERROR <code> [step/statement] message` /
@@ -499,7 +499,7 @@ One finding per line (`ERROR <code> [step/statement] message` /
 | 1 | validation errors |
 | 2 | usage error, or manifest/script unreadable |
 
-Wire it as a CI/publish gate: `sqlite-host-validate manifest.json
+Wire it as a CI/publish gate: `java -jar …-cli.jar manifest.json
 payload.json || reject`. Note the CLI runs the semantic lint only;
 the prepare-only SQLite layer lives in `sqlite-host-jdbc` as a
 library (add it to your backend's tests for full coverage).
@@ -662,7 +662,7 @@ enforces). The same pattern at larger scale is
 `csharp/SqliteHost.Tests/IntegrationFixtureTests.cs` running every
 `fixtures/payloads/valid/` payload across three adapters.
 
-**5. Prove the adapter too** — one subclass, 23 inherited tests:
+**5. Prove the adapter too** — one subclass, 31 inherited tests:
 
 ```csharp
 public class NotesAdapterConformanceTests : AdapterConformanceTestsBase
@@ -672,12 +672,13 @@ public class NotesAdapterConformanceTests : AdapterConformanceTestsBase
 }
 ```
 
-**6. Run** — `dotnet test` → **24 passed** (1 integration + 23
+**6. Run** — `dotnet test` → **32 passed** (1 integration + 31
 conformance). And close the loop with Path D: the same script as a
 JSON payload passes both gates —
 
 ```sh
-java/bin/sqlite-host-validate generated/notes-host.manifest.json hello.json   # exit 0
+java -jar java/sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
+    generated/notes-host.manifest.json hello.json   # exit 0
 # TS: lintScript(payload, parseHostManifest(...)) -> [] , isPublishable -> true
 ```
 
