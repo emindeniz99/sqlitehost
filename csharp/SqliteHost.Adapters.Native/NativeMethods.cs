@@ -2,6 +2,25 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
+// Every DllImport in this assembly targets the bare name "sqlite3", and on
+// Windows the default loader search order includes the current directory and
+// every %PATH% entry — so a user-writable directory on %PATH% is enough for
+// an attacker-planted sqlite3.dll to be bound instead of the real engine and
+// to run its DllMain inside the consuming application. Restricting the
+// search to the assembly's own directory, the application directory and
+// System32 removes those hijack positions; a host that needs a library
+// elsewhere maps it explicitly through a DllImportResolver
+// (see NativeSqliteHostConnectionFactory.NativeLibraryPath).
+//
+// Honored by .NET Core / .NET 5+ and by .NET Framework 4.6.1+. It is NOT
+// honored under Unity IL2CPP or Mono, which have their own probing rules:
+// an IL2CPP consumer must ship the native library next to the player (or
+// resolve an absolute path itself) rather than rely on this attribute.
+[assembly: DefaultDllImportSearchPaths(
+    DllImportSearchPath.AssemblyDirectory
+    | DllImportSearchPath.ApplicationDirectory
+    | DllImportSearchPath.System32)]
+
 namespace SqliteHost.Adapters.Native
 {
     /// <summary>

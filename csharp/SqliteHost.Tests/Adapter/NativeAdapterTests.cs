@@ -211,6 +211,67 @@ namespace SqliteHost.Tests.Adapter
             Assert.Equal(new[] { "t", "u" }, tables);
         }
 
+        // ---- embedded NUL (prepare truncation) ---------------------------------
+
+        [Fact]
+        public void EmbeddedNul_Throws_InsteadOfSilentlyTruncatingTheStatement()
+        {
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+            connection.Execute("CREATE TABLE t (id INTEGER)", null);
+            connection.Execute("INSERT INTO t (id) VALUES (1), (2)", null);
+
+            // sqlite3 stops reading SQL at the first NUL byte, so everything
+            // after it never reaches the compiler and never reaches the tail
+            // the multi-statement check inspects either. Without an explicit
+            // NUL check this pair diverges: the control throws, the NUL
+            // variant silently runs "SELECT 1" alone.
+            Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Execute("SELECT 1; DELETE FROM t", null));
+            var ex = Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Execute("SELECT 1\0; DELETE FROM t", null));
+
+            Assert.Contains("NUL", ex.Message);
+            var ids = connection.Query("SELECT id FROM t ORDER BY id", null, row => row.GetInt64(0));
+            Assert.Equal(new long[] { 1, 2 }, ids);
+        }
+
+        [Fact]
+        public void EmbeddedNul_Throws_BeforeARestrictingClauseCanBeDropped()
+        {
+            // The dangerous shape is not a second statement but a truncated
+            // first one: the NUL cuts the WHERE clause off a DELETE, which
+            // then compiles cleanly and deletes every row.
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+            connection.Execute("CREATE TABLE t (k TEXT)", null);
+            connection.Execute("INSERT INTO t (k) VALUES ('keep'), ('drop')", null);
+
+            var ex = Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Execute("DELETE FROM t\0 WHERE k = 'drop'", null));
+
+            Assert.Contains("NUL", ex.Message);
+            var rows = connection.Query("SELECT k FROM t ORDER BY k", null, row => row.GetText(0));
+            Assert.Equal(new[] { "drop", "keep" }, rows);
+        }
+
+        [Fact]
+        public void EmbeddedNul_Throws_ThroughQueryAndPrepareToo()
+        {
+            // Same reasoning as MultiStatementSql_Throws_ThroughQueryAndPrepareToo:
+            // all three entry points share the prepare path and all three
+            // must reject, not just Execute.
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+            connection.Execute("CREATE TABLE t (id INTEGER)", null);
+
+            Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Query("SELECT 1\0; DROP TABLE t", null, row => row.GetInt64(0)));
+            Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Prepare("SELECT :x\0 WHERE 0"));
+
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name = 't'", null, row => row.GetText(0));
+            Assert.Equal(new[] { "t" }, tables);
+        }
+
         // ---- positional parameters --------------------------------------------
 
         [Fact]

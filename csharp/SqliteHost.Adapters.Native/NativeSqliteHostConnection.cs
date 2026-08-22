@@ -386,6 +386,7 @@ namespace SqliteHost.Adapters.Native
 
         private IntPtr PrepareOnly(string sql)
         {
+            RejectEmbeddedNul(sql);
             byte[] sqlUtf8 = NativeMethods.ToUtf8Z(sql);
             // Pin explicitly and call the IntPtr overload: the tail pointer
             // points into the SQL buffer and is only meaningful while the
@@ -426,6 +427,29 @@ namespace SqliteHost.Adapters.Native
             }
             RejectSqlAfterFirstStatement(statement, sqlUtf8, tailOffset);
             return statement;
+        }
+
+        /// <summary>
+        /// sqlite3_prepare_v2 reads SQL text as a C string: it stops at the
+        /// first NUL byte regardless of the byte count it was given, so an
+        /// embedded NUL truncates the statement — dropping a WHERE clause,
+        /// or hiding a second statement from
+        /// <see cref="RejectSqlAfterFirstStatement"/> (the tail SQLite
+        /// reports back is empty, because it never read that far). Both are
+        /// the silent partial execution docs/adapter-contract.md forbids, so
+        /// the NUL is rejected before anything is compiled.
+        /// </summary>
+        private static void RejectEmbeddedNul(string sql)
+        {
+            int index = sql.IndexOf('\0');
+            if (index >= 0)
+            {
+                throw new SqliteHostAdapterException(
+                    "SQL text contains an embedded NUL character at index " + index
+                    + ": sqlite3 stops reading at the NUL, so the rest of the statement"
+                    + " would be silently dropped instead of executed.",
+                    0, null);
+            }
         }
 
         /// <summary>
