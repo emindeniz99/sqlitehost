@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "com.sqlitehost.runtime": "file:../../com.sqlitehost.runtime",
+    "com.unity.test-framework": "1.1.33"
+  }
+}

@@ -1,0 +1,14 @@
+# One text convention for the whole repo: LF in the working tree on every
+# platform, including Windows checkouts.
+#
+# This is load-bearing for CI, not cosmetics. The C# suite golden-compares
+# fixture *bytes* — SchemaGoldenTests reads
+# fixtures/schemas/sample-host.ddl.sql with File.ReadAllBytes and compares
+# it to generated DDL that uses "\n" — and Windows runners default to
+# core.autocrlf=true. Without this rule the windows leg of ci.yml fails on
+# line endings alone, with no defect behind it.
+#
+# `text=auto` still detects binary content and leaves it alone;
+# fixtures/delivery/.gitattributes opts the signature-bearing envelopes out
+# entirely (its comment already assumed this file existed).
+* text=auto eol=lf

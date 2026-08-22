@@ -1,0 +1,210 @@
+# CI for sqlitehost: every language suite on every runtime line the
+# artifacts claim, plus the cross-language golden runners that keep the
+# four emitter outputs byte-identical.
+#
+# Suite layout follows docs/testing.md and tests/end-to-end/run-all.sh:
+# each language suite already checks its own half of the shared fixtures
+# (C# schema golden vs fixtures/schemas/, Java lints driven by
+# fixtures/payloads/expectations.json, TS builder output vs the same
+# payloads), so there is no separate "fixtures" job for them. What no
+# single suite can check is that all four emitters still agree — that is
+# the `goldens` job below, which re-runs every emitter and byte-compares
+# against the committed fixtures and vendored sources.
+#
+# Not run here: the playground's Playwright leg from run-all.sh. It needs
+# a browser download, which does not belong in the main matrix; it gets
+# its own workflow when someone wants it.
+#
+# Security posture (see the repo's SECURITY notes): every action pinned to
+# a commit SHA with its tag in a trailing comment, least-privilege
+# permissions, no credentials persisted on checkout, no event field
+# interpolated into a `run:`, dependency caches only in test jobs.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # @playwright/test is a devDependency of typescript/playground. Nothing
+  # here runs browser tests, and its postinstall would otherwise fetch a
+  # full browser set on every install.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+jobs:
+  # TypeSpec library, the four emitters, and the TypeScript SDKs.
+  node:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The declared floor, both maintained LTS lines, and current
+        # (endoflife.date/nodejs). 20 is past its maintenance window but
+        # every package declares it in `engines.node`, so it is tested
+        # rather than assumed — a floor nothing runs is a claim, not a
+        # fact. Drop the leg and the floor together, never just the leg.
+        #
+        # The test scripts pass the glob UNQUOTED — `node --test
+        # dist/test/*.test.js`. Node only learned to expand a `--test`
+        # glob itself in 22; on 20 a quoted pattern is taken literally and
+        # the run dies with "Could not find '<path>/dist/test/*.test.js'".
+        # Unquoted, the shell expands it on every line. Do not add the
+        # quotes back, and do not "simplify" it to the directory form
+        # `dist/test/` either: that is the mirror-image bug, working on 20
+        # and failing from 22 on, where the positional is a glob and the
+        # trailing-slash pattern matches the directory itself.
+        # Measured on 20.20.2, 22.16 and 24.14: whole workspace green.
+        node: ["20", "22", "24", "26"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm before setup-node: `cache: pnpm` below resolves the store
+      # path by running pnpm, so pnpm has to be on PATH first. Pinned to
+      # the version the committed lockfile (lockfileVersion 9.0) was
+      # written with; there is no `packageManager` field to read it from.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      # --frozen-lockfile, not install: the committed lockfile is the
+      # contract and this is the job that verifies it.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run build
+      - run: pnpm -r run test
+
+  # Model, semantic validator, prepare-only JDBC validator.
+  java:
+    name: jdk ${{ matrix.jdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every current LTS line at or above the pom's
+        # maven.compiler.release=17 floor (endoflife.date/eclipse-temurin).
+        jdk: ["17", "21", "25"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+          cache: maven
+      - run: mvn -B test
+        working-directory: java
+
+  # Runtime, delivery, adapters, and the multi-adapter integration matrix.
+  dotnet:
+    name: dotnet (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both legs are x64, which is what the adapter fixtures need.
+        # SqliteHost.Tests pulls System.Data.SQLite.Core 1.0.119, whose
+        # native half (Stub.System.Data.SQLite.Core.NetStandard) ships
+        # SQLite.Interop.dll for linux-x64, osx-x64, win-x64 and win-x86
+        # only — there is no osx-arm64 build, which is why the
+        # SystemDataSqlite fixtures cannot run on an Apple Silicon
+        # developer machine and CI is the only place they execute.
+        # Windows is the authoritative leg for that adapter (it is the
+        # platform System.Data.SQLite is maintained against); the ubuntu
+        # leg runs the same fixtures on the linux-x64 interop.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      # The windows leg needs the repo-root .gitattributes (`* text=auto
+      # eol=lf`): SchemaGoldenTests compares fixture bytes, and a
+      # core.autocrlf checkout would fail it on line endings alone.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No NuGet cache: setup-dotnet's cache needs a packages.lock.json,
+      # and this solution does not use locked restore.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      # The libraries are netstandard2.0; SqliteHost.Tests targets net8.0,
+      # so the 8.x SDK builds and runs the whole solution.
+      - run: dotnet test --nologo
+        working-directory: csharp
+      # The size-critical vendoring build has no tests of its own — this
+      # is the check that SQLITEHOST_SLIM still compiles.
+      - run: dotnet build SqliteHost.Runtime/SqliteHost.Runtime.csproj -c Release --nologo -v q -p:SqliteHostSlim=true
+        working-directory: csharp
+
+  # The cross-language contract: rebuild every emitter output and byte-
+  # compare it against the committed fixtures and the vendored generated
+  # sources in csharp/, java/, typescript/ and unity/.
+  goldens:
+    name: cross-language goldens
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      # One Node line is enough here: these runners compare bytes, and the
+      # `node` job above is what proves the emitters run on every line.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      # vendor-trim compiles each trimmed profile as a standalone assembly.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - run: pnpm install --frozen-lockfile
+      # Each runner builds the workspace packages it needs itself.
+      - name: Emitter goldens (manifest, DDL, C#, Java, TypeScript)
+        run: node tests/cross-language-golden/run.mjs
+      - name: Script-delivery goldens (envelopes signed by Node)
+        run: node tests/delivery-golden/run.mjs
+      - name: Unity package sync check
+        run: node unity/sync.mjs --check
+      - name: Unity vendor-trim (each profile compiles alone)
+        run: node tests/vendor-trim/run.mjs
+
+  # Mechanizes the Actions hardening checklist: unpinned actions,
+  # excessive permissions, injection sinks, persisted credentials, cache
+  # restoration in publish workflows. Findings fail the job.
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # Pinned: an unpinned install turns a zizmor release into a
+      # surprise red build. Bumping it is a deliberate commit.
+      - run: pip install zizmor==1.29.0
+      # --config explicitly rather than relying on zizmor's discovery of
+      # .github/zizmor.yml: discovery is relative to the git root, so the
+      # same command behaves differently depending on where it is run from.
+      # GH_TOKEN switches zizmor out of offline mode, which is what enables
+      # the audits that need the API — known-vulnerable-actions (advisories
+      # against a pinned action) and stale-action-refs (a pin no longer
+      # reachable from the tag its comment claims). Read-only token; the
+      # audits only query public metadata.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --config .github/zizmor.yml .github/workflows/

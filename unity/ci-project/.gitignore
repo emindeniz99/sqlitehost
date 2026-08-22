@@ -1,0 +1,33 @@
+# Everything Unity regenerates. This project is CI scaffolding: the only
+# files worth versioning are the ones a human wrote (manifest.json,
+# ProjectVersion.txt, Assets/Tests/**), so the editor's output — including
+# the .meta files it mints on first open — stays out of git.
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.user
+*.meta
+
+# Unity writes the rest of ProjectSettings/ on first open; only the pinned
+# editor version is authored by hand.
+ProjectSettings/*
+!ProjectSettings/ProjectVersion.txt
+
+# Resolved by the editor from manifest.json.
+Packages/packages-lock.json
+
+# unity-test-runner output (NUnit XML + coverage).
+artifacts/
+CodeCoverage/
+
+# Copied in by .github/workflows/unity-ci.yml from the package's Samples~
+# folder so the sample compiles under a real editor. Never committed here —
+# unity/com.sqlitehost.runtime/Samples~/ is the only copy that exists.
+Assets/Samples/

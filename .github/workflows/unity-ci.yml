@@ -1,0 +1,235 @@
+# Unity CI — compiles com.sqlitehost.runtime inside a real Unity editor at
+# the version its package.json claims as the floor, and runs the package's
+# EditMode tests there.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# ONE-TIME OWNER SETUP — this workflow's test job FAILS on purpose until it
+# is done. Unity cannot run in batch mode without an activated licence, and
+# a licence cannot be committed.
+#
+#   1. Install Unity Hub locally and sign in with the Unity ID that should
+#      own the CI activations.
+#   2. Unity Hub > Preferences (Settings) > Licenses > Add > "Get a free
+#      personal license".
+#   3. Read the generated licence file:
+#        macOS   /Library/Application Support/Unity/Unity_lic.ulf
+#        Linux   ~/.local/share/unity3d/Unity/Unity_lic.ulf
+#        Windows C:\ProgramData\Unity\Unity_lic.ulf
+#   4. Repo > Settings > Secrets and variables > Actions > New repository
+#      secret, three times:
+#        UNITY_LICENSE   the ENTIRE contents of Unity_lic.ulf, XML
+#                        declaration included
+#        UNITY_EMAIL     the Unity ID email
+#        UNITY_PASSWORD  the Unity ID password
+#      All three are required: the editor re-validates the account when it
+#      applies the licence file.
+#
+# Constraints that shaped this file, so nobody "simplifies" them back out:
+#
+#   * A personal licence permits only a small number of concurrent
+#     activations, so the version matrix runs with max-parallel: 1.
+#   * Unity 2021.3 patches NEWER than 2021.3.45f2 are Extended LTS and
+#     refuse to activate under a personal licence. 2021.3.45f2 is the
+#     newest patch a personal licence can run, which is why it — and not
+#     the 2021.3.55f1 in unity/SampleProject — is the pinned CI floor.
+#   * The matrix tests the DECLARED MINIMUM (package.json "unity":
+#     "2021.3"). A newer editor proves nothing about the floor, which is
+#     the version that actually breaks.
+#   * No caching anywhere in this workflow: a Unity Library/ cache keyed
+#     across editor versions is a well-known source of phantom failures,
+#     and the job is not slow enough to be worth that risk.
+#
+# The matrix entry below and unity/ci-project/ProjectSettings/ProjectVersion.txt
+# are two literals that must agree; the scaffold-guard job fails loudly if
+# they drift.
+# ══════════════════════════════════════════════════════════════════════════
+
+name: unity-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'unity/**'
+      - 'csharp/SqliteHost.Abstractions/**'
+      - 'csharp/SqliteHost.Runtime/**'
+      - 'csharp/SqliteHost.Generated.Sample/**'
+      - '.github/workflows/unity-ci.yml'
+  pull_request:
+    paths:
+      - 'unity/**'
+      - 'csharp/SqliteHost.Abstractions/**'
+      - 'csharp/SqliteHost.Runtime/**'
+      - 'csharp/SqliteHost.Generated.Sample/**'
+      - '.github/workflows/unity-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scaffold-guard:
+    name: CI project matches the package floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Runs without a Unity licence, so the scaffolding stays verified even
+      # before the secrets exist. Catches the drift that would otherwise
+      # surface as a confusing editor error twenty minutes into a run.
+      - name: Check the CI project against the package manifest
+        env:
+          EXPECTED_UNITY_VERSION: 2021.3.45f2
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          expected = os.environ["EXPECTED_UNITY_VERSION"]
+          problems = []
+
+          package = json.load(open("unity/com.sqlitehost.runtime/package.json"))
+          floor = package.get("unity")
+          if not floor:
+              problems.append('package.json has no "unity" field to test against')
+
+          version_line = open(
+              "unity/ci-project/ProjectSettings/ProjectVersion.txt"
+          ).readline().strip()
+          prefix = "m_EditorVersion:"
+          if not version_line.startswith(prefix):
+              problems.append("ProjectVersion.txt does not start with " + prefix)
+              project_version = ""
+          else:
+              project_version = version_line[len(prefix):].strip()
+
+          if floor and not project_version.startswith(floor + "."):
+              problems.append(
+                  "the CI project pins Unity " + project_version
+                  + ' but the package declares floor "' + floor
+                  + '" — the CI project must run the floor, not a newer line'
+              )
+          if project_version != expected:
+              problems.append(
+                  "the workflow matrix pins " + expected
+                  + " but ProjectVersion.txt pins " + project_version
+                  + " — keep the two literals in step"
+              )
+
+          manifest = json.load(open("unity/ci-project/Packages/manifest.json"))
+          reference = manifest.get("dependencies", {}).get("com.sqlitehost.runtime")
+          if reference != "file:../../com.sqlitehost.runtime":
+              problems.append(
+                  "the CI project must consume the package from the worktree via "
+                  '"file:../../com.sqlitehost.runtime", found: ' + repr(reference)
+              )
+          if "com.unity.test-framework" not in manifest.get("dependencies", {}):
+              problems.append("the CI project needs com.unity.test-framework to run EditMode tests")
+
+          asmdef_path = (
+              "unity/ci-project/Assets/Tests/EditMode/"
+              "SqliteHost.CiProject.EditModeTests.asmdef"
+          )
+          asmdef = json.load(open(asmdef_path))
+          for required in ("SqliteHost", "UnityEngine.TestRunner", "UnityEditor.TestRunner"):
+              if required not in asmdef.get("references", []):
+                  problems.append(asmdef_path + " must reference " + required)
+
+          if problems:
+              for problem in problems:
+                  print("::error title=Unity CI scaffold drift::" + problem)
+              sys.exit(1)
+          print("CI project pins Unity " + project_version + "; package floor is " + str(floor) + ".")
+          PY
+
+  edit-mode-tests:
+    name: EditMode tests (Unity ${{ matrix.unity-version }})
+    needs: scaffold-guard
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # A personal licence allows only a couple of concurrent activations.
+      max-parallel: 1
+      matrix:
+        # The package's declared floor. Adding a newer LTS here also means
+        # bumping com.unity.test-framework in the CI project's manifest —
+        # the 1.1.x line is the 2021.3 one.
+        unity-version:
+          - 2021.3.45f2
+    steps:
+      # First step on purpose: a missing secret should cost seconds, not a
+      # cryptic activation failure after the editor image has been pulled.
+      - name: Require the Unity licence secrets
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          set -eu
+          missing=""
+          [ -n "${UNITY_LICENSE}" ] || missing="${missing} UNITY_LICENSE"
+          [ -n "${UNITY_EMAIL}" ] || missing="${missing} UNITY_EMAIL"
+          [ -n "${UNITY_PASSWORD}" ] || missing="${missing} UNITY_PASSWORD"
+          if [ -n "${missing}" ]; then
+            echo "::error title=Unity licence not configured::Missing repository secret(s):${missing}. Unity cannot run in batch mode without an activated licence. Create a free personal licence in Unity Hub (Preferences > Licenses > Add > Get a free personal license), then add the contents of Unity_lic.ulf as UNITY_LICENSE plus your Unity ID as UNITY_EMAIL and UNITY_PASSWORD under Settings > Secrets and variables > Actions. Full steps: the comment block at the top of .github/workflows/unity-ci.yml and docs/guides/publishing.md section i."
+            exit 1
+          fi
+          echo "Unity licence secrets are present."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The editor images are several gigabytes; a stock runner has room
+      # only after the preinstalled SDKs we do not use are gone.
+      - name: Free disk space for the editor image
+        run: |
+          set -eu
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/local/share/powershell
+          df -h /
+
+      # What a consumer does through Package Manager > Samples > Import,
+      # done in the shell. Its only purpose is to put the sample in front of
+      # a real compiler: Samples~ is invisible to Unity inside a package, so
+      # nothing else in this repo ever type-checks SmokeBehaviour.cs.
+      - name: Import the package sample into the CI project
+        run: |
+          set -eu
+          rm -rf unity/ci-project/Assets/Samples
+          mkdir -p unity/ci-project/Assets/Samples
+          cp -R 'unity/com.sqlitehost.runtime/Samples~/GeneratedSample' \
+                unity/ci-project/Assets/Samples/GeneratedSample
+          find unity/ci-project/Assets/Samples -type f | sort
+
+      - name: Run EditMode tests
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4.3.1
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ matrix.unity-version }}
+          projectPath: unity/ci-project
+          testMode: EditMode
+          artifactsPath: unity/ci-project/artifacts
+
+      # The editor runs as root inside the container; without this the
+      # upload step cannot read what it wrote.
+      - name: Make the results readable by the runner
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" unity/ci-project/artifacts || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unity-editmode-results-${{ matrix.unity-version }}
+          path: unity/ci-project/artifacts
+          if-no-files-found: warn
+          retention-days: 14
