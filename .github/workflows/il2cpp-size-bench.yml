@@ -32,8 +32,15 @@ name: il2cpp-size-bench
 on:
   pull_request:
     # The inputs whose size this measures. This workflow file is
-    # deliberately NOT in the list: a run costs hours, so a change to it is
-    # tested with workflow_dispatch on the branch, not by every push to it.
+    # deliberately NOT in the list, which buys less than it looks like:
+    # for a pull_request, GitHub matches these paths against the WHOLE
+    # pull request diff, not the latest push. Measured here — a push
+    # touching only this file still started a run, because the pull
+    # request as a whole touched tests/app-size-bench/. So the exclusion
+    # only spares a pull request that changes nothing else, which is the
+    # rarer case; the concurrency rule below is what actually stops the
+    # hours from piling up. Test a change to this file with
+    # workflow_dispatch on the branch.
     paths:
       - "csharp/SqliteHost.Runtime/**"
       - "csharp/SqliteHost.Abstractions/**"
