@@ -47,11 +47,14 @@ on:
 permissions:
   contents: read
 
-# Never cancel a run in flight for a push: a half-finished matrix is worse
-# than a late one, and these runs are hours long.
+# A scheduled run IS the measurement, so it is never cancelled: a
+# half-finished matrix is worse than a late one, and these runs are hours
+# long. On a pull request the opposite holds — a superseded run measures
+# code nobody will merge, and without this every push queues another hour
+# of Android IL2CPP builds behind the last one.
 concurrency:
   group: il2cpp-size-bench-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # The floor+1 line unity-ci.yml also exercises. One version, because this
