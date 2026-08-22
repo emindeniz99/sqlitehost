@@ -1,0 +1,230 @@
+# Unity IL2CPP app-size matrix (docs/guides/il2cpp-size-protocol.md §4).
+#
+# This is a MEASUREMENT, not a gate. IL2CPP byte counts move with the editor
+# patch, the NDK and the engine itself, so a numeric red here would usually
+# be about Unity rather than about this repository. Every row publishes its
+# numbers as an artifact and a job-summary table; the numeric regression
+# gate lives on the NativeAOT half (ci.yml's `app-size` job), which is
+# deterministic and two orders of magnitude cheaper.
+#
+# Deliberately NOT in unity-ci.yml: that workflow compiles and tests the UPM
+# package across the editor matrix on every pull request. This one builds
+# Android IL2CPP players, which costs 10-20 minutes per row, and runs
+# monthly.
+#
+# Cost and cadence. A full 12-row run is a few hours of runner time, so:
+#   schedule          monthly, full matrix
+#   workflow_dispatch full matrix, and the only sane way to test a change
+#                     to this workflow
+#   pull_request      a 3-row subset (baseline / compact50 / ultra50), and
+#                     only for changes to the runtime or the C# emitter —
+#                     the inputs whose size this measures
+#
+# Disk, not licence, is the binding constraint: the android IL2CPP editor
+# image is around 10 GB and a GitHub-hosted runner starts with roughly 14 GB
+# free, hence the reclaim step before the build.
+#
+# Fork pull requests cannot read secrets, so they cannot activate a Unity
+# licence. They skip with a notice rather than failing red — same pattern
+# unity-ci.yml uses.
+name: il2cpp-size-bench
+
+on:
+  pull_request:
+    # The inputs whose size this measures. This workflow file is
+    # deliberately NOT in the list: a run costs hours, so a change to it is
+    # tested with workflow_dispatch on the branch, not by every push to it.
+    paths:
+      - "csharp/SqliteHost.Runtime/**"
+      - "csharp/SqliteHost.Abstractions/**"
+      - "codegen/csharp-emitter/**"
+      - "tests/app-size-bench/**"
+  schedule:
+    # 02:23 UTC on the 3rd of each month.
+    - cron: "23 2 3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a run in flight for a push: a half-finished matrix is worse
+# than a late one, and these runs are hours long.
+concurrency:
+  group: il2cpp-size-bench-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The floor+1 line unity-ci.yml also exercises. One version, because this
+  # measures SqliteHost's cost, not Unity's — comparing rows only means
+  # something when every row used the same editor.
+  UNITY_VERSION: 2022.3.62f3
+
+jobs:
+  # Fork pull requests get an explanation instead of a red X.
+  licence-guard:
+    name: licence availability
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the skip
+        run: |
+          {
+            echo "### IL2CPP size bench skipped"
+            echo
+            echo "GitHub does not pass repository secrets to a pull request from a fork,"
+            echo "so the Unity licence cannot be activated here. A maintainer can run the"
+            echo "matrix on the merge commit with \`workflow_dispatch\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Which rows this run measures. Kept as a job so the matrix below has one
+  # source rather than a condition repeated per trigger.
+  plan:
+    name: plan rows
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      rows: ${{ steps.pick.outputs.rows }}
+    steps:
+      - id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Baseline, the default profile and the smallest profile: enough
+            # to see a regression in shape, three rows instead of twelve.
+            echo 'rows=[0,2,4]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'rows=[0,1,2,3,4,5,6,7,8,9,10,11]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: row ${{ matrix.row }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      # Each leg pulls its own copy of a ~10 GB editor image, so widening
+      # this trades a lot of network for wall clock.
+      max-parallel: 3
+      matrix:
+        row: ${{ fromJSON(needs.plan.outputs.rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Preinstalled toolchains this job never uses. The editor image plus
+      # the NDK plus one row's build output does not fit without this.
+      - name: Reclaim disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/share/swift
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Generate the bench sources
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r --silent run build
+          node tests/app-size-bench/generate.mjs
+
+      - name: Assemble row ${{ matrix.row }}
+        env:
+          ROW: ${{ matrix.row }}
+        run: bash tests/app-size-bench/prepare-row.sh "$ROW"
+
+      # The row table is the single definition of what each row means; the
+      # editor driver reads these three values off its command line.
+      - id: row
+        name: Read the row's build parameters
+        env:
+          ROW: ${{ matrix.row }}
+        run: |
+          set -euo pipefail
+          # An empty -sbDefines would be dropped by the argument parser, so
+          # the flag is only emitted when the row actually sets defines.
+          params=$(jq -er --argjson r "$ROW" '
+            .[] | select(.row == $r)
+              | "-sbOutput Builds/row\(.row).apk -sbValidate \(.validate)"
+                + (if .defines == "" then "" else " -sbDefines \(.defines)" end)
+          ' tests/app-size-bench/il2cpp-rows.json)
+          echo "params=$params" >> "$GITHUB_OUTPUT"
+          echo "row $ROW -> $params"
+
+      - uses: game-ci/unity-builder@d829bfc901f2347c8fe18898f06712b66916ef42 # v5.0.0
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: Android
+          projectPath: tests/app-size-bench/unity-project
+          # SizeBench sets every player setting the protocol pins (IL2CPP,
+          # stripping High, .NET Standard, OptimizeSize, ARM64) and writes
+          # the APK itself, so unity-builder only has to start the editor.
+          buildMethod: SizeBench.ValidateAndBuild
+          customParameters: ${{ steps.row.outputs.params }}
+          # prepare-row.sh wrote Assets/Sources into the checkout, which is
+          # a dirty tree by unity-builder's definition.
+          allowDirtyBuild: true
+          versioning: None
+
+      - name: Measure the row
+        env:
+          ROW: ${{ matrix.row }}
+        run: |
+          apk="tests/app-size-bench/unity-project/Builds/row$ROW.apk"
+          node tests/app-size-bench/measure-il2cpp.mjs "$ROW" \
+            --apk "$apk" \
+            --log "$apk.validate.txt" \
+            --out tests/app-size-bench/out/il2cpp
+
+      # The numbers, not the APK: a row's APK is ~12 MB and nothing
+      # downstream reads it.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: il2cpp-row-${{ matrix.row }}
+          path: tests/app-size-bench/out/il2cpp/row${{ matrix.row }}.json
+          if-no-files-found: error
+
+  summarize:
+    name: matrix summary
+    needs: build
+    # Summarize whatever finished: a partial matrix is still evidence, and
+    # summarize-il2cpp.mjs says how many rows it had.
+    if: always() && needs.build.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: il2cpp-row-*
+          merge-multiple: true
+          path: il2cpp-rows
+      - name: Build the matrix table
+        run: node tests/app-size-bench/summarize-il2cpp.mjs il2cpp-rows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: il2cpp-size-matrix
+          path: il2cpp-rows
+          if-no-files-found: error

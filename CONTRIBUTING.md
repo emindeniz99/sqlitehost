@@ -39,6 +39,9 @@ node tests/delivery-golden/run.mjs          # TS signer bytes verify under .NET
 node unity/sync.mjs --check                 # UPM copies match csharp/
 node tests/vendor-trim/run.mjs              # each vendoring profile compiles alone
 bash tests/compatibility-sqlite/run-matrix.sh   # real SQLite 3.9.0 to newest (Linux)
+bash tests/compatibility-sqlite/run-matrix.sh 3.19.3   # just the floor
+node tests/app-size-bench/generate.mjs && \
+  node tests/app-size-bench/measure-nativeaot.mjs      # app-size claims
 ```
 
 The playground's browser tests need its web bundle built first:
@@ -47,6 +50,11 @@ The playground's browser tests need its web bundle built first:
 pnpm --dir typescript/playground run build:web
 pnpm --dir typescript/playground run test:e2e
 ```
+
+If those 13 tests fail on a Chromium revision mismatch, that is the
+local-provisioning trap the playground's README describes, not a broken
+test — CI installs the browser from the pinned `@playwright/test` and
+does not hit it.
 
 ### Two things that bite on a Mac
 

@@ -1,0 +1,162 @@
+# The publish-day steps, run before publish day.
+#
+# Everything here used to execute for the FIRST time on a version tag,
+# inside release.yml, with the release already half-cut: the Maven `central`
+# profile (sources + javadoc, and javadoc is strict), `dotnet pack` for the
+# five NuGet projects, and the `pnpm pack && tar -tzf` tarball inspection
+# that docs/guides/publishing.md §c carried as an unchecked markdown
+# checklist. None of the three needs a credential, so none of them had a
+# reason to wait for a tag.
+#
+# Cadence: on a pull request that touches what each job guards (so a broken
+# javadoc comment is caught by the PR that wrote it), weekly so upstream
+# tooling drift surfaces on its own, and on demand.
+#
+# NOT here: scripts/check-npm-publishable.mjs. It exits 1 today by design —
+# the three publishable manifests still carry `"private": true` as the
+# registry-bootstrap gate, and @sqlite-host/authoring depends on the
+# unpublished @sqlite-host/codegen-core. Gating pull requests on it would
+# paint main red for a state the repo intends to be in. It runs in
+# release.yml, where failing is the point, and as the advisory
+# `publish-readiness` job below on the weekly schedule.
+name: packaging
+
+on:
+  # GitHub Actions does not expand YAML anchors, so the two path lists are
+  # written out twice on purpose. Keep them identical.
+  push:
+    branches: [main]
+    paths:
+      - "java/**"
+      - "csharp/**"
+      - "typespec/library/**"
+      - "typescript/runtime-types/**"
+      - "typescript/authoring-sdk/**"
+      - "codegen/**"
+      - "scripts/check-pack-shape.mjs"
+      - "scripts/check-nupkg-shape.sh"
+      - "version.txt"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/packaging.yml"
+  pull_request:
+    paths:
+      - "java/**"
+      - "csharp/**"
+      - "typespec/library/**"
+      - "typescript/runtime-types/**"
+      - "typescript/authoring-sdk/**"
+      - "codegen/**"
+      - "scripts/check-pack-shape.mjs"
+      - "scripts/check-nupkg-shape.sh"
+      - "version.txt"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/packaging.yml"
+  schedule:
+    # Mondays 05:17 UTC. Off the hour so it does not queue behind the
+    # top-of-hour crowd.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Sources jar + javadoc jar + the Portal bundle shape, with GPG skipped —
+  # the half of `mvn -P central deploy` that needs no secret. javadoc is
+  # strict and fails on a malformed doc comment; discovering that at tag
+  # time means re-cutting the release.
+  maven-central-dry-run:
+    name: maven central profile (no credentials)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          # The publish job in release.yml deploys from 21; matching it is
+          # what makes this a rehearsal rather than an approximation.
+          java-version: "21"
+          cache: maven
+      # -DskipTests: ci.yml already runs the suite on three JDK lines twice
+      # over. What is being proved here is that the artifacts Central
+      # demands can be built at all.
+      - name: Build sources + javadoc + the Central bundle
+        run: mvn -B -P central verify -Dgpg.skip=true -DskipTests
+        working-directory: java
+      - name: Show what would be uploaded
+        run: ls -l java/*/target/*.jar
+
+  # `dotnet pack` for the five publishable projects plus an assertion on
+  # what came out: the assembly is really under lib/netstandard2.0/, and the
+  # nuspec carries the id, version, description, licence expression and
+  # repository URL nuget.org requires.
+  nuget-pack:
+    name: nuget pack shape
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - run: bash scripts/check-nupkg-shape.sh
+
+  # `pnpm pack` for the three publishable npm packages plus an assertion
+  # that every path package.json promises is inside the tarball. `pack`
+  # works despite `"private": true` — that flag gates `publish` — which is
+  # what makes this runnable now.
+  npm-pack:
+    name: npm tarball shape
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # dist/ is what the tarballs ship, so it has to exist before packing.
+      - run: pnpm -r --silent run build
+      - run: node scripts/check-pack-shape.mjs
+
+  # Advisory only, and only on the schedule or on demand: this is the
+  # reminder that the registry bootstrap is still open, not a gate.
+  publish-readiness:
+    name: publish readiness (advisory)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Which publish gates are still closed
+        run: |
+          if node scripts/check-npm-publishable.mjs; then
+            echo "The npm publish gates are all open — this job can become a real check." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### npm publish gates still closed"
+              echo
+              echo "Expected until the registry bootstrap lands (docs/guides/publishing.md)."
+              echo "See the step log for the exact blockers."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

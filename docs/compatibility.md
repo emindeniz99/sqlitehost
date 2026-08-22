@@ -11,9 +11,11 @@ Two tiers, deliberately distinct:
   Lowering the floor would shrink what script authors can rely on, so
   it stays at 3.19.3 even though the runtime itself needs less.
 - **Engine-verified tier: 3.9.0.** The full C# suite passes on real
-  3.9.0 and 3.9.2 builds, and both stay in the on-demand engine matrix
-  (`tests/compatibility-sqlite/run-matrix.sh`, run locally rather than
-  in CI).
+  3.9.0 and 3.9.2 builds, and both stay in the engine matrix
+  (`tests/compatibility-sqlite/run-matrix.sh`). CI runs it as
+  `engine-matrix.yml` — one leg per engine version, nightly and on any
+  pull request touching `csharp/` or the harness, with a fifth advisory
+  leg on whatever SQLite publishes today.
   This is a measured fact consumers below the floor can use at their
   own judgment — their own script SQL, not ours, becomes the limiting
   factor. It is not a contractual promise.
@@ -175,6 +177,18 @@ genuinely differ under IL2CPP, build matrix, report template) is
 (Unity 2022.3.9f1, Android/ARM64, Managed Stripping High), reproduced
 below.
 
+Both halves are re-measured by CI, at cadences their cost justifies. The
+NativeAOT sweep runs on every pull request (`ci.yml`, job
+`app size (NativeAOT)`): it publishes every bench row, checks that each
+one still executes the bench correctly, and enforces the claims that are
+ratios rather than bytes — profiles stay ordered, marginal per-method
+cost keeps falling from classic to compact to ultra, DTO fields stay a
+no-op, `SQLITEHOST_SLIM` stays a net win. The Unity IL2CPP matrix is
+`il2cpp-size-bench.yml`, monthly and on demand, and stays a measurement:
+its byte counts move with the editor patch, the NDK and the engine
+itself, so it publishes a table and an artifact rather than blocking a
+merge.
+
 Measured deltas over the game-like baseline (managed core is ~80 KB of
 IL; the cost is AOT type metadata + EH tables, **not** string literals
 — total SQL-ish literal bytes in the binary measured under 0.5 KB, and
@@ -247,7 +261,10 @@ cost zero additional bytes on iOS/Android by consuming the system
 libsqlite3 through `SqliteHost.Adapters.Native`. Reflection-free
 NativeAOT (`IlcDisableReflection=true`) builds and runs the full
 runtime — consistent with the no-reflection source guard — so maximum
-managed stripping settings are safe.
+managed stripping settings are safe. That is not a remembered result:
+it is one row of the NativeAOT sweep CI publishes on every pull request
+(`ci.yml`, job `app size (NativeAOT)`), and the row fails if the
+reflection-free binary stops running.
 
 ### At the floor: whole-app trim flags help the game, not us
 

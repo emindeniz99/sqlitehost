@@ -12,8 +12,18 @@
 # against the committed fixtures and vendored sources.
 #
 # Not run here: the playground's Playwright leg from run-all.sh. It needs
-# a browser download, which does not belong in the main matrix; it gets
-# its own workflow when someone wants it.
+# a browser download, which does not belong in the main matrix — it has
+# its own workflow (playground-e2e.yml), which is also why
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stays set below for everything here.
+#
+# The other workflows, and why each is separate rather than a job here:
+#   playground-e2e.yml    per-PR, but needs a Chromium install
+#   packaging.yml         weekly + per-PR on the paths it guards; runs the
+#                         steps that used to execute for the first time on
+#                         a release tag (javadoc, dotnet pack, npm pack)
+#   engine-matrix.yml     nightly + per-PR on csharp/**; compiles real
+#                         SQLite amalgamations, ~5 min per engine
+#   il2cpp-size-bench.yml monthly measurement in a real Unity editor
 #
 # Security posture (see the repo's SECURITY notes): every action pinned to
 # a commit SHA with its tag in a trailing comment, least-privilege
@@ -187,6 +197,65 @@ jobs:
         run: node unity/sync.mjs --check
       - name: Unity vendor-trim (each profile compiles alone)
         run: node tests/vendor-trim/run.mjs
+      # release.yml runs this too, but only on a version tag — i.e. after
+      # the release is already being cut, when a manifest release-please
+      # missed means re-cutting it. The check costs 30 ms and needs nothing,
+      # so a pull request is where it belongs; release.yml keeps the
+      # tag-checking invocation (`node scripts/check-versions.mjs v1.2.3`),
+      # which this one deliberately does not do.
+      - name: Version lockstep across every release-please manifest
+        run: node scripts/check-versions.mjs
+
+  # The NativeAOT half of the app-size bench: publish every bench row and
+  # check that the size claims in docs/compatibility.md and
+  # docs/guides/il2cpp-size-protocol.md still describe this code.
+  #
+  # What is enforced here are RATIOS computed inside this one run — profile
+  # ordering, falling per-method cost, DTO fields as a no-op, SLIM a net win
+  # — plus the reflection-free build actually running, which is the only
+  # thing that keeps the "no [Preserve], no link.xml" guardrail honest
+  # against the compiler rather than against the source. Byte-for-byte
+  # regression against tests/app-size-bench/baseline.json turns on once that
+  # file is re-recorded on a runner; see its header. The expensive IL2CPP
+  # half is a monthly measurement in il2cpp-size-bench.yml.
+  app-size:
+    name: app size (NativeAOT)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - run: pnpm install --frozen-lockfile
+      # The bench sources come out of the repo's own emitters, so this step
+      # is also the only thing that notices when an emitter change breaks
+      # the bench generator.
+      - name: Generate the bench sources
+        run: |
+          pnpm -r --silent run build
+          node tests/app-size-bench/generate.mjs
+      # linux-x64 explicitly rather than the host default: the baseline file
+      # is keyed by runtime identifier, and an implicit RID would silently
+      # compare a runner against a developer laptop.
+      - name: Publish and measure every row
+        run: node tests/app-size-bench/measure-nativeaot.mjs --rid linux-x64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # Upload the numbers even when the gate failed — the sizes are what
+        # tells you which row grew.
+        if: always()
+        with:
+          name: nativeaot-sizes
+          path: tests/app-size-bench/out/nativeaot-sizes.json
+          if-no-files-found: warn
 
   # Mechanizes the Actions hardening checklist: unpinned actions,
   # excessive permissions, injection sinks, persisted credentials, cache

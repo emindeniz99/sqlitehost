@@ -68,14 +68,49 @@ The UPM copies under `unity/com.sqlitehost.runtime/` must match
 
 Compiles real SQLite amalgamations (3.9.0 through the newest release)
 and runs the full C# suite against each binary. It needs gcc, curl and
-unzip plus a local amalgamation cache, so it runs on demand rather than
-in CI — see `docs/compatibility.md` for the measured results.
+unzip plus an amalgamation cache; the four pinned versions are SHA-256
+pinned, because the script compiles and executes source it downloaded.
+`engine-matrix.yml` runs it nightly and on any pull request touching
+`csharp/` or the harness — one leg per version, so a failure names the
+engine. Pass a version to run one leg locally:
+`bash tests/compatibility-sqlite/run-matrix.sh 3.19.3`. See
+`docs/compatibility.md` for the measured results.
+
+## App size (`tests/app-size-bench`)
+
+`generate.mjs` writes two synthetic hosts (50 and 5 methods) through the
+repo's own emitters; `measure-nativeaot.mjs` publishes every row under
+.NET 8 NativeAOT and checks the size claims in `docs/compatibility.md`.
+What it enforces are ratios computed in one run — profile ordering,
+falling per-method cost, DTO fields as a no-op, `SQLITEHOST_SLIM` a net
+win, and the reflection-free build still running — so it is immune to
+SDK and architecture drift. Byte-for-byte regression against
+`baseline.json` switches on once that file is re-recorded on a runner
+(`UPDATE_SIZE_BASELINE=1`). The Unity IL2CPP half is a monthly
+measurement, not a gate: `il2cpp-size-bench.yml` builds the 12-row
+matrix in a real editor and publishes a table.
 
 ## Playground browser tests (`typescript/playground`)
 
-Playwright end-to-end tests over the built web bundle. They need a
-browser download, so they are outside the main matrix too; run them
-locally per `CONTRIBUTING.md`.
+Playwright end-to-end tests over the built web bundle, Chromium only.
+They need a browser download, which is why they are a separate workflow
+(`playground-e2e.yml`) rather than a job in the main matrix — but they
+do run on every pull request. To run them locally, see
+`CONTRIBUTING.md`; CI is actually the more reliable path, because
+`playwright install` derives the browser revision from the pinned
+`@playwright/test` instead of whatever is already on the machine.
+
+## Packaging (`packaging.yml`)
+
+The steps that used to execute for the first time on a release tag:
+`mvn -P central verify` (sources + javadoc, GPG skipped — javadoc is
+strict and a failure at tag time means re-cutting the release),
+`scripts/check-nupkg-shape.sh` (`dotnet pack` the five NuGet projects
+and assert the nuspec metadata nuget.org requires), and
+`scripts/check-pack-shape.mjs` (`pnpm pack` the three npm packages and
+assert every path `package.json` promises is in the tarball). None needs
+a credential. They run weekly and on pull requests that touch what they
+guard.
 
 ## End-to-end (`tests/end-to-end`)
 
@@ -91,7 +126,8 @@ Orchestrates the full matrix locally: `dotnet test`, `mvn -q test`,
 | `node 20/22/24/26` | `pnpm -r test` across the declared Node lines |
 | `jdk 17/21/25` | `mvn -q test` across the LTS lines at or above the pom floor |
 | `dotnet (ubuntu-latest, windows-latest)` | `dotnet test` — runtime, adapters, integration fixtures |
-| `goldens` | emitter goldens, delivery goldens, `unity/sync.mjs --check`, vendor-trim |
+| `goldens` | emitter goldens, delivery goldens, `unity/sync.mjs --check`, vendor-trim, version lockstep |
+| `app size (NativeAOT)` | every bench row published and measured; the size claims that are ratios |
 | `zizmor` | workflow security lint |
 
 `.github/workflows/unity-ci.yml` compiles `com.sqlitehost.runtime`
@@ -103,5 +139,22 @@ lines (6000.0.82f1, 6000.1.17f1, 6000.2.15f1, 6000.3.22f1, 6000.4.12f1,
 needs the licence secrets, which GitHub does not pass to fork pull
 requests, so a fork gets the licence-free scaffold-guard instead.
 
-Neither workflow runs the engine matrix or the playground browser
-tests. Run those two locally.
+Four more workflows carry the suites that do not belong in the main
+matrix, each at the cadence its cost justifies:
+
+| Workflow | Cadence | What |
+|---|---|---|
+| `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
+| `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
+| `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
+| `il2cpp-size-bench.yml` | monthly + on demand | the Unity IL2CPP app-size matrix (a measurement, never a gate) |
+
+So everything in `tests/end-to-end/run-all.sh` now runs in CI — but not
+all of it on every push. A change outside `csharp/` does not wait for the
+engine matrix, and nothing waits for the IL2CPP matrix.
+
+One check deliberately stays out of pull-request CI:
+`scripts/check-npm-publishable.mjs` exits 1 today by design, because the
+three publishable manifests still carry `"private": true` as the
+registry-bootstrap gate. It runs in `release.yml`, where failing is the
+point, and as an advisory weekly job in `packaging.yml`.

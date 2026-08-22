@@ -385,6 +385,14 @@ them. The headless driver (`SizeBench.cs`) and per-row assembly script
 (`prepare_row.sh`) are reproduced below so the run is repeatable
 verbatim.
 
+Both drivers below have since been extracted into the repository —
+`tests/app-size-bench/unity-project/Assets/Editor/SizeBench.cs` and
+`tests/app-size-bench/prepare-row.sh` — so `il2cpp-size-bench.yml` can
+run the matrix. Those files are the canonical copies and have moved on
+(command-line parameters for CI, the validity block written next to the
+APK, rows 9-11 implemented); what follows is the version this report was
+produced with.
+
 ### SizeBench.cs (Editor driver)
 
 ```csharp

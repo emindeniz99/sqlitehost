@@ -40,8 +40,9 @@ Highlights beyond the core loop:
   a conformance suite (`SqliteHost.Conformance`) that consumer test
   projects subclass — silent failure is a contract violation.
 - **Engine reach**: policy floor SQLite 3.19.3, engine-verified down to
-  real 3.9.0 binaries via `tests/compatibility-sqlite/` (a five-engine
-  matrix run on demand, not in CI).
+  real 3.9.0 binaries via `tests/compatibility-sqlite/` — a five-engine
+  matrix CI runs nightly, and on any pull request that touches `csharp/`
+  or the harness itself.
 - **Inline host functions**: eligible read-only methods double as SQL
   scalar functions (`fn_*`) inside script statements.
 - **App-size profiles** (measured under NativeAOT *and* real Unity
