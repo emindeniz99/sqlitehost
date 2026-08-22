@@ -31,12 +31,17 @@
 #
 # Every job re-checks the registry and skips (loudly) when the tag's
 # version is already published, so a hand-bootstrapped version does not
-# fail the tag run.
+# fail the tag run. A registry that cannot be answered is a hard failure
+# rather than a green light: an unreachable registry says nothing about
+# what is published, and bootstrap day is exactly when these queries are
+# least predictable.
 #
 # Security: every action pinned to a commit SHA; NO dependency cache in
 # any job here (a poisoned restore would become the published artifact);
 # checkouts never push, so credentials are not persisted; the only event
-# field used in a script (the tag name) travels through an env var.
+# field used in a script (the tag name) travels through an env var. The
+# three publish jobs run only at a `v*` tag, so a workflow_dispatch at a
+# branch verifies version lockstep and publishes nothing.
 
 name: release
 
@@ -79,6 +84,12 @@ jobs:
   publish-npm:
     name: publish the three npm packages
     needs: verify-versions
+    # Publish only from a `v*` tag. npm's trusted publishing binds to the
+    # repository and this workflow's filename, not to a ref, so without
+    # this guard one `gh workflow run release.yml --ref <branch>` would
+    # publish that branch — with a provenance attestation vouching for it.
+    # The other two publish jobs carry the same condition.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -140,16 +151,26 @@ jobs:
           set -euo pipefail
           VERSION=$(cat version.txt)
           for pkg in @sqlite-host/runtime-types @sqlite-host/authoring @sqlite-host/typespec; do
-            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+            # Three outcomes, not two. Only an E404 means "not published
+            # yet"; a 5xx, a DNS failure or a rate limit says nothing about
+            # the registry's contents, so it stops the job rather than
+            # falling through to a publish.
+            if answer=$(npm view "$pkg@$VERSION" version 2>&1); then
               echo "npm already has $pkg@$VERSION — skipping publish."
-            else
+            elif printf '%s' "$answer" | grep -q 'E404'; then
               pnpm --filter "$pkg" publish --no-git-checks --provenance --access public
+            else
+              printf '%s\n' "$answer"
+              echo "::error::npm did not answer for $pkg@$VERSION (no E404 above) — refusing to publish blind."
+              exit 1
             fi
           done
 
   publish-maven:
     name: publish java to Maven Central
     needs: verify-versions
+    # Tag-only, same reasoning as publish-npm.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -183,12 +204,27 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(cat version.txt)
-          if curl -fsSL "https://repo1.maven.org/maven2/io/github/emindeniz99/sqlite-host-model/$VERSION/" >/dev/null 2>&1; then
-            echo "Central already has $VERSION — skipping publish."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
+          # Read the status code rather than letting `curl -f` fold every
+          # non-2xx into one failure: 404 is "not published yet", 200 is
+          # "already there", and anything else means Central did not answer.
+          status=$(curl -sSL -o /dev/null -w '%{http_code}' \
+            "https://repo1.maven.org/maven2/io/github/emindeniz99/sqlite-host-model/$VERSION/") || {
+            echo "::error::Maven Central could not be reached — refusing to publish blind."
+            exit 1
+          }
+          case "$status" in
+            200)
+              echo "Central already has $VERSION — skipping publish."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Maven Central answered HTTP $status for $VERSION — refusing to publish blind."
+              exit 1
+              ;;
+          esac
 
       # setup-java writes the settings.xml server entry (id `central`, the
       # pom's publishingServerId) with env-var placeholders and imports the
@@ -221,6 +257,8 @@ jobs:
   publish-nuget:
     name: publish the five NuGet packages
     needs: verify-versions
+    # Tag-only, same reasoning as publish-npm.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -273,11 +311,26 @@ jobs:
           for id in SqliteHost.Abstractions SqliteHost.Runtime SqliteHost.Conformance \
                     SqliteHost.Adapters.Native SqliteHost.Delivery; do
             lower=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')
+            index="$RUNNER_TEMP/$lower.index.json"
             # 404 for a package that has never been published — that is the
-            # normal first-publish case, not an error.
-            published=$(curl -fsSL "https://api.nuget.org/v3-flatcontainer/$lower/index.json" || echo '{}')
+            # normal first-publish case, not an error. Every other non-200
+            # is a registry that did not answer, and an unread index must
+            # not be mistaken for an index without this version in it.
+            status=$(curl -sSL -o "$index" -w '%{http_code}' \
+              "https://api.nuget.org/v3-flatcontainer/$lower/index.json") || {
+              echo "::error::nuget.org could not be reached for $id — refusing to push blind."
+              exit 1
+            }
+            case "$status" in
+              200) ;;
+              404) : > "$index" ;;
+              *)
+                echo "::error::nuget.org answered HTTP $status for $id — refusing to push blind."
+                exit 1
+                ;;
+            esac
             # -F: the version has dots in it, and they are not wildcards here.
-            if printf '%s' "$published" | grep -qF "\"$VERSION\""; then
+            if grep -qF "\"$VERSION\"" "$index"; then
               echo "nuget.org already has $id $VERSION — skipping push."
               continue
             fi

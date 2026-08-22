@@ -10,12 +10,15 @@ namespace SqliteHost
     /// double-quoted ("…" with "" escapes), bracket ([…], ends at the
     /// first ']', no escape) and backtick (`…` with `` escapes) — plus
     /// line comments (--) and block comments
-    /// (/* */). Per the pinned rule, '$' is also an identifier character
-    /// in SQLite, so a '$' immediately preceded by an identifier character
-    /// continues that identifier instead of starting a parameter; ':' and
-    /// '@' always start parameters outside quoted regions. The same
-    /// algorithm is used by the Java validator and the TypeScript
-    /// authoring lint.
+    /// (/* */). A parameter's name runs over SQLite's own IdChar set
+    /// (letters, digits, '_', '$', and any character above 0x7f), so a
+    /// non-ASCII name is read whole rather than cut at its ASCII head —
+    /// the adapter conformance suite requires such names to bind. Per the
+    /// pinned rule, '$' is also an identifier character in SQLite, so a
+    /// '$' immediately preceded by an identifier character continues that
+    /// identifier instead of starting a parameter; ':' and '@' always
+    /// start parameters outside quoted regions. The same algorithm is used
+    /// by the Java validator and the TypeScript authoring lint.
     /// </summary>
     internal static class SqlParameterScanner
     {
@@ -67,7 +70,7 @@ namespace SqliteHost
                 {
                     int start = i + 1;
                     int end = start;
-                    while (end < length && IsIdentifierChar(sql[end]))
+                    while (end < length && IsSqlIdentifierChar(sql[end]))
                     {
                         end++;
                     }

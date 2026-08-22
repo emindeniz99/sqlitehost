@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# SqliteHost full verification matrix — the single entry point CI would
-# call. Runs every language suite, then the cross-language goldens.
+# SqliteHost full verification matrix — the local entry point that runs
+# every language suite, then the cross-language goldens. CI splits the
+# same work across per-language jobs (see docs/testing.md).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 
-# The playground's browser tests run against the Chromium already
-# installed in this environment (PLAYWRIGHT_BROWSERS_PATH). The pnpm
-# install below must not have Playwright's postinstall go download the
-# rest of its browser set; if the expected Chromium is missing, the
-# browser step further down is where that must fail, loudly.
+# The playground's browser tests run against an already-installed
+# Chromium (PLAYWRIGHT_BROWSERS_PATH, or `pnpm exec playwright install
+# chromium`). The pnpm install below must not have Playwright's
+# postinstall go download the rest of its browser set; if the expected
+# Chromium is missing, the browser step further down is where that must
+# fail, loudly.
 export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 if command -v dotnet >/dev/null 2>&1; then

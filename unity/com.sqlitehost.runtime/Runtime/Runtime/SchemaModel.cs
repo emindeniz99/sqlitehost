@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace SqliteHost
 {
-    /// <summary>Logical scalar types of the host-method type system (plan §10).</summary>
+    /// <summary>Logical scalar types of the host-method type system (docs/manifest.md).</summary>
     internal enum HostScalarType
     {
         Int32,

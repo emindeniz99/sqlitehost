@@ -37,7 +37,7 @@ const portabilityFindings = (sql: string): LintFinding[] =>
   findings(sql, "nonportable-function");
 
 test("builtins added after the host floor are errors", () => {
-  // The sample host declares the plan's default floor, 3.19.3. Each of these
+  // The sample host declares the default floor, 3.19.3. Each of these
   // shipped later, so each is a device-side crash waiting to happen:
   // row_number 3.25.0, iif 3.32.0, format/unixepoch 3.38.0,
   // octet_length 3.43.0, concat/string_agg 3.44.0.

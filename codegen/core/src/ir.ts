@@ -301,7 +301,7 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
- * SQLite built-ins introduced ABOVE the plan's default floor (3.19.3), keyed
+ * SQLite built-ins introduced ABOVE the default contract floor (3.19.3), keyed
  * by the SQLITE_VERSION_NUMBER of the release that added them. A script that
  * calls one of these runs fine on the validator's engine and then fails on a
  * device whose SQLite predates the entry — the failure the
@@ -504,10 +504,10 @@ export function controlTableColumns(c: ColumnsIr): string[] {
   return [c.action, c.message];
 }
 
-/** Default per-host minimum SQLite version (the plan's floor, 3.19.3). */
+/** Default per-host minimum SQLite version (the contract floor, 3.19.3). */
 export const DEFAULT_MIN_SQLITE_VERSION_NUMBER = 3019003;
 
-/** The library's own engine-verified minimum (measured in the CI matrix). */
+/** The library's own engine-verified minimum (see docs/compatibility.md for how it was established). */
 export const LIBRARY_ENGINE_VERIFIED_MINIMUM = 3009000;
 
 export const QUEUE_TABLE_V1: QueueTableIr = {

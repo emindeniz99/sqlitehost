@@ -12,7 +12,7 @@ namespace SqliteHost
         }
     }
 
-    /// <summary>Fluent host definition builder (plan §11).</summary>
+    /// <summary>Fluent host definition builder (docs/csharp-api.md).</summary>
     public interface ISqliteHostDefinitionBuilder<THandlers>
     {
         ISqliteHostDefinitionBuilder<THandlers> ApiLevel(int apiLevel);

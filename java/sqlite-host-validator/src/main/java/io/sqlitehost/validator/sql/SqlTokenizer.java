@@ -235,7 +235,13 @@ public final class SqlTokenizer {
         return isIdentStart(c) || isDigit(c) || c == '$';
     }
 
+    /**
+     * SQLite's IdChar, which a parameter name runs over: letters, digits,
+     * '_', '$', and any character above 0x7f. Cutting the name at its ASCII
+     * head would report missing-binding for a name the author never wrote,
+     * and the adapter conformance suite requires non-ASCII names to bind.
+     */
     private static boolean isParamChar(char c) {
-        return isIdentStart(c) || isDigit(c);
+        return isIdentPart(c) || c > 0x7f;
     }
 }

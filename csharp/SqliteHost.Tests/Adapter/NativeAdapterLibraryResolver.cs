@@ -19,8 +19,20 @@ namespace SqliteHost.Tests.Adapter
     ///     so matrix cells exercise it against the same pinned build;
     ///  2. otherwise the newest cached matrix build under
     ///     tests/compatibility-sqlite/.cache/libsqlite3-*.so, if present;
-    ///  3. otherwise the system "libsqlite3.so.0";
-    ///  4. otherwise default OS-loader resolution.
+    ///  3. otherwise the system library, "libsqlite3.so.0" on Linux or
+    ///     "libsqlite3.dylib" on macOS;
+    ///  4. otherwise "e_sqlite3", the SQLite this test project already
+    ///     restores through SQLitePCLRaw.bundle_e_sqlite3 — the branch that
+    ///     carries Windows, which has no system sqlite3.dll;
+    ///  5. otherwise it throws.
+    ///
+    /// Step 5 is deliberate. Handing the name back to the OS loader is what
+    /// made the Windows CI leg abort the whole test host with an
+    /// AccessViolationException inside sqlite3_open_v2: with no Windows
+    /// candidate above it, the loader bound "sqlite3" to some unrelated
+    /// sqlite3.dll on the runner's search path and the first call into it
+    /// corrupted the process. A missing native SQLite has to read as one
+    /// failing test, not as a crashed run.
     ///
     /// This is a SEPARATE mechanism from Adapter/NativeSqliteOverride.cs:
     /// that [ModuleInitializer] pins the SQLitePCLRaw *provider* used by
@@ -59,12 +71,31 @@ namespace SqliteHost.Tests.Adapter
                 return cached;
             }
 
-            if (NativeLibrary.TryLoad("libsqlite3.so.0", out IntPtr system))
+            if (NativeLibrary.TryLoad("libsqlite3.so.0", out IntPtr linuxSystem))
             {
-                return system;
+                return linuxSystem;
             }
 
-            return IntPtr.Zero;   // fall back to default OS-loader resolution
+            if (NativeLibrary.TryLoad("libsqlite3.dylib", out IntPtr macSystem))
+            {
+                return macSystem;
+            }
+
+            // The assembly-aware overload probes the same NuGet native-asset
+            // directories a DllImport from this assembly would, so it finds
+            // e_sqlite3 on every platform the suite runs on without the
+            // package needing a RID-specific publish.
+            if (NativeLibrary.TryLoad(
+                    "e_sqlite3", typeof(NativeAdapterLibraryResolver).Assembly, null, out IntPtr bundled))
+            {
+                return bundled;
+            }
+
+            throw new DllNotFoundException(
+                "No native SQLite to resolve \"" + libraryName + "\" against on "
+                + RuntimeInformation.OSDescription + ": tried " + NativeSqliteOverride.PathVariable
+                + ", tests/compatibility-sqlite/.cache/libsqlite3-*.so, libsqlite3.so.0,"
+                + " libsqlite3.dylib and the bundled e_sqlite3.");
         }
 
         /// <summary>

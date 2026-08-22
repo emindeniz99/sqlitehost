@@ -47,11 +47,15 @@ function isIdentPart(ch: string): boolean {
   // '$' is an identifier character in SQLite (docs/errors.md): a '$'
   // immediately preceded by an identifier character continues that
   // identifier instead of starting a parameter.
-  return isParamPart(ch) || ch === "$";
+  return isIdentStart(ch) || isDigit(ch) || ch === "$";
 }
 
 function isParamPart(ch: string): boolean {
-  return isIdentStart(ch) || (ch >= "0" && ch <= "9");
+  // SQLite's IdChar, which a parameter name runs over: letters, digits,
+  // '_', '$', and any character above 0x7f. Cutting the name at its ASCII
+  // head would report missing-binding for a name the author never wrote,
+  // and the adapter conformance suite requires non-ASCII names to bind.
+  return isIdentPart(ch) || ch > "\u007f";
 }
 
 function isDigit(ch: string): boolean {
@@ -456,12 +460,12 @@ export function leadingKeyword(tokens: SqlToken[]): string | null {
  * line comment is not a punctuation token here. Mirrors the Java SqlAnalyzer.
  *
  * This matters because the protocol contract is one statement per `sql`
- * field: the native adapter's prepare_v2 compiles only the FIRST statement
- * and silently drops the tail. Without this check a leading no-op —
+ * field: adapters disagree about the tail (the native adapter rejects a
+ * trailing statement without stepping anything, ADO.NET adapters execute
+ * it). Without this check a leading no-op —
  * `SELECT 1; PRAGMA writable_schema = ON` — anchors leadingKeyword/writeTarget
  * on the harmless `SELECT`, bypassing the forbidden-statement and
- * protocol-table-write denylists entirely, and silently discards the
- * author's real (rejected) statement.
+ * protocol-table-write denylists entirely.
  */
 export function hasTrailingStatement(tokens: SqlToken[]): boolean {
   let depth = 0;

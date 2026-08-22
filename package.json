@@ -6,7 +6,7 @@
   "description": "Workspace root for the SqliteHost npm packages (TypeSpec library, emitters, TypeScript SDKs)",
   "engines": {
     "node": ">=20",
-    "pnpm": ">=9"
+    "pnpm": ">=10"
   },
   "scripts": {
     "build": "pnpm -r run build",

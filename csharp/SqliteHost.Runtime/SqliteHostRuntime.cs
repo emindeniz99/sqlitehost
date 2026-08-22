@@ -3,7 +3,7 @@ namespace SqliteHost
     /// <summary>
     /// Executes parsed scripts against a temporary SQLite workspace and
     /// bridges call_* inserts to typed handler invocations (pinned
-    /// lifecycle, plan §18 / docs/csharp-api.md). Never throws for
+    /// lifecycle, docs/csharp-api.md). Never throws for
     /// script-level problems; returns a structured result instead.
     /// The generic parameter types the public API only; the whole engine
     /// lives in the non-generic <see cref="SqliteHostRuntimeCore"/>.

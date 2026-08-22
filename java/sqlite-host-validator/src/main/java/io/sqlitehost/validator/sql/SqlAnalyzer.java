@@ -329,13 +329,13 @@ public final class SqlAnalyzer {
      * not a punctuation token here.
      *
      * <p>This matters because the protocol contract is one statement per
-     * {@code sql} field: the native adapter's prepare_v2 compiles only the
-     * FIRST statement and silently drops the tail. Without this check a leading
+     * {@code sql} field: adapters disagree about the tail (the native adapter
+     * rejects a trailing statement without stepping anything, ADO.NET adapters
+     * execute it). Without this check a leading
      * no-op — {@code SELECT 1; PRAGMA writable_schema = ON} — anchors
      * {@link #leadingKeyword} / {@link #writeTarget} on the harmless
      * {@code SELECT}, bypassing the forbidden-statement and protocol-table-write
-     * denylists entirely, and silently discards the author's real (rejected)
-     * statement.</p>
+     * denylists entirely.</p>
      */
     public static boolean hasTrailingStatement(List<SqlToken> tokens) {
         int depth = 0;

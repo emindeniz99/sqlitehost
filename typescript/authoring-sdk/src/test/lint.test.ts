@@ -49,6 +49,18 @@ test("'$' continues an identifier run instead of starting a parameter", () => {
   assert.deepStrictEqual(scanNamedParameters("SELECT $v"), ["v"]);
 });
 
+test("parameter names run over SQLite's full IdChar set", () => {
+  // SQLite's IdChar counts '$' and every character above 0x7f, and the
+  // adapter conformance suite requires a non-ASCII parameter name to bind
+  // as written. Cutting the name at its ASCII head made the lint report
+  // missing-binding for a name the author never wrote.
+  assert.deepStrictEqual(
+    scanNamedParameters("INSERT INTO t (a, b) VALUES (:anahtarİsmi, @слово)"),
+    ["anahtarİsmi", "слово"],
+  );
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a$b"), ["a$b"]);
+});
+
 test("list-child-without-parent: child rows with no parent insert anywhere", () => {
   const payload = {
     engine: "sqlite-host-v1",

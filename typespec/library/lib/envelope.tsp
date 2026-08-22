@@ -1,4 +1,4 @@
-// Generic script envelope contract (protocol v1, plan §9.1). These
+// Generic script envelope contract (protocol v1). These
 // models are the documented source of truth for the cross-language
 // payload: C# (SqliteHost.Abstractions), Java (sqlite-host-model), and
 // TypeScript (@sqlite-host/runtime-types) each ship a vendored

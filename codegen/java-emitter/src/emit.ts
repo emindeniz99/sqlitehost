@@ -150,7 +150,7 @@ ${compatEntries});
             Set.of(${timeNames});
 
     /**
-     * SQLite built-ins introduced above the plan's floor
+     * SQLite built-ins introduced above the default floor
      * ({@code ir.ts FUNCTION_MIN_VERSION}), keyed by the SQLITE_VERSION_NUMBER
      * of the release that added them. The validator compares each entry
      * against the host manifest's {@code library.minSqliteVersionNumber}.

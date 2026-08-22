@@ -1,6 +1,6 @@
 namespace SqliteHost
 {
-    /// <summary>Entry point of the fluent method descriptor API (plan §12.2).</summary>
+    /// <summary>Entry point of the fluent method descriptor API (docs/csharp-api.md).</summary>
     public static class HostMethod
     {
         public static IHostMethodSpecBuilder<THandlers, TInput, TResult>

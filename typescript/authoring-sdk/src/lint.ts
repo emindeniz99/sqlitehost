@@ -113,7 +113,7 @@ function isNondeterministic(call: SqlFunctionCall): boolean {
  * Minimum SQLITE_VERSION_NUMBER for a built-in: the exact-name table first,
  * then the longest matching family prefix (so `jsonb_extract` resolves to the
  * JSONB floor, not the older JSON one). Returns 0 for anything at or below
- * the plan's floor — i.e. "always safe". Both tables are single-sourced in
+ * the default floor — i.e. "always safe". Both tables are single-sourced in
  * ir.ts (docs/proposals/rule-parameters-as-data.md) and consumed by the Java
  * validator through the generated Protocol.java.
  */
@@ -376,17 +376,19 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
 
       // multiple-statements: exactly one SQL statement per `sql` field is
-      // the protocol contract — the native adapter's prepare_v2 compiles the
-      // first statement and silently drops the tail. That silent drop is both
-      // a general hazard and a denylist bypass: a leading no-op like
-      // `SELECT 1; PRAGMA …` would otherwise anchor forbidden-statement and
-      // protocol-table-write on the harmless first statement. Detected as a
-      // top-level `;` with more SQL after it (a bare trailing `;` is legal).
+      // the protocol contract — adapters disagree about the tail (the
+      // native adapter rejects a trailing statement without stepping
+      // anything; ADO.NET adapters execute it), so the same script means
+      // different things on different hosts. It is also a denylist bypass
+      // either way: a leading no-op like `SELECT 1; PRAGMA …` would
+      // otherwise anchor forbidden-statement and protocol-table-write on
+      // the harmless first statement. Detected as a top-level `;` with
+      // more SQL after it (a bare trailing `;` is legal).
       if (hasTrailingStatement(tokens)) {
         findings.push({
           code: "multiple-statements",
           severity: "error",
-          message: `statement contains more than one SQL statement (a top-level ";" is followed by more SQL) — each "sql" field must hold exactly one statement; the runtime compiles only the first and silently drops the rest (docs/validation.md)`,
+          message: `statement contains more than one SQL statement (a top-level ";" is followed by more SQL) — each "sql" field must hold exactly one statement; adapters disagree about what happens to the tail, and this denylist anchors on the first statement (docs/validation.md)`,
           ...at,
         });
       }

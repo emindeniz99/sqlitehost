@@ -35,9 +35,16 @@ namespace SqliteHost.Delivery
         internal byte[] HmacSecret;
 
         /// <summary>
+        /// Modulus floor for <see cref="Rsa(string, RSAParameters)"/>: 2048
+        /// bits, the size <c>generateDeliveryKeyPair()</c> mints.
+        /// </summary>
+        private const int MinimumRsaModulusBytes = 256;
+
+        /// <summary>
         /// An RSA public key for <c>rsa-sha256</c> (RSASSA-PKCS#1 v1.5 over
         /// SHA-256). Only <see cref="RSAParameters.Modulus"/> and
-        /// <see cref="RSAParameters.Exponent"/> are used.
+        /// <see cref="RSAParameters.Exponent"/> are used. The modulus must
+        /// be at least 2048 bits.
         /// </summary>
         public static DeliveryKey Rsa(string keyId, RSAParameters publicKey)
         {
@@ -46,6 +53,17 @@ namespace SqliteHost.Delivery
                 || publicKey.Exponent == null || publicKey.Exponent.Length == 0)
             {
                 throw new ArgumentException("RSA public key needs a non-empty modulus and exponent.", "publicKey");
+            }
+            // A too-small modulus is the misconfiguration that fails OPEN:
+            // verification keeps succeeding while the private key is within
+            // reach of factoring, so an attacker mints envelopes the app
+            // accepts. Rejected here for the same reason as a mistyped id.
+            if (publicKey.Modulus.Length < MinimumRsaModulusBytes)
+            {
+                throw new ArgumentException(
+                    "RSA public key must be at least 2048 bits (a " + MinimumRsaModulusBytes
+                    + "-byte modulus); this one is " + (publicKey.Modulus.Length * 8) + " bits.",
+                    "publicKey");
             }
             var key = new DeliveryKey(keyId, ScriptEnvelopeAlgorithms.RsaSha256);
             key.RsaPublicKey = new RSAParameters

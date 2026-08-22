@@ -200,7 +200,7 @@ class ValidationEngineTest {
     @Test
     void intentionallyEmptyListIsFine() throws IOException {
         // A parent insert with no child rows must not warn or error —
-        // the plan explicitly allows intentionally empty lists.
+        // the contract explicitly allows intentionally empty lists.
         ValidationReport report = validate("{\"engine\":\"sqlite-host-v1\","
                 + "\"requiredApiLevel\":1,\"requiredMethods\":[\"getValues\"],"
                 + "\"steps\":[{\"id\":\"empty-list\",\"statements\":["

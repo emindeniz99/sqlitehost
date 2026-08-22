@@ -12,7 +12,7 @@
   <name>SqliteHost Java</name>
   <description>
     Java model, semantic validator, and prepare-only JDBC validator for
-    SqliteHost script payloads (plan phase 4). See the docs/ folder.
+    SqliteHost script payloads. See the docs/ folder.
   </description>
 
   <!-- Maven Central publishing metadata — inherited by all modules.

@@ -155,7 +155,7 @@ namespace SqliteHost.Tests
             byte[] envelope = Build(Payload("{}"));
             var keys = new List<DeliveryKey>
             {
-                DeliveryKey.Rsa(KeyId, Convert.ToBase64String(new byte[] { 1, 2, 3 }), Convert.ToBase64String(new byte[] { 1, 0, 1 })),
+                DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), Convert.ToBase64String(new byte[] { 1, 0, 1 })),
                 DeliveryKey.Hmac(KeyId, Secret)
             };
             Assert.True(ScriptEnvelopeVerifier.Verify(envelope, keys, Now).IsValid);
@@ -334,6 +334,45 @@ namespace SqliteHost.Tests
             Assert.Throws<ArgumentException>(() => DeliveryKey.Hmac(KeyId, new byte[0]));
             Assert.Throws<ArgumentException>(() => DeliveryKey.Rsa(KeyId, "", "AQAB"));
             Assert.Throws<ArgumentException>(() => DeliveryKey.Rsa(KeyId, "not base64!", "AQAB"));
+        }
+
+        [Theory]
+        [InlineData(64)]  // 512-bit
+        [InlineData(128)] // 1024-bit
+        [InlineData(255)] // one byte short of the floor
+        public void RsaKeyBelowTheModulusFloor_ThrowsAtConstruction(int modulusBytes)
+        {
+            // The one key misconfiguration that fails OPEN: a factorable
+            // modulus keeps verifying happily, so the app looks fine while
+            // anyone who recovers the private key mints envelopes it
+            // accepts. Every other bad key here fails closed, which is why
+            // this one has to be rejected at construction.
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(modulusBytes)), "AQAB"));
+            Assert.Throws<ArgumentException>(() => DeliveryKey.Rsa(
+                KeyId,
+                new RSAParameters { Modulus = Modulus(modulusBytes), Exponent = new byte[] { 1, 0, 1 } }));
+        }
+
+        [Fact]
+        public void RsaKeyAtTheModulusFloor_IsAccepted()
+        {
+            // 2048 bits is the floor, not a target: generateDeliveryKeyPair()
+            // mints exactly this size, so the on-ramp must stay usable.
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), "AQAB");
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        /// <summary>
+        /// A stand-in modulus of exactly <paramref name="byteLength"/> bytes,
+        /// high bit set so its byte length is also its true bit length.
+        /// </summary>
+        private static byte[] Modulus(int byteLength)
+        {
+            var modulus = new byte[byteLength];
+            modulus[0] = 0x80;
+            modulus[byteLength - 1] = 0x01;
+            return modulus;
         }
 
         private static int IndexOf(byte[] haystack, byte[] needle)

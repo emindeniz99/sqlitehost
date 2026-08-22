@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cross-language golden runner (plan §24.2): recompiles the sample host
+// Cross-language golden runner (docs/validation.md layer 2): recompiles the sample host
 // from TypeSpec, re-runs every emitter, and byte-compares the output
 // against the committed fixtures and vendored generated sources. Any
 // difference fails the run — one contract, identical bytes everywhere.

@@ -199,9 +199,9 @@ test("a CTE prefix cannot smuggle a protocol write", () => {
 });
 
 test("a second statement after a top-level ; is an error", () => {
-  // One statement per `sql` field is the protocol contract: prepare_v2
-  // compiles the first statement and silently drops the tail. A top-level
-  // `;` with more SQL after it is that second, dropped statement.
+  // One statement per `sql` field is the protocol contract: the native
+  // adapter rejects a trailing statement, ADO.NET adapters execute it. A
+  // top-level `;` with more SQL after it is that second statement.
   for (const sql of [
     "SELECT 1; PRAGMA writable_schema = ON",
     "SELECT 1; INSERT INTO result_get_value (call_id, status, result_value)" +
@@ -220,7 +220,8 @@ test("multiple-statements closes the leading-no-op denylist bypass", () => {
   // the FIRST statement, so these two payloads sail past forbidden-statement
   // and protocol-table-write — the SELECT is all those rules ever see. Before
   // this rule lintScript returned ZERO findings (publishable); now the
-  // multiple-statements error catches the drop and blocks publication.
+  // multiple-statements error catches the hidden statement and blocks
+  // publication.
   const pragmaBypass = "SELECT 1; PRAGMA writable_schema = ON";
   const writeBypass =
     "SELECT 1; INSERT INTO result_get_value (call_id, status, result_value)" +

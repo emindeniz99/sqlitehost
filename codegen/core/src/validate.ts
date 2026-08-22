@@ -1,5 +1,5 @@
 /**
- * TypeSpec model validation (docs/validation.md §1, plan §24.1). Walks a
+ * TypeSpec model validation (docs/validation.md layer 1). Walks a
  * @hostLibrary interface and rejects unsupported shapes before the
  * frontend builds the IR: non-model top-level input/output, unsupported
  * scalars, nested models, nested lists, optional list fields, empty list

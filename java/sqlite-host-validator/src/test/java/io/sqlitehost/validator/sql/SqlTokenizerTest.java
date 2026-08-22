@@ -125,6 +125,17 @@ class SqlTokenizerTest {
     }
 
     @Test
+    void parameterNamesRunOverSqlitesFullIdCharSet() {
+        // SQLite's IdChar counts '$' and every character above 0x7f, and
+        // the adapter conformance suite requires a non-ASCII parameter name
+        // to bind as written. Cutting the name at its ASCII head made the
+        // validator report missing-binding for a name nobody wrote.
+        assertEquals(Set.of("anahtarİsmi", "слово"),
+                params("INSERT INTO t (a, b) VALUES (:anahtarİsmi, @слово)"));
+        assertEquals(Set.of("a$b"), params("SELECT :a$b"));
+    }
+
+    @Test
     void lonePrefixCharacterIsPunctuation() {
         List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT a : b");
         assertTrue(tokens.contains(new SqlToken(SqlToken.Kind.PUNCT, ":")));

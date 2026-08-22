@@ -99,6 +99,29 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void ParameterNamesAllowNonAsciiIdentifierChars()
+        {
+            // SQLite's IdChar counts every character above 0x7f, and the
+            // adapter conformance suite makes non-ASCII parameter names a
+            // contract requirement (AdapterConformanceTestsBase,
+            // UnicodeParameterName_ResolvesAndBinds). Scanning only the
+            // ASCII head would split ":anahtarIsmi" into a name the author
+            // never wrote, and binding validation would then reject a
+            // statement the engine binds correctly.
+            var names = SqlParameterScanner.ScanParameterNames(
+                "INSERT INTO scratch (a, b) VALUES (:anahtarİsmi, @слово)");
+            Assert.Equal(new[] { "anahtarİsmi", "слово" }, names);
+        }
+
+        [Fact]
+        public void ParameterNamesAllowDollarInsideTheName()
+        {
+            // '$' is an identifier character, so it continues a parameter
+            // name it sits inside just as it continues a column name.
+            Assert.Equal(new[] { "a$b" }, SqlParameterScanner.ScanParameterNames("SELECT :a$b"));
+        }
+
+        [Fact]
         public void DollarPrecededByIdentifierChar_ContinuesIdentifier()
         {
             Assert.Empty(SqlParameterScanner.ScanParameterNames(

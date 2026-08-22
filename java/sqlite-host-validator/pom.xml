@@ -35,8 +35,8 @@
   <build>
     <plugins>
       <!-- Distributable CLI: shade an executable fat jar
-           (…-cli.jar) next to the plain library jar. Launched by
-           java/bin/sqlite-host-validate (see java/README.md). -->
+           (…-cli.jar) next to the plain library jar. Run it with
+           `java -jar` (see java/README.md). -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
@@ -50,13 +50,34 @@
             <configuration>
               <shadedArtifactAttached>true</shadedArtifactAttached>
               <shadedClassifierName>cli</shadedClassifierName>
-              <!-- The shaded jar is a local tool, not a published
-                   artifact — don't write dependency-reduced-pom.xml
-                   into the module directory. -->
+              <!-- The library jar stays the module's main artifact; the
+                   fat jar only rides along under the `cli` classifier, so
+                   there is no reduced dependency set to write out. -->
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>io.sqlitehost.validator.cli.ValidatorCli</mainClass>
+                </transformer>
+                <!-- The `cli` classifier is deployed to Maven Central, so
+                     the jar has to carry the attribution of what it
+                     bundles. Jackson (databind, core, annotations) is
+                     Apache-2.0 and each of its jars ships its own
+                     META-INF/NOTICE; without this transformer the three
+                     collide and one arbitrary NOTICE survives, which is
+                     what Apache-2.0 §4(d) forbids. addHeader=false because
+                     the header this transformer writes by default credits
+                     the Apache Software Foundation, which does not own
+                     this project. META-INF/LICENSE needs no merging: every
+                     bundled dependency is Apache-2.0, so the surviving
+                     copy is the same licence text. -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                  <addHeader>false</addHeader>
+                </transformer>
+                <!-- This project's own MIT terms, under a name that does
+                     not collide with the bundled Apache-2.0 LICENSE. -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                  <resource>META-INF/LICENSE-sqlite-host.txt</resource>
+                  <file>${project.basedir}/../../LICENSE</file>
                 </transformer>
               </transformers>
               <filters>

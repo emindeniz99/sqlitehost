@@ -38,6 +38,15 @@
 #   * No caching anywhere in this workflow: a Unity Library/ cache keyed
 #     across editor versions is a well-known source of phantom failures,
 #     and the job is not slow enough to be worth that risk.
+#   * GitHub never passes repository secrets to a run triggered by a pull
+#     request from a fork, so the licenced job cannot work there. It is
+#     skipped for fork pull requests instead of failing them: an outside
+#     contributor gets the licence-free scaffold-guard and a green check,
+#     and the editor runs once a maintainer pushes the branch here.
+#   * The editor image is pinned by digest (customImage), not left to the
+#     action's tag lookup: the action's own SHA pin says nothing about the
+#     container it pulls, and that container receives UNITY_EMAIL and
+#     UNITY_PASSWORD.
 #
 # The matrix entry below and unity/ci-project/ProjectSettings/ProjectVersion.txt
 # are two literals that must agree; the scaffold-guard job fails loudly if
@@ -147,9 +156,20 @@ jobs:
           print("CI project pins Unity " + project_version + "; package floor is " + str(floor) + ".")
           PY
 
+      # Says out loud why the run stops here, so a fork contributor does
+      # not read the missing editor job as something they broke.
+      - name: Explain the skipped editor job on fork pull requests
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::notice title=Unity EditMode tests skipped::Pull requests from a fork cannot read the repository's Unity licence secrets, so the editor job does not run here. A maintainer runs it on this branch before merging."
+
   edit-mode-tests:
     name: EditMode tests (Unity ${{ matrix.unity-version }})
     needs: scaffold-guard
+    # Same-repo events only. A fork pull request gets empty secrets no
+    # matter what, so running the job there can only produce a red check
+    # that reads like the contributor's fault.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -158,9 +178,16 @@ jobs:
       matrix:
         # The package's declared floor. Adding a newer LTS here also means
         # bumping com.unity.test-framework in the CI project's manifest —
-        # the 1.1.x line is the 2021.3 one.
-        unity-version:
-          - 2021.3.45f2
+        # the 1.1.x line is the 2021.3 one — and resolving that version's
+        # editor image digest for the entry below.
+        include:
+          - unity-version: 2021.3.45f2
+            # unityci/editor:ubuntu-2021.3.45f2-linux-il2cpp-3, which is
+            # exactly the tag game-ci would have resolved for this editor
+            # version on a Linux runner. Re-resolve with:
+            #   docker buildx imagetools inspect \
+            #     unityci/editor:ubuntu-<version>-linux-il2cpp-3
+            editor-image: unityci/editor@sha256:903ced48a1d4f415b597280b76c4f01f1bd38f66c654805fb3ffd16874d7d2ee
     steps:
       # First step on purpose: a missing secret should cost seconds, not a
       # cryptic activation failure after the editor image has been pulled.
@@ -215,6 +242,11 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: ${{ matrix.unity-version }}
+          # Pinning the container the same way every action here is pinned.
+          # Without it the action resolves a MUTABLE tag at run time, and
+          # the Unity ID credentials above are handed to whatever that tag
+          # points at today.
+          customImage: ${{ matrix.editor-image }}
           projectPath: unity/ci-project
           testMode: EditMode
           artifactsPath: unity/ci-project/artifacts

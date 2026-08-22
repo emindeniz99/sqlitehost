@@ -34,7 +34,9 @@
   },
   "files": [
     "dist",
-    "lib"
+    "!dist/test",
+    "lib",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

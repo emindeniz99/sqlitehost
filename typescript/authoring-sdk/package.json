@@ -29,7 +29,9 @@
     "./delivery": "./dist/delivery.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/test",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

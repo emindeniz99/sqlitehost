@@ -7,9 +7,9 @@ using SQLitePCL;
 namespace SqliteHost.Tests.Adapter
 {
     /// <summary>
-    /// Test-only Microsoft.Data.Sqlite adapter (plan §31 resolved decision 7:
-    /// the runtime packages stay dependency-free; the first official adapter
-    /// lives in the test project).
+    /// Test-only Microsoft.Data.Sqlite adapter (docs/architecture.md,
+    /// resolved decision 7: the runtime packages stay dependency-free; the
+    /// first official adapter lives in the test project).
     /// </summary>
     public sealed class MicrosoftDataSqliteConnection : ISqliteHostPrepareConnection, ISqliteHostScalarFunctionConnection
     {

@@ -1,0 +1,66 @@
+# Keeps the SHA-pinned actions and the four language toolchains current —
+# pins without updates just rot, and zizmor's `stale-action-refs` audit in
+# ci.yml turns a forgotten pin into a red build.
+#
+# Grouping rule below: minor and patch land as one PR per ecosystem per
+# week, majors arrive alone so they get read. Actions are ungrouped by
+# update-type because the `@vN` tag convention makes almost every action
+# bump a major.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The pnpm workspace root. `directory: /` is enough: Dependabot reads
+  # pnpm-workspace.yaml and updates typespec/library, codegen/* and
+  # typescript/* from the one lockfile.
+  #
+  # unity/com.sqlitehost.runtime/package.json is a UPM manifest, not an npm
+  # package, and is deliberately not a workspace member — nothing here
+  # should ever be pointed at it.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # @types/node must not outrun the engines floor (`node >=20`, tested
+      # as its own ci.yml matrix leg). Typing against a newer API surface
+      # would let code call APIs Node 20 lacks without tsc noticing. It
+      # already sits one line above the floor at ^22; do not widen that.
+      # Bump it only when the floor itself moves.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # The aggregator pom; Dependabot follows its <modules> into
+  # sqlite-host-model, -validator and -jdbc.
+  - package-ecosystem: maven
+    directory: /java
+    schedule:
+      interval: weekly
+    groups:
+      maven:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # SqliteHost.sln. The five published packages carry no PackageReference at
+  # all (netstandard2.0, dependency-free on purpose), so everything here is a
+  # test or conformance dependency — but xunit is part of the published
+  # SqliteHost.Conformance surface, so read its majors rather than merging
+  # them blind.
+  - package-ecosystem: nuget
+    directory: /csharp
+    schedule:
+      interval: weekly
+    groups:
+      nuget:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
