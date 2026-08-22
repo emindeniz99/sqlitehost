@@ -27,7 +27,7 @@
     "@sqlite-host/codegen-core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
+    "typescript": "^7.0.2",
     "@types/node": "^22.0.0"
   }
 }
