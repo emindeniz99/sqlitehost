@@ -7,7 +7,8 @@
  * names per shape, duplicate derived table names, duplicate DTO simple
  * names across namespaces, a method apiLevel above the library apiLevel,
  * missing @hostMethod, host interfaces declared outside any namespace,
- * and invalid shared table / column name configuration (docs/naming.md).
+ * and invalid shared table / column / naming-prefix configuration
+ * (docs/naming.md).
  * Diagnostics are reported with the codes declared by
  * @sqlite-host/typespec.
  */
@@ -28,6 +29,7 @@ import {
 import {
   getHostMethodOptions,
   getSqlName,
+  IDENTIFIER,
   reportDiagnostic,
   SQL_NAME,
   type HostMethodOptions,
@@ -236,18 +238,39 @@ export function validateHostLibraryInterface(
     error(ctx, "missing-namespace", { name: iface.name }, iface);
   }
 
-  // functionPrefix must be non-empty (docs/naming.md). It is a prefix,
-  // not a table, so it joins no other distinctness check.
-  if (naming.functionPrefix.length === 0) {
+  // functionPrefix must be a non-empty ASCII name fragment
+  // (docs/naming.md). It is a prefix, not a table, so it joins no other
+  // distinctness check.
+  if (!IDENTIFIER.test(naming.functionPrefix)) {
     error(ctx, "invalid-function-prefix", {}, iface);
   }
 
-  // Shared workspace table names: non-empty and mutually distinct
-  // (docs/naming.md). SQLite resolves table names case-insensitively,
-  // so all distinctness/collision checks compare lowercased while
-  // diagnostics keep the configured casing. Collisions with derived
-  // tables are checked after the method loop, once every derived name
-  // is known.
+  // The prefixes and infixes derived table and column names are built
+  // from must be ASCII identifiers too (docs/naming.md). SQLite accepts
+  // a non-ASCII name in DDL, but every protocol-table check downstream
+  // (the authoring-SDK write denylist, the Java validator's table maps)
+  // matches ASCII identifiers, so a name outside that shape would let a
+  // script write a protocol table with the lint reporting nothing.
+  const prefixes: Array<[string, string]> = [
+    ["callTablePrefix", naming.callTablePrefix],
+    ["resultTablePrefix", naming.resultTablePrefix],
+    ["inputColumnPrefix", naming.inputColumnPrefix],
+    ["resultColumnPrefix", naming.resultColumnPrefix],
+    ["inputListTableInfix", naming.inputListTableInfix],
+    ["resultListTableInfix", naming.resultListTableInfix],
+  ];
+  for (const [option, value] of prefixes) {
+    if (!IDENTIFIER.test(value)) {
+      error(ctx, "invalid-name-prefix", { option, value }, iface);
+    }
+  }
+
+  // Shared workspace table names: ASCII identifiers (same reason as the
+  // prefixes above) and mutually distinct (docs/naming.md). SQLite
+  // resolves table names case-insensitively, so all
+  // distinctness/collision checks compare lowercased while diagnostics
+  // keep the configured casing. Collisions with derived tables are
+  // checked after the method loop, once every derived name is known.
   const shared: Array<[keyof SharedTableNames, string]> = [
     ["queueTable", sharedTables.queueTable],
     ["inputsTable", sharedTables.inputsTable],
@@ -256,7 +279,7 @@ export function validateHostLibraryInterface(
   ];
   const seenShared = new Set<string>();
   for (const [option, table] of shared) {
-    if (table.length === 0) {
+    if (!IDENTIFIER.test(table)) {
       error(ctx, "invalid-shared-table-name", { option }, iface);
       continue;
     }

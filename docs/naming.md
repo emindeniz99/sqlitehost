@@ -15,6 +15,13 @@ inputListTableInfix:   __input_
 resultListTableInfix:  __result_
 ```
 
+Each prefix and infix (and `functionPrefix` below) must be an ASCII
+identifier fragment (`[A-Za-z_][A-Za-z0-9_]*`). Derived names inherit
+it, and every protocol-table check downstream — the authoring SDK's
+write denylist, the Java validator's table maps — matches ASCII
+identifiers, so a name outside that shape would generate DDL SQLite
+accepts while silently disabling those checks.
+
 ## Shared workspace table names (configurable per host)
 
 The three runtime-managed tables are host-level naming too — their
@@ -35,7 +42,8 @@ Derived inline function name: `functionPrefix + snake(methodName)` —
 collisions with derived names and SQLite built-in function names.
 
 Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
-non-empty, mutually distinct, and must not collide with any derived
+ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`, same reason as the prefixes
+above), mutually distinct, and must not collide with any derived
 call/result/child table name.
 
 ## Shared column names and the done literal (configurable per host)

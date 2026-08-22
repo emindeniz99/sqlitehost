@@ -526,6 +526,25 @@ test("rejects shared workspace table names that differ only by case", async () =
   assertDiagnostic(result, "duplicate-shared-table-name");
 });
 
+test("rejects a non-ASCII shared workspace table name", async () => {
+  // SQLite would accept the DDL, but every protocol-table check
+  // downstream (the authoring-SDK lint denylist, the Java validator)
+  // matches ASCII identifiers, so a non-ASCII name silently disables
+  // them and a script could forge results or drop the queue.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "pending_h\u00f4st_calls" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-shared-table-name");
+});
+
 test("rejects a shared table name colliding with a derived call table case-insensitively", async () => {
   const result = await compileSource(
     shell(`
@@ -997,6 +1016,69 @@ test("rejects an empty functionPrefix", async () => {
     `),
   );
   assertDiagnostic(result, "invalid-function-prefix");
+});
+
+test("rejects a non-ASCII functionPrefix", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, functionPrefix: "f\u00fcn_" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-function-prefix");
+});
+
+test("rejects a non-ASCII table name prefix", async () => {
+  // Derived names inherit the prefix: "r\u00e9sult_get_value" is valid DDL
+  // but matches no protocol-table check, so the write denylist that
+  // protects result tables would report zero findings.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, resultTablePrefix: "r\u00e9sult_" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-name-prefix");
+});
+
+test("rejects a non-ASCII list table infix", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, inputListTableInfix: "__\u00eenput_" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-name-prefix");
+});
+
+test("rejects an empty column name prefix", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, inputColumnPrefix: "" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-name-prefix");
 });
 
 test("rejects duplicate @hostLibrary interface names across libraries", async () => {

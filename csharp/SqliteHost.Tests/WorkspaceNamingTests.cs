@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using SqliteHost.Tests.Adapter;
 using SqliteHost.Tests.TestSupport;
 using Xunit;
@@ -184,6 +185,50 @@ namespace SqliteHost.Tests
             var ex = Assert.Throws<ArgumentException>(
                 () => builder.Methods(new[] { GetValueSpec() }));
             Assert.Contains("non-empty", ex.Message);
+        }
+
+        [Theory]
+        [InlineData("pending_h\u00f4st_calls")]
+        [InlineData("script inputs")]
+        [InlineData("1st_table")]
+        [InlineData("call-table")]
+        public void NonIdentifierWorkspaceTableName_ThrowsAtBuildTime(string bad)
+        {
+            // SQLite accepts the generated DDL, but every protocol-table
+            // check downstream (the authoring-SDK write denylist, the Java
+            // validator's table maps) matches ASCII identifiers, so a name
+            // outside that shape silently disables them and a script can
+            // forge a result row or drop the queue with the lint clean.
+            var builder = SqliteHostDefinition
+                .ForHandlers<ICustomHandlers>()
+                .Naming(n => n.QueueTable(bad));
+
+            var ex = Assert.Throws<ArgumentException>(
+                () => builder.Methods(new[] { GetValueSpec() }));
+            Assert.Contains("ASCII identifiers", ex.Message);
+        }
+
+        [Theory]
+        [InlineData("pending_host_calls")]
+        [InlineData("_leading")]
+        [InlineData("Mixed_CASE9")]
+        [InlineData("pending_h\u00f4st_calls")]
+        [InlineData("script inputs")]
+        [InlineData("1st_table")]
+        [InlineData("call-table")]
+        [InlineData("")]
+        public void CharScan_MatchesTheCanonicalIdentifierPattern(string name)
+        {
+            // Same reasoning as MethodNameValidationTests' scan pinning: the
+            // runtime hand-rolls the check (no System.Text.RegularExpressions
+            // on netstandard2.0/Unity), so it can drift. ProtocolConstants
+            // projects only the method-name pattern, so the canonical
+            // identifier pattern (ir.ts IDENTIFIER_PATTERN) is repeated here
+            // rather than regenerating the vendored constants file.
+            const string identifierPattern = "^[A-Za-z_][A-Za-z0-9_]*$";
+            Assert.Equal(
+                Regex.IsMatch(name, identifierPattern),
+                SqliteHostDefinitionCore.IsValidIdentifier(name));
         }
 
         [Theory]

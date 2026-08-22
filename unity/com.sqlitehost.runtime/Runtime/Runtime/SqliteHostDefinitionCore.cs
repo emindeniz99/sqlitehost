@@ -191,9 +191,14 @@ namespace SqliteHost
         }
 
         /// <summary>
-        /// Workspace table names (docs/naming.md): non-empty, mutually
-        /// distinct, and no collision with any derived call/result/child
-        /// table name. Fails loud at definition build time.
+        /// Workspace table names (docs/naming.md): non-empty, ASCII
+        /// identifiers ([A-Za-z_][A-Za-z0-9_]*), mutually distinct, and no
+        /// collision with any derived call/result/child table name. SQLite
+        /// accepts a non-ASCII name in DDL, but every protocol-table check
+        /// downstream (the authoring-SDK write denylist, the Java
+        /// validator's table maps) matches ASCII identifiers, so a name
+        /// outside that shape silently disables them. Fails loud at
+        /// definition build time.
         /// </summary>
         private static void ValidateWorkspaceTableNames(
             SqliteHostNaming naming,
@@ -207,6 +212,15 @@ namespace SqliteHost
             {
                 throw new ArgumentException(
                     "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be non-empty.",
+                    nameof(naming));
+            }
+            if (!IsValidIdentifier(naming.QueueTable)
+                || !IsValidIdentifier(naming.InputsTable)
+                || !IsValidIdentifier(naming.VarsTable)
+                || !IsValidIdentifier(naming.ControlTable))
+            {
+                throw new ArgumentException(
+                    "Workspace table names (QueueTable, InputsTable, VarsTable, ControlTable) must be ASCII identifiers ([A-Za-z_][A-Za-z0-9_]*).",
                     nameof(naming));
             }
             var distinctTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -484,6 +498,39 @@ namespace SqliteHost
             }
             char first = name[0];
             if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z')))
+            {
+                return false;
+            }
+            for (int i = 1; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9') || c == '_'))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Hand-rolled match of the canonical identifier regex
+        /// /^[A-Za-z_][A-Za-z0-9_]*$/ (ir.ts IDENTIFIER_PATTERN), the shape
+        /// every protocol-table check downstream assumes. A char scan for
+        /// the same reason as <see cref="IsValidMethodName"/>: the runtime
+        /// carries no System.Text.RegularExpressions on the
+        /// netstandard2.0/Unity target.
+        /// </summary>
+        // internal (not private) so the test suite can pin this scan to the
+        // canonical pattern via a real Regex.
+        internal static bool IsValidIdentifier(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+            char first = name[0];
+            if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_'))
             {
                 return false;
             }

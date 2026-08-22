@@ -151,7 +151,7 @@ export const $lib = createTypeSpecLibrary({
     "invalid-shared-table-name": {
       severity: "error",
       messages: {
-        default: paramMessage`${"option"} must be a non-empty table name.`,
+        default: paramMessage`${"option"} must be an ASCII table name ([A-Za-z_][A-Za-z0-9_]*); every protocol-table check downstream matches ASCII identifiers, so a name outside that shape silently disables them.`,
       },
     },
     "duplicate-shared-table-name": {
@@ -199,7 +199,13 @@ export const $lib = createTypeSpecLibrary({
     "invalid-function-prefix": {
       severity: "error",
       messages: {
-        default: "functionPrefix must be a non-empty prefix for derived inline function names.",
+        default: "functionPrefix must be a non-empty ASCII prefix ([A-Za-z_][A-Za-z0-9_]*) for derived inline function names.",
+      },
+    },
+    "invalid-name-prefix": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"option"} "${"value"}" must be a non-empty ASCII name fragment ([A-Za-z_][A-Za-z0-9_]*); derived table and column names inherit it, and every protocol-table check downstream matches ASCII identifiers.`,
       },
     },
     "inline-mutating-method": {
