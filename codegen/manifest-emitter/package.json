@@ -26,7 +26,7 @@
   "dependencies": {
     "@sqlite-host/codegen-core": "workspace:*",
     "@sqlite-host/typespec": "workspace:*",
-    "@typespec/compiler": "1.13.0"
+    "@typespec/compiler": "1.15.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

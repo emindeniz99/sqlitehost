@@ -46,11 +46,11 @@
     "test": "npm run build && node --test dist/test/*.test.js"
   },
   "peerDependencies": {
-    "@typespec/compiler": "1.13.0"
+    "@typespec/compiler": "1.15.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@typespec/compiler": "1.13.0",
+    "@typespec/compiler": "1.15.0",
     "typescript": "^5.5.0"
   }
 }
