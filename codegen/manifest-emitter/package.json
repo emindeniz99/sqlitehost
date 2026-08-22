@@ -2,6 +2,7 @@
   "name": "@sqlite-host/emitter-manifest",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "SqliteHost manifest emitter: canonical manifest JSON + DDL snapshot from a TypeSpec host library",
   "type": "module",
   "main": "dist/index.js",

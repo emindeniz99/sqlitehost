@@ -2,11 +2,12 @@
   "name": "@sqlite-host/runtime-types",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Vendored generated script envelope types for SqliteHost (protocol v1) plus parsing, canonical serialization, and binding value helpers",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TODO-OWNER/TODO-REPO.git",
-    "directory": "projects/sqlitehost/typescript/runtime-types"
+    "url": "git+https://github.com/emindeniz99/sqlitehost.git",
+    "directory": "typescript/runtime-types"
   },
   "keywords": [
     "sqlitehost",
@@ -15,7 +16,7 @@
     "types",
     "typescript"
   ],
-  "author": "TODO: SqliteHost maintainers",
+  "author": "Emin Deniz",
   "publishConfig": {
     "access": "public"
   },

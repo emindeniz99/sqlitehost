@@ -2,11 +2,12 @@
   "name": "@sqlite-host/typespec",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "TypeSpec library for SqliteHost: script envelope models, host-method decorators, and model validation diagnostics",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TODO-OWNER/TODO-REPO.git",
-    "directory": "projects/sqlitehost/typespec/library"
+    "url": "git+https://github.com/emindeniz99/sqlitehost.git",
+    "directory": "typespec/library"
   },
   "keywords": [
     "sqlitehost",
@@ -16,7 +17,7 @@
     "script-envelope",
     "host-functions"
   ],
-  "author": "TODO: SqliteHost maintainers",
+  "author": "Emin Deniz",
   "publishConfig": {
     "access": "public"
   },

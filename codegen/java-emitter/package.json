@@ -2,6 +2,7 @@
   "name": "@sqlite-host/emitter-java",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Emit Java envelope model, host method DTOs, and descriptors from the SqliteHost IR",
   "type": "module",
   "main": "dist/index.js",

@@ -320,7 +320,7 @@ generated/java/io/sqlitehost/model/envelope/*.java  <- skip when you depend on s
 ```
 
 The envelope classes are byte-identical to the ones shipped in
-`io.sqlitehost:sqlite-host-model`; only take them if you refuse the
+`io.github.emindeniz99:sqlite-host-model`; only take them if you refuse the
 Maven dependency. `MethodDescriptors.java` is a compile-time mirror
 of the manifest metadata (resolved table/trigger/column names per
 method) for backend code that doesn't want to parse manifest JSON.
@@ -423,9 +423,9 @@ tarballs. `@sqlite-host/sample-admin` is a demo CLI
 
 | Artifact | For |
 |---|---|
-| `io.sqlitehost:sqlite-host-model` | envelope + manifest models, strict JSON reader/writer, DDL generator |
-| `io.sqlitehost:sqlite-host-validator` | semantic lint engine (library) + thin CLI main |
-| `io.sqlitehost:sqlite-host-jdbc` | prepare-only SQLite validation over the generated schema |
+| `io.github.emindeniz99:sqlite-host-model` | envelope + manifest models, strict JSON reader/writer, DDL generator |
+| `io.github.emindeniz99:sqlite-host-validator` | semantic lint engine (library) + thin CLI main |
+| `io.github.emindeniz99:sqlite-host-jdbc` | prepare-only SQLite validation over the generated schema |
 
 Today: `cd projects/sqlitehost/java && mvn -q install` puts
 `0.1.0-SNAPSHOT` into your local `~/.m2`, then depend on the

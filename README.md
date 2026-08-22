@@ -3,7 +3,7 @@
 ## What it does
 
 **SqliteHost** is a generic SQLite-first scripting and typed
-host-function binding toolkit (working name; see plan v2.1). An
+host-function binding toolkit. An
 application defines its host methods once in TypeSpec; SqliteHost
 generates matching C#, Java, and TypeScript contracts, executes parsed
 SQL scripts against a temporary SQLite workspace, converts inserts into

@@ -75,7 +75,7 @@ write is an explicit script step.
 
 ## Resolved open decisions (plan §31)
 
-1. Working name kept: **SqliteHost** (availability check before publishing — ROADMAP).
+1. Name decided (2026-08-22): **SqliteHost** / `sqlitehost`, kept — availability sweep + trademark screen recorded in docs/guides/publishing.md §a (outcome block); residual mark-leading risk accepted by the owner.
 2. C# floor: netstandard2.0 + C# 8 (Unity 2021-safe subset; in-Unity compile spike — ROADMAP).
 3. BindingValue: manual discriminated class (see above).
 4. Generated DTOs are the default.

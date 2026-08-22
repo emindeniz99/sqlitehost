@@ -2,6 +2,7 @@
   "name": "@sqlite-host/emitter-csharp",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Emit C# DTOs, handler interface, method specs, host definition, and schema constants from the SqliteHost IR",
   "type": "module",
   "main": "dist/index.js",

@@ -2,6 +2,7 @@
   "name": "@sqlite-host/codegen-core",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Shared IR, naming rules, canonical manifest serialization, and DDL generation for SqliteHost emitters",
   "type": "module",
   "main": "dist/index.js",

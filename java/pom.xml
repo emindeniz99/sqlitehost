@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.sqlitehost</groupId>
+  <groupId>io.github.emindeniz99</groupId>
   <artifactId>sqlite-host-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
@@ -12,34 +12,30 @@
   <name>SqliteHost Java</name>
   <description>
     Java model, semantic validator, and prepare-only JDBC validator for
-    SqliteHost script payloads (plan phase 4). See projects/sqlitehost/docs.
+    SqliteHost script payloads (plan phase 4). See the docs/ folder.
   </description>
 
-  <!-- Maven Central publishing metadata — placeholders inherited by all
-       modules; fill the TODOs before the first release.
+  <!-- Maven Central publishing metadata — inherited by all modules.
        See docs/guides/publishing.md section e. -->
-  <url>https://github.com/TODO-OWNER/TODO-REPO</url>
-  <!-- TODO(license): undecided (docs/guides/publishing.md section b).
-       Uncomment and set once chosen — required by Maven Central.
+  <url>https://github.com/emindeniz99/sqlitehost</url>
   <licenses>
     <license>
-      <name>TODO: e.g. Apache-2.0</name>
-      <url>TODO: e.g. https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
       <distribution>repo</distribution>
     </license>
   </licenses>
-  -->
   <developers>
     <developer>
-      <id>TODO</id>
-      <name>TODO: maintainer name</name>
-      <email>TODO: maintainer email</email>
+      <id>emindeniz99</id>
+      <name>Emin Deniz</name>
+      <email>emindeniz99@gmail.com</email>
     </developer>
   </developers>
   <scm>
-    <connection>scm:git:https://github.com/TODO-OWNER/TODO-REPO.git</connection>
-    <developerConnection>scm:git:git@github.com:TODO-OWNER/TODO-REPO.git</developerConnection>
-    <url>https://github.com/TODO-OWNER/TODO-REPO/tree/main/projects/sqlitehost/java</url>
+    <connection>scm:git:https://github.com/emindeniz99/sqlitehost.git</connection>
+    <developerConnection>scm:git:git@github.com:emindeniz99/sqlitehost.git</developerConnection>
+    <url>https://github.com/emindeniz99/sqlitehost/tree/main/java</url>
   </scm>
 
   <modules>

@@ -10,7 +10,7 @@ Intended artifacts (see `docs/packaging.md`):
 
 ```text
 NuGet: SqliteHost.Runtime, SqliteHost.Abstractions
-Maven: io.sqlitehost:sqlite-host-model / -validator / -jdbc
+Maven: io.github.emindeniz99:sqlite-host-model / -validator / -jdbc
 npm:   @sqlite-host/typespec, @sqlite-host/authoring, @sqlite-host/runtime-types
 UPM:   com.sqlitehost.runtime
 ```
@@ -26,7 +26,7 @@ Each links to the section with full detail.
 | 2 | License decision (recommended: Apache-2.0), then execute the license TODO list | §b |
 | 3 | npmjs.com account + `@sqlite-host` org/scope creation + 2FA enabled | §c |
 | 4 | nuget.org account + API key | §d |
-| 5 | Maven Central Portal account + `io.sqlitehost` namespace verification (DNS TXT on sqlitehost.io, or use the `io.github.<user>` shortcut) | §e |
+| 5 | Maven Central Portal account — decided: the already-verified `io.github.emindeniz99` namespace (§a outcome) | §e |
 | 6 | GPG key pair generation + publish public key to a keyserver | §e |
 | 7 | Fill placeholder metadata: repo URL / author / developers / scm in the npm `package.json`s and `java/pom.xml` (search for `TODO`) | §c, §e |
 | 8 | Flip the publish gates: remove `"private": true` from the three npm packages; add real versions everywhere | §c |
@@ -42,6 +42,20 @@ The working name is **SqliteHost** (architecture.md resolved decision 1
 — kept pending exactly this check). Fallbacks from the plan:
 **SqliteScriptBridge**, **SqliteHostBridge**. Run the same sweep for a
 fallback if the primary fails anywhere.
+
+> **Outcome (2026-08-22) — name decided: `sqlitehost` / SqliteHost, kept.**
+> Availability sweep run against live registry APIs: npm name + `@sqlite-host`
+> scope, NuGet `SqliteHost.*` ids, Maven Central artifact tokens, GitHub
+> `emindeniz99/sqlitehost`, and `sqlitehost.io`/`.dev` domains — all free.
+> Trademark screen done: SQLITE is a live USPTO registration (no. 3451983,
+> Hwaci); the one documented enforcement (2014, "SQLite Database Browser"
+> renamed at Richard Hipp's request) targets exactly this mark-leading
+> pattern. The owner reviewed that evidence, weighed it against a decade of
+> unchallenged mark-leading libraries (SQLiteCpp, npm `sqlite3`), and
+> accepted the residual risk. Licence: MIT. Maven groupId: the
+> `io.github.emindeniz99` GitHub-verified namespace (already verified on
+> Central) instead of `io.sqlitehost` — no domain purchase; artifactIds and
+> all other ids stay as written in the manifests.
 
 ### Registry availability sweep
 
@@ -247,15 +261,15 @@ metadata here.
    Icon (`PackageIcon`) is optional — skip for 0.x.
 6. After the first push, reserve the `SqliteHost.*` ID prefix (§a).
 
-## e. Maven Central — io.sqlitehost:sqlite-host-model / -validator / -jdbc
+## e. Maven Central — io.github.emindeniz99:sqlite-host-model / -validator / -jdbc
 
 ### One-time setup (manual)
 
 1. **Central Portal account**: <https://central.sonatype.com> (the
    legacy OSSRH/Jira flow is dead; new namespaces go through the
    Portal).
-2. **Namespace verification** for `io.sqlitehost` — DNS TXT record on
-   `sqlitehost.io` (or the `io.github.<owner>` fallback), see §a.
+2. **Namespace verification** — already done: `io.github.emindeniz99` is a
+   verified namespace on the Central Portal (used by apple-purchase-receipt-verifier).
 3. **GPG key**:
 
    ```sh
@@ -428,6 +442,6 @@ Two independent version axes — do not conflate them:
    up / consumers pin the tag).
 6. Post-publish smoke: §g's TypeSpec consumer test; `dotnet add
    package SqliteHost.Runtime` in a scratch project; Maven
-   `dependency:get` on `io.sqlitehost:sqlite-host-model:X.Y.Z`.
+   `dependency:get` on `io.github.emindeniz99:sqlite-host-model:X.Y.Z`.
 7. Back on main: bump Maven to `X.Y.(Z+1)-SNAPSHOT`, open a fresh
    `Unreleased` changelog section.

@@ -11,13 +11,10 @@
   <PropertyGroup Label="NuGet pack metadata">
     <PackageId>SqliteHost.Adapters.Native</PackageId>
     <Version>0.1.0-preview</Version>
-    <Authors>SqliteHost contributors (TODO: replace placeholder)</Authors>
+    <Authors>Emin Deniz</Authors>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <!-- TODO: set the real repository URL before publishing.
-         <RepositoryUrl>https://github.com/OWNER/REPO</RepositoryUrl> -->
-    <!-- TODO: license undecided — pick one and uncomment before publishing;
-         see docs/guides/publishing.md.
-         <PackageLicenseExpression>MIT</PackageLicenseExpression> -->
+    <RepositoryUrl>https://github.com/emindeniz99/sqlitehost</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
