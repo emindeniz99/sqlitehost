@@ -109,6 +109,11 @@ namespace SqliteHost.Sample
         {
             return new PutBlobResult { Stored = true };
         }
+
+        public RecordScoreResult RecordScore(RecordScoreInput input)
+        {
+            return new RecordScoreResult { Average = 0d };
+        }
     }
 
     /// <summary>
@@ -138,10 +143,10 @@ namespace SqliteHost.Sample
                 "Smoke fake cannot execute SQL; a clean-skip run must never get here. Attempted: " + sql);
         }
 
-        public IReadOnlyList<T> Query<T>(
+        public IReadOnlyList<object> QueryRows(
             string sql,
             IReadOnlyList<SqliteHostBinding> bindings,
-            Func<ISqliteHostRow, T> mapper)
+            Func<ISqliteHostRow, object> mapper)
         {
             throw new NotSupportedException(
                 "Smoke fake cannot query SQL; a clean-skip run must never get here. Attempted: " + sql);
