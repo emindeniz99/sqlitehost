@@ -3,6 +3,7 @@ package io.sqlitehost.validator.sql;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -135,6 +136,27 @@ class SqlAnalyzerTest {
                 new ValueExpr(ValueExpr.Kind.NUMBER, "42")), parsed.selectItems());
         // The subquery's :read must not leak into the select items.
         assertEquals(3, parsed.selectItems().size());
+    }
+
+    @Test
+    void selectItemTerminatorsSurviveATurkishLocale() {
+        // "UNION" lowercases to "unıon" (dotless i) under a Turkish
+        // locale, so a locale-sensitive toLowerCase() misses the clause
+        // boundary, folds the second SELECT into the item list, and the
+        // lints that read the items (duplicate call ids, list-child
+        // colocation, result-read lineage) fail open.
+        Locale previous = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            InsertStatement parsed = insert(
+                    "INSERT INTO call_set_value (call_id, input_key)"
+                            + " SELECT :callId, 'k' UNION SELECT :other, 'j'");
+            assertEquals(List.of(
+                    new ValueExpr(ValueExpr.Kind.PARAM, "callId"),
+                    new ValueExpr(ValueExpr.Kind.STRING, "k")), parsed.selectItems());
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

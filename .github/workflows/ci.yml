@@ -107,6 +107,13 @@ jobs:
           cache: maven
       - run: mvn -B test
         working-directory: java
+      # Case conversion must stay locale-independent: under a Turkish
+      # locale "LIMIT" lowercases to "lımıt", so a bare
+      # toLowerCase() misses SQL clause boundaries and the lints reading
+      # them fail open. Re-run the suite with that locale forced on the
+      # surefire JVM to keep the class out.
+      - run: mvn -B test "-DargLine=-Duser.language=tr -Duser.country=TR"
+        working-directory: java
 
   # Runtime, delivery, adapters, and the multi-adapter integration matrix.
   dotnet:

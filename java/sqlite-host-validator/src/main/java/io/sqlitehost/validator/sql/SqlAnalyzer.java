@@ -157,7 +157,7 @@ public final class SqlAnalyzer {
             } else if (token.isPunct(")")) {
                 depth--;
             } else if (depth == 0 && token.kind() == SqlToken.Kind.IDENT
-                    && SELECT_ITEM_TERMINATORS.contains(token.text().toLowerCase())) {
+                    && SELECT_ITEM_TERMINATORS.contains(token.text().toLowerCase(Locale.ROOT))) {
                 break;
             } else if (depth == 0 && token.isPunct(",")) {
                 items.add(ValueExpr.classify(current));
