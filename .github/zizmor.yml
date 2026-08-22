@@ -1,0 +1,17 @@
+# zizmor configuration. The ci.yml `zizmor` job runs `zizmor
+# .github/workflows/` and fails on ANY finding, informational included, so
+# a deliberate exception has to be recorded here rather than argued in a
+# comment.
+rules:
+  # release.yml's publish-nuget job authenticates with a NUGET_API_KEY
+  # secret. zizmor is right that trusted publishing (OIDC) is better, and
+  # nuget.org now supports it — but the account, the package ids and the
+  # first manual publish do not exist yet, so the switch is a bootstrap-day
+  # decision (see the header of release.yml). Drop this ignore when the
+  # job moves to OIDC.
+  #
+  # npm and Maven are not listed: npm already uses trusted publishing, and
+  # Maven Central offers no OIDC at all.
+  use-trusted-publishing:
+    ignore:
+      - release.yml

@@ -6,7 +6,7 @@
 
   <groupId>io.github.emindeniz99</groupId>
   <artifactId>sqlite-host-parent</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
   <packaging>pom</packaging>
 
   <name>SqliteHost Java</name>
@@ -91,21 +91,29 @@
   </build>
 
   <profiles>
-    <!-- Maven Central release profile: attaches sources + javadoc jars,
-         GPG-signs everything, and uploads via the Central Portal
-         publishing plugin. All bindings live inside this profile so
-         normal `mvn test` / `mvn package` builds never need GPG or a
-         Portal token. Activate with `mvn -Prelease clean deploy`.
-         autoPublish=false: the bundle waits in the Portal for a manual
-         Publish click. See docs/guides/publishing.md section e. -->
+    <!-- Everything Maven Central demands beyond a plain build: sources jar,
+         javadoc jar, GPG signatures, and the Central Portal uploader.
+         Activated only at release (mvn -B -P central deploy, which is what
+         .github/workflows/release.yml runs) so day-to-day `mvn test` stays
+         fast and needs no GPG key.
+
+         Credentials in CI: actions/setup-java writes the settings.xml
+         server entry whose id matches publishingServerId below and imports
+         the GPG key; locally, the Portal token lives in ~/.m2/settings.xml
+         under server id `central` and the passphrase comes from gpg-agent.
+
+         autoPublish=true: a validated bundle goes live without a manual
+         Publish click, which is what makes a tag-driven release hands-free.
+         Flip to false for the very first release if you want to inspect the
+         bundle at https://central.sonatype.com/publishing before it ships. -->
     <profile>
-      <id>release</id>
+      <id>central</id>
       <build>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-source-plugin</artifactId>
-            <version>3.3.1</version>
+            <version>3.4.0</version>
             <executions>
               <execution>
                 <id>attach-sources</id>
@@ -118,7 +126,10 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
-            <version>3.10.1</version>
+            <version>3.12.0</version>
+            <configuration>
+              <doclint>none</doclint>
+            </configuration>
             <executions>
               <execution>
                 <id>attach-javadocs</id>
@@ -131,7 +142,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-gpg-plugin</artifactId>
-            <version>3.2.7</version>
+            <version>3.2.8</version>
             <executions>
               <execution>
                 <id>sign-artifacts</id>
@@ -145,11 +156,11 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.6.0</version>
+            <version>0.11.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
-              <autoPublish>false</autoPublish>
+              <autoPublish>true</autoPublish>
             </configuration>
           </plugin>
         </plugins>

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "sqlitehost",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "typespec/library/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "typescript/runtime-types/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "typescript/authoring-sdk/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "typescript/playground/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "typescript/sample-admin/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "codegen/core/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "codegen/csharp-emitter/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "codegen/java-emitter/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "codegen/manifest-emitter/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "codegen/typescript-emitter/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "unity/com.sqlitehost.runtime/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "pom",
+          "path": "java/pom.xml"
+        },
+        {
+          "type": "pom",
+          "path": "java/sqlite-host-model/pom.xml"
+        },
+        {
+          "type": "pom",
+          "path": "java/sqlite-host-validator/pom.xml"
+        },
+        {
+          "type": "pom",
+          "path": "java/sqlite-host-jdbc/pom.xml"
+        },
+        {
+          "type": "xml",
+          "path": "csharp/SqliteHost.Abstractions/SqliteHost.Abstractions.csproj",
+          "xpath": "/*[local-name()='Project']/*[local-name()='PropertyGroup']/*[local-name()='Version']"
+        },
+        {
+          "type": "xml",
+          "path": "csharp/SqliteHost.Runtime/SqliteHost.Runtime.csproj",
+          "xpath": "/*[local-name()='Project']/*[local-name()='PropertyGroup']/*[local-name()='Version']"
+        },
+        {
+          "type": "xml",
+          "path": "csharp/SqliteHost.Conformance/SqliteHost.Conformance.csproj",
+          "xpath": "/*[local-name()='Project']/*[local-name()='PropertyGroup']/*[local-name()='Version']"
+        },
+        {
+          "type": "xml",
+          "path": "csharp/SqliteHost.Adapters.Native/SqliteHost.Adapters.Native.csproj",
+          "xpath": "/*[local-name()='Project']/*[local-name()='PropertyGroup']/*[local-name()='Version']"
+        },
+        {
+          "type": "xml",
+          "path": "csharp/SqliteHost.Delivery/SqliteHost.Delivery.csproj",
+          "xpath": "/*[local-name()='Project']/*[local-name()='PropertyGroup']/*[local-name()='Version']"
+        }
+      ]
+    }
+  },
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "build",
+      "section": "Build & Dependencies"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    }
+  ]
+}

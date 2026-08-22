@@ -17,7 +17,7 @@
 
   <PropertyGroup Label="NuGet pack metadata">
     <PackageId>SqliteHost.Delivery</PackageId>
-    <Version>0.1.0-preview</Version>
+    <Version>0.1.0</Version>
     <Authors>Emin Deniz</Authors>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/emindeniz99/sqlitehost</RepositoryUrl>

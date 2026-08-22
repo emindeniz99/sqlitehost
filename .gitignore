@@ -23,3 +23,32 @@ typescript/playground/src/generated/
 # playground browser-test output (traces kept only for failures)
 typescript/playground/test-results/
 typescript/playground/playwright-report/
+
+# --- Safety net: patterns a repo root must carry ---
+
+# Secrets. Deliberately no blanket *.pem rule: fixtures/delivery/ commits
+# throwaway development keys on purpose (see SECURITY.md).
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.history
+
+# Claude Code local/transient state (shared config under .claude/ is committed)
+.claude/settings.local.json
+.claude/todos/
+.claude/projects/
+.claude/shell-snapshots/
+.claude/statsig/
+.claude/.credentials.json

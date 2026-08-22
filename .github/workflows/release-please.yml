@@ -1,0 +1,61 @@
+# Opens/updates the release PR from Conventional Commits on main; merging
+# that PR creates the vX.Y.Z tag and GitHub Release, then the dispatch step
+# below hands the tag to release.yml (publish). The tag push alone cannot
+# trigger it: events created with the default GITHUB_TOKEN never fire other
+# workflows (GitHub's recursion guard) — workflow_dispatch via the API is
+# the documented exception, so we dispatch explicitly.
+#
+# One version for every ecosystem: the extra-files list in
+# release-please-config.json bumps all 12 package.json files (npm workspace
+# + the UPM package), the 4 pom.xml files and the 5 packable .csproj files
+# in the same PR, alongside version.txt (which the `simple` release-type
+# owns). `node scripts/check-versions.mjs` asserts that lockstep held, and
+# release.yml runs it before it publishes anything.
+#
+# Expect cosmetic churn in the release PR: release-please re-serializes the
+# XML files it edits, so the poms' root-element attributes collapse onto one
+# line and `<Foo />` becomes `<Foo/>`. Both stay valid; nothing else moves.
+#
+# UPM/OpenUPM has no job anywhere in this repo on purpose: OpenUPM builds
+# from git tags, so the tag release-please pushes IS the Unity release. The
+# only thing that must be true is that
+# unity/com.sqlitehost.runtime/package.json carries the tag's version —
+# which is why it sits in the extra-files list above.
+#
+# Permission model (deliberate): the repo default token stays READ-ONLY;
+# only this job elevates. `contents: write` + `pull-requests: write` let the
+# bot open its PR (the repo setting "Allow GitHub Actions to create and
+# approve pull requests" must be ON), and `actions: write` lets the dispatch
+# step start release.yml.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: dispatch publish workflow at the new tag
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"

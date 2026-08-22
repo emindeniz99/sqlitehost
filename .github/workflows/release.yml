@@ -1,0 +1,290 @@
+# Publishes on version tags (v*), one job per registry.
+#
+# !! DO NOT RENAME THIS FILE !!
+# npm's trusted publishing (OIDC) identifies the publisher by repository +
+# workflow FILENAME. Renaming release.yml silently revokes publish rights
+# and every npm job starts 404ing. release-please.yml also dispatches this
+# file by name.
+#
+# Registry side of the handshake — none of it exists yet; see the
+# bootstrap checklist in docs/guides/publishing.md:
+#
+#   npm    — trusted publisher (OIDC) on @sqlite-host/runtime-types,
+#            @sqlite-host/authoring and @sqlite-host/typespec, matching
+#            owner/repo + this filename. No token anywhere. OIDC cannot
+#            CREATE a package, so the owner publishes each of the three
+#            once by hand; this job takes over from the next version.
+#            The three manifests also carry `"private": true` as a
+#            deliberate publish gate — that flag is removed by hand on
+#            bootstrap day, and until then the preflight step below fails
+#            with instructions rather than a cryptic pnpm error.
+#   Maven  — token + GPG (Central has no OIDC): CENTRAL_USERNAME /
+#            CENTRAL_PASSWORD (Portal token pair), GPG_PRIVATE_KEY
+#            (armored, passphrase-protected) and GPG_PASSPHRASE secrets.
+#   NuGet  — NUGET_API_KEY secret, scoped to push `SqliteHost.*`.
+#            NuGet now has trusted publishing (OIDC) of its own; evaluate
+#            it on bootstrap day and drop the secret if it works, same
+#            reasoning as npm.
+#   UPM    — nothing to publish. OpenUPM builds from the git tag, so the
+#            tag release-please pushed IS the Unity release; the package's
+#            version rides along via release-please's extra-files.
+#
+# Every job re-checks the registry and skips (loudly) when the tag's
+# version is already published, so a hand-bootstrapped version does not
+# fail the tag run.
+#
+# Security: every action pinned to a commit SHA; NO dependency cache in
+# any job here (a poisoned restore would become the published artifact);
+# checkouts never push, so credentials are not persisted; the only event
+# field used in a script (the tag name) travels through an env var.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a publish in flight — half-published releases are worse
+# than slow ones.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # One cheap gate in front of every registry: if release-please missed a
+  # manifest, this fails before anything is published, instead of shipping
+  # one ecosystem at the new version and the rest at the old one.
+  verify-versions:
+    name: versions are in lockstep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # Empty when this workflow is dispatched at a branch rather than a
+      # tag; the script then checks lockstep only.
+      - name: Check every manifest against version.txt and the tag
+        env:
+          TAG_NAME: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node scripts/check-versions.mjs "$TAG_NAME"
+
+  publish-npm:
+    name: publish the three npm packages
+    needs: verify-versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm trusted publishing (OIDC) and for the provenance
+      # attestation npm generates from it.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pinned here rather than read from a `packageManager` field: the repo
+      # has none, and ci.yml pins the same version the lockfile was written
+      # with. Keep the two in step.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.34.5
+      # npm's OIDC trusted publishing needs npm >= 11.5 (Node 24 ships it)
+      # and, on the pnpm side, pnpm/action-setup >= 6.0.6 — native
+      # `pnpm publish` is what reaches the OIDC path.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # No dependency cache in a publishing job: a poisoned restore would
+          # become the published artifact. setup-node v7 auto-caches as soon
+          # as a `packageManager` field appears, so switch it off explicitly
+          # rather than relying on the absence of `cache:`.
+          package-manager-cache: false
+
+      - name: Preflight (publish gates, unpublishable workspace deps)
+        run: node scripts/check-npm-publishable.mjs
+
+      - name: Install
+        # typescript/playground has @playwright/test as a devDependency and a
+        # workspace-root install runs its postinstall, which fetches a full
+        # browser set. Nothing here runs browser tests (ci.yml sets the same
+        # variable for the same reason).
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      # `<pkg>...` selects the package AND its workspace dependencies, in
+      # topological order — @sqlite-host/authoring does not compile
+      # without @sqlite-host/codegen-core and @sqlite-host/runtime-types
+      # built first.
+      - name: Build
+        run: |
+          pnpm --filter "@sqlite-host/runtime-types..." \
+               --filter "@sqlite-host/authoring..." \
+               --filter "@sqlite-host/typespec..." \
+               build
+
+      # Dependency order: runtime-types before authoring (which depends on
+      # it); typespec is independent. pnpm, not npm: only pnpm rewrites the
+      # `workspace:*` specs to real version ranges in the tarball.
+      - name: Publish each package unless npm already has this version
+        run: |
+          set -euo pipefail
+          VERSION=$(cat version.txt)
+          for pkg in @sqlite-host/runtime-types @sqlite-host/authoring @sqlite-host/typespec; do
+            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "npm already has $pkg@$VERSION — skipping publish."
+            else
+              pnpm --filter "$pkg" publish --no-git-checks --provenance --access public
+            fi
+          done
+
+  publish-maven:
+    name: publish java to Maven Central
+    needs: verify-versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail fast if the Central credentials are missing
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          missing=
+          for name in CENTRAL_USERNAME CENTRAL_PASSWORD GPG_PRIVATE_KEY GPG_PASSPHRASE; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo "::error::CENTRAL_USERNAME / CENTRAL_PASSWORD are a Portal token pair from"
+            echo "::error::  https://central.sonatype.com → View Account → Generate User Token"
+            echo "::error::GPG_PRIVATE_KEY is the armored private key (gpg --armor --export-secret-keys),"
+            echo "::error::  its public half published to keyserver.ubuntu.com; GPG_PASSPHRASE unlocks it."
+            exit 1
+          fi
+
+      - name: Skip if this version is already on Maven Central
+        id: gate
+        run: |
+          set -euo pipefail
+          VERSION=$(cat version.txt)
+          if curl -fsSL "https://repo1.maven.org/maven2/io/github/emindeniz99/sqlite-host-model/$VERSION/" >/dev/null 2>&1; then
+            echo "Central already has $VERSION — skipping publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # setup-java writes the settings.xml server entry (id `central`, the
+      # pom's publishingServerId) with env-var placeholders and imports the
+      # GPG key; the actual values only ever exist as env vars on the mvn
+      # step below. No `cache: maven` — this job publishes.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      # The `central` profile (java/pom.xml) adds the sources jar, javadoc
+      # jar, GPG signatures and the Central Portal uploader — the exact set
+      # Central demands. autoPublish=true, so a validated bundle goes live
+      # without a manual click.
+      - name: Deploy to Central (tests, sources, javadoc, GPG, upload)
+        if: steps.gate.outputs.publish == 'true'
+        working-directory: java
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -P central deploy
+
+  publish-nuget:
+    name: publish the five NuGet packages
+    needs: verify-versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # NuGet gained trusted publishing (OIDC) after this workflow was
+      # written. Evaluate it on bootstrap day: if it covers `dotnet nuget
+      # push`, delete this check and the secret, add `id-token: write`, and
+      # the job matches the npm one. Until then it is an API key.
+      - name: Fail fast if NUGET_API_KEY is missing
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::NUGET_API_KEY secret is not configured."
+            echo "::error::Create one at https://www.nuget.org/account/apikeys with the"
+            echo "::error::'Push new packages and package versions' scope and glob SqliteHost.*"
+            exit 1
+          fi
+
+      # Same pin as ci.yml — one version per action, so a dependabot bump
+      # moves both files together instead of letting them drift.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+
+      # The five packable projects, in dependency order (Abstractions is
+      # referenced by the rest). The three SqliteHost.Generated.Sample*
+      # projects and SqliteHost.Tests are deliberately absent — samples and
+      # tests never publish, which is why this job names projects instead of
+      # packing the solution.
+      - name: Pack
+        run: |
+          set -euo pipefail
+          for id in SqliteHost.Abstractions SqliteHost.Runtime SqliteHost.Conformance \
+                    SqliteHost.Adapters.Native SqliteHost.Delivery; do
+            dotnet pack "csharp/$id/$id.csproj" -c Release -o "$PWD/nupkgs"
+          done
+          ls -l nupkgs
+
+      - name: Push each package unless nuget.org already has this version
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          VERSION=$(cat version.txt)
+          for id in SqliteHost.Abstractions SqliteHost.Runtime SqliteHost.Conformance \
+                    SqliteHost.Adapters.Native SqliteHost.Delivery; do
+            lower=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')
+            # 404 for a package that has never been published — that is the
+            # normal first-publish case, not an error.
+            published=$(curl -fsSL "https://api.nuget.org/v3-flatcontainer/$lower/index.json" || echo '{}')
+            # -F: the version has dots in it, and they are not wildcards here.
+            if printf '%s' "$published" | grep -qF "\"$VERSION\""; then
+              echo "nuget.org already has $id $VERSION — skipping push."
+              continue
+            fi
+            # --skip-duplicate as a belt: nuget.org is immutable, and the
+            # index above can lag a few minutes behind a push.
+            dotnet nuget push "nupkgs/$id.$VERSION.nupkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
