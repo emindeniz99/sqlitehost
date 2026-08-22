@@ -16,7 +16,7 @@
     <!-- Pin the whole SQLitePCLRaw graph to one version: sqlite-net-pcl
          pulls core 2.1.8, so the 2.1.6 bundle Microsoft.Data.Sqlite asks
          for would otherwise mix a 2.1.6 provider with a 2.1.8 core. -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.8" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <!-- Additional adapters for the multi-adapter integration matrix. -->
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
     <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
