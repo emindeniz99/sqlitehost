@@ -25,7 +25,7 @@
   "devDependencies": {
     "@sqlite-host/typespec": "workspace:*",
     "@types/node": "^22.0.0",
-    "@typespec/compiler": "1.13.0",
+    "@typespec/compiler": "1.15.0",
     "typescript": "^5.5.0"
   }
 }
