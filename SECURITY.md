@@ -12,6 +12,10 @@ values out of SQL text.
 Use GitHub's private vulnerability reporting:
 <https://github.com/emindeniz99/sqlitehost/security/advisories/new>
 
+That link 404s if the repository setting has not been switched on yet. If
+it does, email <emindeniz99@gmail.com> with `sqlitehost` in the subject —
+do not fall back to a public issue.
+
 Please do not open a public issue for anything exploitable. Expect a first
 response within a week.
 

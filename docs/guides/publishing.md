@@ -24,14 +24,15 @@ Each links to the section with full detail.
 |---|------|---------|
 | 1 | ~~Name/legal signoff~~ — done: availability sweep + `Sqlite` trademark review, name kept (§a outcome) | §a |
 | 2 | ~~License decision~~ — done: MIT, applied everywhere | §b |
-| 3 | npmjs.com account + `@sqlite-host` org/scope creation + 2FA enabled | §c |
-| 4 | nuget.org account + API key | §d |
-| 5 | Maven Central Portal account — decided: the already-verified `io.github.emindeniz99` namespace (§a outcome) | §e |
-| 6 | GPG key pair generation + publish public key to a keyserver | §e |
-| 7 | Flip the publish gates: remove `"private": true` from the three npm packages (versions are release-please's job, never hand-edited) | §c |
-| 8 | OpenUPM package submission PR (or decide git-URL-only) | §f |
-| 9 | Bootstrap publish: one manual publish per npm package at the current version, then merge the first release-please PR | §h |
-| 10 | Unity CI licence: create a free personal licence and add the `UNITY_LICENSE` / `UNITY_EMAIL` / `UNITY_PASSWORD` repository secrets | §i |
+| 3 | **Immediately after making the repository public**: enable private vulnerability reporting, secret scanning and push protection | §j |
+| 4 | npmjs.com account + `@sqlite-host` org/scope creation + 2FA enabled | §c |
+| 5 | nuget.org account + API key | §d |
+| 6 | Maven Central Portal account — decided: the already-verified `io.github.emindeniz99` namespace (§a outcome) | §e |
+| 7 | GPG key pair generation + publish public key to a keyserver | §e |
+| 8 | Flip the publish gates: remove `"private": true` from the three npm packages (versions are release-please's job, never hand-edited) | §c |
+| 9 | OpenUPM package submission PR (or decide git-URL-only) | §f |
+| 10 | Bootstrap publish: one manual publish per npm package at the current version, then merge the first release-please PR | §h |
+| 11 | Unity CI licence: create a free personal licence and add the `UNITY_LICENSE` / `UNITY_EMAIL` / `UNITY_PASSWORD` repository secrets | §i |
 
 Everything not in this table (pack commands, publish commands, POM
 profiles, package metadata) is already scripted or written down below.
@@ -67,6 +68,10 @@ a fallback if the primary ever fails anywhere.
 | UPM | `com.sqlitehost.runtime` | Unity package names are reverse-DNS ([Unity naming rules](https://docs.unity3d.com/Manual/cus-naming.html)): lowercase, `com.<company>.<package>`, ≤50 chars for visibility in the editor. `com.sqlitehost.runtime` complies. There is no central registry to reserve against; check OpenUPM for collisions: <https://openupm.com/packages/?q=sqlitehost>. Reverse-DNS convention implies you should control `sqlitehost.com` or at least not conflict with someone who does — fold into the domain/trademark check. |
 
 ### Trademark screen
+
+> Superseded by the §a outcome block: this screen was run, the owner read
+> the result and kept the name. What follows is the procedure to repeat if
+> a fallback name is ever needed — not open work.
 
 - **SQLite is a registered trademark** of Hipp, Wyrick & Company, Inc.
   Read <https://sqlite.org/copyright.html> (and the linked trademark
@@ -495,3 +500,37 @@ away:
 
 A Unity Pro/Plus seat activates from a serial (`UNITY_SERIAL`) instead and
 would need the workflow's licence env adjusted; nothing else changes.
+
+## j. Repository security settings — the moment the repo goes public
+
+None of these three is on by default, and private vulnerability reporting
+cannot be turned on at all while the repository is private. So there is a
+window, starting the second the repo goes public, in which the advisory
+URL that `SECURITY.md` sends reporters to answers 404 and nothing scans
+what gets pushed. Close it in the same sitting as the visibility flip.
+
+```sh
+# Private vulnerability reporting — the channel SECURITY.md links to.
+gh api -X PUT repos/emindeniz99/sqlitehost/private-vulnerability-reporting
+
+# Secret scanning, and push protection so a future secret is blocked
+# rather than merely reported after it is public.
+gh api -X PATCH repos/emindeniz99/sqlitehost \
+  -f 'security_and_analysis[secret_scanning][status]=enabled' \
+  -f 'security_and_analysis[secret_scanning_push_protection][status]=enabled'
+```
+
+Verify, rather than assuming the calls took:
+
+```sh
+gh api repos/emindeniz99/sqlitehost/private-vulnerability-reporting
+# {"enabled":true}
+gh api repos/emindeniz99/sqlitehost --jq '.security_and_analysis'
+# secret_scanning and secret_scanning_push_protection both "enabled"
+```
+
+Expect secret scanning to open alerts for `fixtures/delivery/*.insecure-private.pem`
+the moment it runs. Those are throwaway development keys committed on
+purpose — the delivery goldens cannot be verified without them — so
+dismiss the alerts as used-in-tests and leave the files alone. Deleting
+them breaks `tests/delivery-golden/run.mjs`.
