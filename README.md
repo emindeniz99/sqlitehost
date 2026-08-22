@@ -55,7 +55,6 @@ Prerequisites: .NET 8 SDK, JDK 17+, Maven, Node 20+, pnpm.
 
 ```bash
 # everything (builds + tests all languages + cross-language goldens)
-cd projects/sqlitehost
 ./tests/end-to-end/run-all.sh
 
 # individual tracks
@@ -86,12 +85,17 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/testing.md](./docs/testing.md) | test matrix |
 | [docs/packaging.md](./docs/packaging.md) | intended distribution |
 | [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md) | measured Unity IL2CPP app-size matrix (Android/ARM64) |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | prerequisites, running each suite, commit and merge conventions, release model |
+| [SECURITY.md](./SECURITY.md) | threat model, what counts as a vulnerability, how to report one |
+| [docs/guides/publishing.md](./docs/guides/publishing.md) | per-registry publishing checklists and the one-time owner bootstrap |
 
 ## Notes / learnings
 
 - Built from `SqliteHostplanv2.1.md` (uploaded plan). Phases 0–5 are
-  implemented in-repo; phase 6 (publishing) is deliberately deferred —
-  see [ROADMAP.md](./ROADMAP.md).
+  implemented in-repo; phase 6 (publishing) is automated but not yet
+  bootstrapped — the release pipeline exists, the registry accounts do
+  not. See [ROADMAP.md](./ROADMAP.md) and
+  [docs/guides/publishing.md](./docs/guides/publishing.md).
 - The canonical manifest + DDL snapshot under `fixtures/` are the
   keystone: every language golden-tests against the same bytes.
 - Signed script delivery (fetch-friendly envelope + signature + TTL

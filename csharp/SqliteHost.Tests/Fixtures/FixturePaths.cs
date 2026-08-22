@@ -5,7 +5,7 @@ namespace SqliteHost.Tests.Fixtures
 {
     public static class FixturePaths
     {
-        /// <summary>Absolute path of projects/sqlitehost/fixtures, found by walking up from the test binaries.</summary>
+        /// <summary>Absolute path of the repo's fixtures directory, found by walking up from the test binaries.</summary>
         public static string Root { get; } = FindRoot();
 
         public static string Schema(string fileName)

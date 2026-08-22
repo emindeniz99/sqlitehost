@@ -92,4 +92,6 @@ write is an explicit script step.
    tested to be identical.
 10. Java CLI validator ships as a library API + test-driven CLI main in
     `sqlite-host-validator` (thin `Main` over the engine).
-11. License: none yet — private scratch monorepo (ROADMAP before publishing).
+11. License: **MIT** (`LICENSE` at the repository root; the same SPDX id
+    in every `package.json`, the parent POM's `<licenses>` block, and
+    `<PackageLicenseExpression>` in the five packable csproj files).

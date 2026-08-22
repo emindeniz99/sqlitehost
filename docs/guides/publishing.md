@@ -2,7 +2,7 @@
 
 Publishing (plan Phase 6, ROADMAP item) cannot be completed in this
 container — it needs accounts, keys, and legal signoff. Everything
-mechanical is prepared in-repo (npm metadata, Maven release profile,
+mechanical is prepared in-repo (npm metadata, the Maven `central` profile,
 this guide); what remains is a checklist. Work top to bottom: the
 MANUAL-ONLY list first, then the per-registry sections.
 
@@ -23,15 +23,16 @@ Each links to the section with full detail.
 | # | Step | Section |
 |---|------|---------|
 | 1 | Name/legal signoff: availability sweep + `Sqlite` trademark review (read [sqlite.org/copyright.html](https://sqlite.org/copyright.html)); decide SqliteHost vs fallback (SqliteScriptBridge / SqliteHostBridge) | §a |
-| 2 | License decision (recommended: Apache-2.0), then execute the license TODO list | §b |
+| 2 | ~~License decision~~ — done: MIT, applied everywhere | §b |
 | 3 | npmjs.com account + `@sqlite-host` org/scope creation + 2FA enabled | §c |
 | 4 | nuget.org account + API key | §d |
 | 5 | Maven Central Portal account — decided: the already-verified `io.github.emindeniz99` namespace (§a outcome) | §e |
 | 6 | GPG key pair generation + publish public key to a keyserver | §e |
 | 7 | Fill placeholder metadata: repo URL / author / developers / scm in the npm `package.json`s and `java/pom.xml` (search for `TODO`) | §c, §e |
-| 8 | Flip the publish gates: remove `"private": true` from the three npm packages; add real versions everywhere | §c |
+| 8 | Flip the publish gates: remove `"private": true` from the three npm packages (versions are release-please's job, never hand-edited) | §c |
 | 9 | OpenUPM package submission PR (or decide git-URL-only) | §f |
-| 10 | Final pre-flight run (tests + sync check) and tag push | §h |
+| 10 | Bootstrap publish: one manual publish per npm package at the current version, then merge the first release-please PR | §h |
+| 11 | Unity CI licence: create a free personal licence and add the `UNITY_LICENSE` / `UNITY_EMAIL` / `UNITY_PASSWORD` repository secrets | §i |
 
 Everything not in this table (pack commands, publish commands, POM
 profiles, package metadata) is already scripted or written down below.
@@ -91,55 +92,31 @@ Record the outcome (date, screenshots/links, decision) in the repo
 before proceeding — every later section bakes the name into immutable
 registries.
 
-## b. License selection
+## b. License — MIT (decided)
 
-`docs/architecture.md` resolved decision 11: **no license yet**. Pick
-one before any publish — every registry below requires or strongly
-expects an SPDX expression.
+MIT, with the copyright line in `LICENSE` at the repository root. This
+resolves `docs/architecture.md` decision 11; it is a settled decision, not
+an open question, and every registry below already carries the SPDX id.
 
-| | MIT | Apache-2.0 | BSD-3-Clause |
-|---|---|---|---|
-| Length/complexity | tiny | long | tiny |
-| Explicit patent grant | no | **yes** | no |
-| Trademark clause | no | yes (explicitly withholds) | no (name-endorsement clause only) |
-| Contribution terms (§5) | no | yes | no |
-| Corporate-adoption friction | none | none (most-vetted at large orgs) | none |
+Apache-2.0 was the earlier recommendation, for its explicit patent grant
+and its contribution and trademark clauses. MIT won on the grounds it
+usually wins on: a protocol toolkit that people vendor into Unity games
+benefits more from a licence nobody has to read than from clauses nobody
+here is positioned to enforce.
 
-**Recommendation: Apache-2.0.** SqliteHost is a protocol-ish toolkit
-(wire envelope, manifest format, generated contracts across three
-languages); the explicit patent grant and the contribution/trademark
-clauses are worth the longer text. Choose MIT only if maximal
-simplicity is the overriding goal — it is not wrong, just weaker on
-patents. BSD-3 offers nothing over MIT here.
+Where the id lives, so a new artifact does not miss one:
 
-### TODO list once chosen (mechanical, do all of it in one commit)
+| Place | Form |
+|---|---|
+| repository root | `LICENSE`, full text |
+| every `package.json` | `"license": "MIT"` (all 11 npm manifests plus the UPM one) |
+| `java/pom.xml` | the parent's `<licenses>` block; the three modules inherit it |
+| the five packable csproj | `<PackageLicenseExpression>MIT</PackageLicenseExpression>` |
+| the UPM package folder | `unity/com.sqlitehost.runtime/LICENSE.md`, per UPM convention |
 
-1. `LICENSE` file at the project root
-   (`projects/sqlitehost/LICENSE`) — full license text, correct
-   copyright line.
-2. `"license": "<SPDX>"` in **every** `package.json` (the three
-   publishable ones and, for hygiene, the private workspace/emitter
-   ones): `typespec/library`, `typescript/runtime-types`,
-   `typescript/authoring-sdk`, plus root, `codegen/*`,
-   `typescript/sample-admin`. (JSON has no comments, so this field is
-   deliberately absent today rather than a placeholder — this list is
-   the reminder.)
-3. `<PackageLicenseExpression><SPDX></PackageLicenseExpression>` in
-   the C# csproj packing metadata (NuGet track, see §d — csproj
-   metadata is owned by the C# packaging track; hand them the SPDX id).
-4. `java/pom.xml`: uncomment/fill the `<licenses>` block (a commented
-   TODO skeleton is already in the parent POM; children inherit).
-5. `unity/com.sqlitehost.runtime/package.json`: add
-   `"license": "<SPDX>"` (UPM supports the field; also ship a
-   `LICENSE.md` inside the package folder — UPM convention).
-6. Source headers policy: **recommend none** (no per-file headers) —
-   a root `LICENSE` plus registry metadata is sufficient for MIT and
-   acceptable for Apache-2.0. If you want Apache's belt-and-braces,
-   use the minimal one-line SPDX form
-   (`// SPDX-License-Identifier: Apache-2.0`) rather than the 12-line
-   boilerplate; but note the codegen emitters would then also need to
-   stamp generated files — extra churn for little gain. Decide once,
-   write it in CONVENTIONS, don't mix.
+No per-file source headers, deliberately: a root `LICENSE` plus registry
+metadata is what MIT needs, and headers would mean teaching the codegen
+emitters to stamp generated files for no gain.
 
 ## c. npm — @sqlite-host/typespec, @sqlite-host/runtime-types, @sqlite-host/authoring
 
@@ -231,7 +208,7 @@ metadata here.
 2. **Pack:**
 
    ```sh
-   cd projects/sqlitehost/csharp
+   cd csharp
    dotnet pack -c Release
    ```
 
@@ -302,11 +279,11 @@ metadata here.
   `<url>` placeholder, `<developers>` placeholder, `<scm>` placeholder
   — **search for `TODO` and fill before releasing**;
 - a commented `<licenses>` skeleton — uncomment when §b resolves;
-- a **`release` profile** containing `maven-source-plugin`
+- a **`central` profile** containing `maven-source-plugin`
   (sources jar), `maven-javadoc-plugin` (javadoc jar),
   `maven-gpg-plugin` (signing, bound inside the profile so normal
   `mvn test`/`mvn package` never asks for GPG), and
-  `central-publishing-maven-plugin` with `autoPublish=false`.
+  `central-publishing-maven-plugin` with `autoPublish=true`.
 
 Central requires all of: name, description, url, licenses, developers,
 scm, javadoc + sources jars, and GPG signatures on every file — the
@@ -315,16 +292,21 @@ profile produces exactly that set.
 ### Releasing
 
 ```sh
-cd projects/sqlitehost/java
-# set the release version (drop -SNAPSHOT) across parent + modules:
-mvn versions:set -DnewVersion=0.1.0 && mvn versions:commit
-mvn -Prelease clean deploy
+cd java
+mvn -B -P central deploy
 ```
 
-With `autoPublish=false` the bundle lands in the Portal in *validated,
-waiting* state — review it at <https://central.sonatype.com/publishing>
-and press **Publish** (or drop it). Flip to `autoPublish=true` once the
-process is trusted. Note the parent POM (`sqlite-host-parent`,
+The version is already correct in the working tree: release-please wrote
+it into all four POMs when it cut the release PR (see §h). Never run
+`mvn versions:set` by hand — `scripts/check-versions.mjs` fails the tag
+build the moment a POM disagrees with `version.txt`.
+
+That is what `.github/workflows/release.yml` runs on a version tag, so
+the hand-run above is a rehearsal, not the normal path. With
+`autoPublish=true` a validated bundle goes live without a Publish click;
+flip the flag to `false` in `java/pom.xml` for the first release if you
+want to inspect it at <https://central.sonatype.com/publishing> first.
+Note the parent POM (`sqlite-host-parent`,
 packaging `pom`) publishes too — the modules reference it.
 
 The validator's shaded `-cli.jar` is a local tool (classifier `cli`,
@@ -337,9 +319,9 @@ the published contract.
 Three options, in recommendation order:
 
 1. **OpenUPM (recommended).** Zero infrastructure: tag releases in the
-   public repo (OpenUPM tracks git tags that look like versions —
-   configure the tag filter to match the `sqlitehost-v*` scheme in §h,
-   or add plain `v0.1.0` tags too), then submit one metadata PR at
+   public repo (OpenUPM tracks git tags that look like versions — set
+   the tag filter to `v*`, the scheme release-please pushes, §h), then
+   submit one metadata PR at
    <https://openupm.com/packages/add/> pointing at the repo and the
    package folder. Consumers add the OpenUPM scoped registry and
    install `com.sqlitehost.runtime`. Version = the
@@ -354,12 +336,12 @@ Three options, in recommendation order:
 
    ```text
    Window > Package Manager > + > Add package from git URL…
-   https://github.com/OWNER/REPO.git?path=/projects/sqlitehost/unity/com.sqlitehost.runtime
-   pin a release: …?path=/projects/sqlitehost/unity/com.sqlitehost.runtime#sqlitehost-v0.1.0
+   https://github.com/emindeniz99/sqlitehost.git?path=/unity/com.sqlitehost.runtime
+   pin a release: …?path=/unity/com.sqlitehost.runtime#v0.1.0
    ```
 
-   (`?path=` selects the package subfolder in the monorepo; `#<rev>`
-   pins a tag/branch/SHA.)
+   (`?path=` selects the package subfolder; `#<rev>` pins a
+   tag/branch/SHA.)
 
 Whatever the channel, `node unity/sync.mjs --check` must be green at
 the release commit — the package contains synced copies of `csharp/`
@@ -407,41 +389,111 @@ Two independent version axes — do not conflate them:
   fixed 0.x lockstep. A release of anything is a release of
   everything; consumers reason about "SqliteHost 0.2.0", not a matrix.
 
-### Release checklist (order matters)
+### Cutting a release
 
-1. Choose the version `X.Y.Z`. Update, in one commit:
-   npm `"version"` fields (trio + workspace root for tidiness), the
-   Maven version (`mvn versions:set -DnewVersion=X.Y.Z` — replaces
-   `-SNAPSHOT`), the csproj `Version`, and
-   `unity/com.sqlitehost.runtime/package.json`.
-2. Changelog: keep a single `CHANGELOG.md` at the project root
-   (Keep-a-Changelog format), one section per release covering all
-   ecosystems, with a **Protocol** subsection whenever
-   apiLevel/features changed. Cut the `Unreleased` section into
-   `X.Y.Z` in the same commit as step 1.
-3. **Pre-flight (must be green):**
+Releases are automated end to end. Nothing publishes from a laptop, and
+no version number is edited by hand.
 
-   ```sh
-   cd projects/sqlitehost
-   ./tests/end-to-end/run-all.sh        # all languages + cross-language goldens
-   node unity/sync.mjs --check          # UPM synced copies not drifted
+1. **Land Conventional Commits on `main`.** `feat` and `fix` drive the
+   bump, so keep them for user-visible changes.
+2. **release-please opens (or updates) a release PR.**
+   `.github/workflows/release-please.yml` computes the next version and
+   writes it into `version.txt` plus every manifest listed under
+   `extra-files` in `release-please-config.json`: the 11 npm
+   `package.json` files, the UPM `package.json`, all four `pom.xml`
+   files, and the five packable `.csproj` files. It also cuts
+   `CHANGELOG.md`. Expect cosmetic XML churn in the POM and csproj
+   diffs — release-please re-serializes what it edits.
+3. **Review the PR, then merge it.** Merging creates the `vX.Y.Z` tag and
+   the GitHub Release, and the workflow dispatches `release.yml` at that
+   tag. (A tag pushed by the default `GITHUB_TOKEN` does not trigger
+   other workflows on its own, which is why the dispatch is explicit.)
+4. **`release.yml` publishes**, one job per registry, after a
+   `verify-versions` gate that runs `node scripts/check-versions.mjs`
+   and refuses to publish anything if one manifest is out of lockstep.
+   Every job re-checks its registry first and skips loudly when the
+   version is already there, so a hand-bootstrapped version does not
+   fail the run:
+   - `publish-npm` — `pnpm publish --provenance` for the trio, over npm
+     trusted publishing (OIDC). No token.
+   - `publish-maven` — `mvn -B -P central deploy` (§e).
+   - `publish-nuget` — `dotnet pack` + `dotnet nuget push` for the five
+     `SqliteHost.*` ids.
+   - UPM has no job: OpenUPM builds from the tag (§f).
+5. **Smoke-test the published artifacts** (§g's TypeSpec consumer test;
+   `dotnet add package SqliteHost.Runtime` in a scratch project; Maven
+   `dependency:get` on `io.github.emindeniz99:sqlite-host-model:X.Y.Z`),
+   and confirm the provenance badge on all three npm packages.
+
+Nothing goes back to `main` afterwards: there is no `-SNAPSHOT` to
+restore and no `Unreleased` section to reopen.
+
+### Running the pre-flight by hand
+
+`ci.yml` gates `main` and the tag is cut from `main`, so the suites have
+already run. To reproduce them locally:
+
+```sh
+./tests/end-to-end/run-all.sh        # all languages + cross-language goldens
+node unity/sync.mjs --check          # UPM synced copies not drifted
+node scripts/check-versions.mjs      # every manifest agrees with version.txt
+node scripts/check-npm-publishable.mjs
+```
+
+### The one-time bootstrap
+
+OIDC cannot create a package that does not exist, so the very first
+publish of each npm package is manual, at the version already in
+`version.txt`. `.release-please-manifest.json` records that version as
+released, so the first automated release is the next one — which proves
+the whole chain with no collision. The account, secret and
+trusted-publisher steps are §c (npm), §d (NuGet), §e (Maven) and §i
+(Unity CI).
+
+## i. Unity CI licence secrets
+
+`.github/workflows/unity-ci.yml` compiles `com.sqlitehost.runtime` inside
+a real Unity editor and runs its EditMode tests. Unity refuses to start in
+batch mode without an activated licence, and a licence cannot be
+committed, so the job's `edit-mode-tests` half fails — with an explicit
+`::error::` naming the missing secrets — until the owner does this once.
+
+1. Install Unity Hub and sign in with the Unity ID that should own the CI
+   activations.
+2. `Unity Hub > Preferences (Settings) > Licenses > Add > Get a free
+   personal license`.
+3. Read the licence file Unity just wrote:
+
+   ```text
+   macOS   /Library/Application Support/Unity/Unity_lic.ulf
+   Linux   ~/.local/share/unity3d/Unity/Unity_lic.ulf
+   Windows C:\ProgramData\Unity\Unity_lic.ulf
    ```
 
-4. Tag: `sqlitehost-vX.Y.Z` scheme, i.e.
+4. `Settings > Secrets and variables > Actions > New repository secret`,
+   three times:
 
-   ```sh
-   git tag sqlitehost-v0.1.0 && git push origin sqlitehost-v0.1.0
-   ```
+   | Secret | Value |
+   |---|---|
+   | `UNITY_LICENSE` | the entire contents of `Unity_lic.ulf`, XML declaration included |
+   | `UNITY_EMAIL` | the Unity ID email |
+   | `UNITY_PASSWORD` | the Unity ID password |
 
-   (monorepo — the project prefix keeps tags unambiguous; OpenUPM tag
-   filter must match, §f).
-5. Publish in this order (downstream metadata may reference upstream):
-   Maven (`mvn -Prelease clean deploy` + Portal publish button) →
-   NuGet (Abstractions then Runtime) → npm (runtime-types →
-   authoring → typespec) → UPM (tag already pushed; OpenUPM picks it
-   up / consumers pin the tag).
-6. Post-publish smoke: §g's TypeSpec consumer test; `dotnet add
-   package SqliteHost.Runtime` in a scratch project; Maven
-   `dependency:get` on `io.github.emindeniz99:sqlite-host-model:X.Y.Z`.
-7. Back on main: bump Maven to `X.Y.(Z+1)-SNAPSHOT`, open a fresh
-   `Unreleased` changelog section.
+   All three are needed: the editor re-validates the account when it
+   applies the licence file, so the `.ulf` alone is not enough.
+
+Two constraints are baked into the workflow and should not be "simplified"
+away:
+
+- **A personal licence allows only a couple of concurrent activations.**
+  The version matrix therefore runs `max-parallel: 1`. Adding editor
+  versions makes the job longer, not wider.
+- **Unity 2021.3 patches newer than 2021.3.45f2 are Extended LTS** and
+  refuse to activate under a personal licence, which is why CI pins
+  2021.3.45f2 — the newest patch a personal licence can run, and still on
+  the `2021.3` line the package declares as its floor. `unity/SampleProject`
+  pins a later patch on purpose; it is opened by a human with their own
+  editor, not by CI.
+
+A Unity Pro/Plus seat activates from a serial (`UNITY_SERIAL`) instead and
+would need the workflow's licence env adjusted; nothing else changes.

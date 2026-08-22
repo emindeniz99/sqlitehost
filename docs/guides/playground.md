@@ -14,7 +14,7 @@ checking what a naming option does to the emitted tables.
 ## Run it
 
 ```bash
-cd projects/sqlitehost
+cd <repo root>
 pnpm install
 pnpm --dir typescript/playground run build:web
 python3 -m http.server --directory typescript/playground/web-dist

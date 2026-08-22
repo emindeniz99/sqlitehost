@@ -12,7 +12,7 @@ Java modules for SqliteHost script payloads (see `../docs/`):
 ## Build and test
 
 ```sh
-cd projects/sqlitehost/java
+cd java
 mvn -q test      # run all module tests
 mvn -q package   # also builds the validator CLI fat jar
 ```
@@ -31,7 +31,7 @@ Run it via the launcher script or `java -jar` directly:
 ```sh
 bin/sqlite-host-validate <manifest.json> <script.json>
 
-java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-SNAPSHOT-cli.jar \
+java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
     ../fixtures/manifests/sample-host.manifest.json \
     ../fixtures/payloads/valid/example-006-floats.json
 ```

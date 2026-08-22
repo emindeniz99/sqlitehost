@@ -13,11 +13,24 @@ entries when shipped.
   [docs/guides/unity-2021-spike.md](./docs/guides/unity-2021-spike.md)
   (.NET Standard 2.0 API level, zero-compile-error gate, Play-mode
   smoke, record results in docs/compatibility.md).
-- **Execute the publishing checklist (manual/legal)**: accounts, 2FA,
-  GPG key, `io.sqlitehost` namespace verification, `@sqlite-host` npm
-  scope, license decision, and name/trademark signoff (note the SQLite
-  trademark caveat) — everything else is prepared; follow
+- **Registry bootstrap (owner-only)**: the release pipeline is written
+  and wired (`.github/workflows/release-please.yml` cuts the version,
+  `release.yml` publishes npm, Maven Central and NuGet from the tag).
+  What is left needs accounts and 2FA the automation cannot have: the
+  `@sqlite-host` npm org plus one manual first publish per package
+  before OIDC can take over, the nuget.org API key, the Central Portal
+  token and GPG key, the OpenUPM submission, and name/trademark signoff
+  (note the SQLite trademark caveat). The licence is decided (MIT,
+  `LICENSE`) and the Maven namespace `io.github.emindeniz99` is already
+  verified. Step-by-step:
   [docs/guides/publishing.md](./docs/guides/publishing.md).
+- **`@sqlite-host/authoring` depends on an unpublished package**: its
+  `dependencies` name `@sqlite-host/codegen-core` as `workspace:*`, and
+  codegen-core is private. pnpm rewrites that to a real range in the
+  tarball, so every consumer install would 404.
+  `scripts/check-npm-publishable.mjs` blocks the publish until this is
+  resolved — publish codegen-core too, bundle it, or drop the
+  dependency.
 - **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
   now ships the DllImport adapter (scalar functions included; Unity
   consumers vendoring it add `[MonoPInvokeCallback]` on two callbacks

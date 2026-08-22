@@ -5,6 +5,12 @@ run in this Linux container — it needs a real Unity editor. Everything
 else is scaffolded under `unity/`; the only remaining manual step is
 opening the project in Unity Hub and following this checklist.
 
+> The *compile* half of this spike is now automated: `unity/ci-project/`
+> runs the package through a real 2021.3 editor on GitHub Actions once the
+> Unity licence secrets exist (`docs/guides/publishing.md` §i). What still
+> needs a human is the Play-mode run and the Api Compatibility Level check
+> below — those are what `unity/SampleProject/` is for.
+
 ## What is already scaffolded
 
 | Path | What |
@@ -12,6 +18,7 @@ opening the project in Unity Hub and following this checklist.
 | `unity/com.sqlitehost.runtime/` | UPM package: `package.json`, `Runtime/SqliteHost.asmdef`, synced copies of `csharp/SqliteHost.Abstractions` (→ `Runtime/Abstractions/`) and `csharp/SqliteHost.Runtime` (→ `Runtime/Runtime/`), and a `Samples~/GeneratedSample/` sample (synced `*.g.cs` + handwritten `SmokeBehaviour.cs` + `SqliteHost.Sample.asmdef`) |
 | `unity/sync.mjs` | Sync mechanism. `node unity/sync.mjs` regenerates the copies from `csharp/`; `node unity/sync.mjs --check` exits 1 with a diff listing on drift. `csharp/` is the source of truth — never hand-edit the synced copies. |
 | `unity/SampleProject/` | Minimal Unity 2021 project: `Packages/manifest.json` referencing the package via `file:../../com.sqlitehost.runtime`, `ProjectSettings/ProjectVersion.txt` (2021.3.55f1), and `Assets/Smoke/SmokeRunner.cs` |
+| `unity/ci-project/` | The headless counterpart to `SampleProject`, driven by `.github/workflows/unity-ci.yml`: same `file:` package reference, `ProjectVersion.txt` pinned to 2021.3.45f2 (the newest patch a free personal licence can activate), and EditMode tests over the clean-skip contract. See its README. |
 
 Deliberately **not** authored (Unity regenerates them on first open):
 
@@ -44,7 +51,7 @@ Deliberately **not** authored (Unity regenerates them on first open):
    (e.g. Windows/Linux IL2CPP) only for the stretch build in step 8.
 
 2. **Open the project.** In Unity Hub: `Projects > Add > Add project from
-   disk` → select `projects/sqlitehost/unity/SampleProject` → open it with
+   disk` → select `unity/SampleProject` → open it with
    the 2021.3 editor. First import takes a while (Library/ is built).
 
 3. **Set the API level (the spike's verification point).**
@@ -125,7 +132,7 @@ Deliberately **not** authored (Unity regenerates them on first open):
   intact (full rationale in the script header).
 - **`sync --check` fails** — the `csharp/` sources moved ahead (e.g. the
   float32/float64 work). Run `node unity/sync.mjs` from
-  `projects/sqlitehost/` and re-open Unity; the script only rewrites the
+  the repo root and re-open Unity; the script only rewrites the
   synced `.cs` copies, never the handwritten package files.
 - **Where a real SQLite adapter plugs in** — the package has no SQLite
   dependency by design. To run real scripts in Unity, implement

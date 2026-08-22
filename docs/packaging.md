@@ -1,7 +1,8 @@
 # Distribution / packaging
 
-Nothing is published yet (scratch monorepo; naming/trademark and
-license checks are ROADMAP items). Intended artifacts (plan §27):
+Nothing is published yet: the release pipeline exists, the registry
+accounts do not (`docs/guides/publishing.md`, ROADMAP.md). Licence is
+settled — MIT. Intended artifacts (plan §27):
 
 ```text
 NuGet: SqliteHost.Runtime

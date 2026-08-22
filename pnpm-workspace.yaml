@@ -1,6 +1,6 @@
-# Self-contained pnpm workspace for the sqlitehost project — see
-# CONVENTIONS.md "every project is self-contained". Run pnpm from
-# inside projects/sqlitehost/.
+# The pnpm workspace is the repository root. Run every pnpm command from
+# there; `unity/com.sqlitehost.runtime/package.json` is a UPM manifest and
+# is deliberately not a member.
 
 packages:
   - "typespec/library"

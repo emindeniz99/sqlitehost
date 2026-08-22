@@ -18,7 +18,7 @@ import { SAMPLE_SOURCE } from "../browser-host.js";
 import { CSHARP_PROFILES, runPipeline } from "../pipeline.js";
 import type { PlaygroundFile, PlaygroundResult } from "../pipeline.js";
 
-/** projects/sqlitehost, from dist/test/. */
+/** Repo root, from dist/test/. */
 function projectFile(relative: string): string {
   return readFileSync(fileURLToPath(new URL(`../../../../${relative}`, import.meta.url)), "utf8");
 }

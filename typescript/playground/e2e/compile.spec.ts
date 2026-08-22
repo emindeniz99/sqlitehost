@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, FAILURE_MESSAGE, tab, test, type TabId } from "./fixtures.js";
 
-/** projects/sqlitehost/fixtures/…, from typescript/playground/e2e/. */
+/** <repo root>/fixtures/…, from typescript/playground/e2e/. */
 const MANIFEST_GOLDEN = readFileSync(
   fileURLToPath(new URL("../../../fixtures/manifests/sample-host.manifest.json", import.meta.url)),
   "utf8",

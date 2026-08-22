@@ -187,7 +187,7 @@ publish (`docs/guides/publishing.md`), codegen runs from a clone of
 this repo:
 
 ```sh
-cd projects/sqlitehost
+# from the repo root
 pnpm install
 pnpm -r run build        # builds the TypeSpec library + all emitters into dist/
 ```
@@ -251,7 +251,7 @@ language. Exact commands, verified against this repo (all four CLIs
 print every file they write and exit non-zero on failure):
 
 ```sh
-cd projects/sqlitehost
+# from the repo root
 
 # 1. TypeSpec -> canonical manifest + DDL snapshot
 node codegen/manifest-emitter/dist/cli.js path/to/your-host.tsp generated --base-name your-host
@@ -373,7 +373,7 @@ naming/license signoff). The package IDs below are final per
 Today, build the local feed from a clone (verified):
 
 ```sh
-cd projects/sqlitehost/csharp
+cd csharp
 dotnet pack SqliteHost.Abstractions/SqliteHost.Abstractions.csproj -c Release -o /path/to/local-feed
 dotnet pack SqliteHost.Runtime/SqliteHost.Runtime.csproj           -c Release -o /path/to/local-feed
 dotnet pack SqliteHost.Conformance/SqliteHost.Conformance.csproj   -c Release -o /path/to/local-feed
@@ -390,8 +390,8 @@ In the consuming repo, a `nuget.config` next to the solution:
 </configuration>
 ```
 
-and normal `PackageReference`s (`Version="0.1.0-preview"`, the
-current csproj version). Gotcha: NuGet caches by version — if you
+and normal `PackageReference`s (`Version="0.1.0"`, the current csproj
+version — `version.txt` is the source of truth). Gotcha: NuGet caches by version — if you
 repack the same version after pulling newer sources, restore keeps
 serving the stale cached copy. Bump a local suffix on repack
 (`dotnet pack … -p:PackageVersion=0.1.0-local.2`) or clear it
@@ -427,8 +427,8 @@ tarballs. `@sqlite-host/sample-admin` is a demo CLI
 | `io.github.emindeniz99:sqlite-host-validator` | semantic lint engine (library) + thin CLI main |
 | `io.github.emindeniz99:sqlite-host-jdbc` | prepare-only SQLite validation over the generated schema |
 
-Today: `cd projects/sqlitehost/java && mvn -q install` puts
-`0.1.0-SNAPSHOT` into your local `~/.m2`, then depend on the
+Today: `cd java && mvn -q install` puts the current version
+(`version.txt`) into your local `~/.m2`, then depend on the
 coordinates normally. The shaded validator CLI is a *local tool*, not
 a published contract — `mvn -q package` builds
 `sqlite-host-validator/target/sqlite-host-validator-<version>-cli.jar`
@@ -442,12 +442,12 @@ git URL (publishing guide §f):
 
 ```text
 Window > Package Manager > + > Add package from git URL…
-https://github.com/OWNER/REPO.git?path=/projects/sqlitehost/unity/com.sqlitehost.runtime
-pin a release: …?path=/projects/sqlitehost/unity/com.sqlitehost.runtime#sqlitehost-v0.1.0
+https://github.com/emindeniz99/sqlitehost.git?path=/unity/com.sqlitehost.runtime
+pin a release: …?path=/unity/com.sqlitehost.runtime#v0.1.0
 ```
 
-(`?path=` selects the package subfolder in the monorepo; `#<rev>`
-pins a tag/branch/SHA.) An OpenUPM listing is the planned longer-term
+(`?path=` selects the package subfolder; `#<rev>` pins a
+tag/branch/SHA.) An OpenUPM listing is the planned longer-term
 channel. The package contains the runtime only — no native SQLite,
 no generated code; import the "Generated Sample" from the package's
 Samples tab to see the expected shape of yours.
@@ -484,10 +484,10 @@ publishable; warnings don't block.**
 ### D.2 Java shaded CLI — the pre-publish gate
 
 ```sh
-cd projects/sqlitehost/java
+cd java
 mvn -q package
 bin/sqlite-host-validate path/to/your-host.manifest.json path/to/payload.json
-# or: java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-SNAPSHOT-cli.jar <manifest> <payload>
+# or: java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar <manifest> <payload>
 ```
 
 One finding per line (`ERROR <code> [step/statement] message` /
@@ -537,7 +537,7 @@ Every step below was run as written.
 **2. Generate** (Path B):
 
 ```sh
-cd projects/sqlitehost && pnpm install && pnpm -r run build
+pnpm install && pnpm -r run build   # from the repo root
 node codegen/manifest-emitter/dist/cli.js notes-host.tsp generated --base-name notes-host
 node codegen/csharp-emitter/dist/cli.js generated/notes-host.manifest.json generated/csharp
 ```

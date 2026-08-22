@@ -36,7 +36,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(HERE, "../..");            // projects/sqlitehost
+const ROOT = resolve(HERE, "../..");            // repo root
 const OUT = join(HERE, "out");
 const node = process.execPath;
 const gameWork = readFileSync(join(HERE, "GameWork.cs"), "utf8");

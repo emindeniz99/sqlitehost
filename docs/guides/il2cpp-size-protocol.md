@@ -66,7 +66,7 @@ guidance stays as-is or gets IL2CPP-specific footnotes):
 Regenerate sources with:
 
 ```bash
-cd projects/sqlitehost && pnpm install && pnpm -r build   # emitters
+pnpm install && pnpm -r build   # emitters, from the repo root
 cd tests/app-size-bench && node generate.mjs
 ```
 
@@ -168,12 +168,12 @@ Produce `docs/reports/il2cpp-size-report.md` (new folder is fine) with:
 ## 6. Hand-off prompt (copy-paste to a Unity-equipped agent)
 
 > In the repo `emindeniz99/playground`, read
-> `projects/sqlitehost/docs/guides/il2cpp-size-protocol.md` and execute
+> `docs/guides/il2cpp-size-protocol.md` and execute
 > it fully: regenerate the bench sources (`tests/app-size-bench/
 > generate.mjs`), build the 12-row Unity IL2CPP matrix in §4 on
 > Android/ARM64 with Unity 2022.3.39f1 (and 2021.3.55f1 if available),
 > measure per §2, and write the report described in §5 to
-> `projects/sqlitehost/docs/reports/il2cpp-size-report.md`, including
+> `docs/reports/il2cpp-size-report.md`, including
 > the doc patches for `docs/compatibility.md`. The hypothesis ledger in
 > §1 tells you exactly which NativeAOT findings you are re-testing and
 > why they might not reproduce under IL2CPP — H-GVM and H-FIELDS are

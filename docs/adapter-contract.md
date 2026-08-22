@@ -135,7 +135,7 @@ adapter by this suite).
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="SqliteHost.Conformance" Version="0.1.0-preview" />
+  <PackageReference Include="SqliteHost.Conformance" Version="0.1.0" />
   <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
   <PackageReference Include="xunit" Version="2.9.2" />
   <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
