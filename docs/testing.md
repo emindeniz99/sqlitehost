@@ -85,8 +85,9 @@ What it enforces are ratios computed in one run — profile ordering,
 falling per-method cost, DTO fields as a no-op, `SQLITEHOST_SLIM` a net
 win, and the reflection-free build still running — so it is immune to
 SDK and architecture drift. Byte-for-byte regression against
-`baseline.json` switches on once that file is re-recorded on a runner
-(`UPDATE_SIZE_BASELINE=1`). The Unity IL2CPP half is a monthly
+`baseline.json` also fails the job: the recorded deltas were measured on
+an ubuntu-latest runner, and a change that is supposed to move bytes
+re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a monthly
 measurement, not a gate: `il2cpp-size-bench.yml` builds the 12-row
 matrix in a real editor and publishes a table.
 

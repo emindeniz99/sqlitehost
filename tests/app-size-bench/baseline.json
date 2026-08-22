@@ -4,33 +4,63 @@
     "gamebase row, never an absolute size, so it survives .NET SDK patch drift and runner",
     "differences that absolute thresholds cannot.",
     "",
-    "The linux-x64 entry below is transcribed from docs/guides/il2cpp-size-protocol.md §3, which",
-    "recorded those deltas on .NET 8 NativeAOT linux-x64. It has never been re-measured on a",
-    "GitHub runner, so it ships with \"gate\": false: differences are reported as advisory",
-    "warnings and in the job summary instead of failing the build. The shape invariants in",
-    "measure-nativeaot.mjs (profile ordering, falling per-method cost, H-FIELDS no-op, SLIM a net",
-    "win, reflection-free build runs) are enforced regardless — those are ratios, not bytes.",
+    "The linux-x64 entry below was measured on a GitHub ubuntu-latest runner by the app-size job",
+    "in ci.yml (run 32603450209), which is the only place the repository publishes NativeAOT for",
+    "linux-x64. It replaces numbers transcribed from docs/guides/il2cpp-size-protocol.md \u00a73 that",
+    "predated the runtime's current shape: every row measured 9-16 KB above them, so the advisory",
+    "warning fired on all eight rows and said nothing. Real numbers, so \"gate\": true \u2014 a byte",
+    "move outside the tolerance now fails the build.",
     "",
-    "To turn the byte gate on: run the app-size job once on a runner, confirm the reported",
-    "numbers are sane, then run `UPDATE_SIZE_BASELINE=1 node tests/app-size-bench/measure-nativeaot.mjs`",
-    "on that same runner and commit the rewritten file — it records the measured deltas with",
-    "\"gate\": true. Same regeneration idiom as UPDATE_DELIVERY_GOLDENS."
+    "Re-record after a change that is supposed to move bytes: read the app-size job's summary,",
+    "confirm the new numbers are what the change intended, then run",
+    "`UPDATE_SIZE_BASELINE=1 node tests/app-size-bench/measure-nativeaot.mjs --rid linux-x64`",
+    "on a runner and commit the rewritten file. Same regeneration idiom as UPDATE_DELIVERY_GOLDENS.",
+    "",
+    "The shape invariants in measure-nativeaot.mjs (profile ordering, falling per-method cost,",
+    "H-FIELDS no-op, SLIM a net win, reflection-free build runs) are enforced regardless of this",
+    "gate \u2014 those are ratios, not bytes."
   ],
   "runtimes": {
     "linux-x64": {
-      "gate": false,
-      "source": "docs/guides/il2cpp-size-protocol.md §3 (.NET 8 NativeAOT, linux-x64)",
+      "gate": true,
       "deltas": {
-        "classic50": { "raw": 303984, "gz": 122652 },
-        "compact50": { "raw": 216432, "gz": 88827 },
-        "compact50-fields": { "raw": 216440, "gz": 88867 },
-        "ultra50": { "raw": 184280, "gz": 82840 },
-        "classic5": { "raw": 146944, "gz": 67870 },
-        "compact5": { "raw": 134064, "gz": 62301 },
-        "ultra5": { "raw": 151064, "gz": 71816 },
-        "compact50-slim": { "raw": 191120, "gz": 77116 }
+        "classic50": {
+          "raw": 312240,
+          "gz": 135125
+        },
+        "compact50": {
+          "raw": 228768,
+          "gz": 100026
+        },
+        "compact50-fields": {
+          "raw": 228776,
+          "gz": 100022
+        },
+        "ultra50": {
+          "raw": 200712,
+          "gz": 91668
+        },
+        "classic5": {
+          "raw": 159280,
+          "gz": 77078
+        },
+        "compact5": {
+          "raw": 146400,
+          "gz": 72010
+        },
+        "ultra5": {
+          "raw": 163400,
+          "gz": 81142
+        },
+        "compact50-slim": {
+          "raw": 191120,
+          "gz": 81036
+        }
       },
-      "probeDelta": { "raw": 289936, "gz": 131235 }
+      "probeDelta": {
+        "raw": 289936,
+        "gz": 135530
+      }
     }
   }
 }

@@ -215,9 +215,11 @@ jobs:
   # — plus the reflection-free build actually running, which is the only
   # thing that keeps the "no [Preserve], no link.xml" guardrail honest
   # against the compiler rather than against the source. Byte-for-byte
-  # regression against tests/app-size-bench/baseline.json turns on once that
-  # file is re-recorded on a runner; see its header. The expensive IL2CPP
-  # half is a monthly measurement in il2cpp-size-bench.yml.
+  # regression against tests/app-size-bench/baseline.json fails the job
+  # too: its deltas were measured by this job on a runner, so they describe
+  # this code rather than a document. A change that is meant to move bytes
+  # re-records them; see the file's header. The expensive IL2CPP half is a
+  # monthly measurement in il2cpp-size-bench.yml.
   app-size:
     name: app size (NativeAOT)
     runs-on: ubuntu-latest
