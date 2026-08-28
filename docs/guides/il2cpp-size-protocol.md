@@ -326,9 +326,11 @@ independent reasons, any one of which is sufficient:
 What is valid:
 
 - **iOS row-minus-baseline deltas, compared against each other.** That is
-  what the iOS leg is *intended* to produce. It becomes a result once the
-  build-row-0-twice reproducibility check below has passed: until two
-  identical builds are known to agree, a delta cannot be told from noise.
+  what the iOS leg produces, and the reproducibility precondition below has
+  now been met: row 2 built twice from the same commit on the same host
+  came back byte-identical on every recorded field, gz included (runs
+  33208162606 and 33217023452). There is no run-to-run noise floor to
+  subtract, so a delta is a delta.
 - **The shape claims.** H-PROFILES (per-method slope falling classic →
   compact → ultra), H-SLIM (a net win) and H-GVM (the cost of one generic
   virtual method) are stated as ratios and orderings rather than as byte
@@ -378,10 +380,22 @@ generated C++ and whether the project carries any host-specific executable
 an Xcode build phase invokes; whether `Unity-iPhone` is a shared scheme;
 whether the IL2CPP archives (`libGameAssembly.a`, `il2cpp.a`, or the older
 `libil2cpp.a`) separate cleanly in the link map; per-row wall clock and
-peak disk on both stages; and whether iOS row deltas reproduce run to run
-at all. Build row 0 twice on the first full run
-and diff — if the two disagree, every delta below the quantum is noise and
-this section needs a stated resolution floor.
+and peak disk on both stages.
+
+Reproducibility is no longer open. Row 2 was built twice from the same
+commit on the same host and every recorded field matched exactly —
+`il2cppOnly`, both raw sizes, both gz sizes — so there is no noise floor to
+subtract from a delta.
+
+That result is what makes the host comparison meaningful, and the host
+comparison did NOT come out clean. On rows 0/2/4 the two Unity hosts agree
+exactly on every published quantity (`total raw`, `UnityFramework`,
+`global-metadata.dat`) and disagree on two that are not published: gz by
++81 B and +50 B, and `il2cppOnly` by −4 B and +4 B, with the sign differing
+between rows. Identical sizes, different content. Since the same host
+reproduces bit-for-bit, that residue is a real property of which machine
+ran the editor and not noise — roughly 0.0007% of a 12 MB artifact, real,
+and unexplained. Publish which host a number came from.
 
 ---
 
