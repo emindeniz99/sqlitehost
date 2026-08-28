@@ -335,7 +335,7 @@ if (loaded.symbols.local > 0) {
       `symbols, so it was never stripped: ${unityFrameworkPath}`,
   );
   console.error(
-    "`DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES STRIP_STYLE=all` is what strips it, and " +
+    "`DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES` is what strips it, and " +
       "`xcodebuild build` does not strip without the first of those. A stripped Mach-O reports LC_DYSYMTAB " +
       "nlocalsym 0 — measured on Xcode 26.6 on an arm64 iOS dylib, both plain `strip` and `strip -x -S` " +
       "leave 0 where the unstripped file had 209. Symbol names are bytes that never ship, and IL2CPP emits " +

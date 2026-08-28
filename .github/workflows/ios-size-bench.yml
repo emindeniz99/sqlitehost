@@ -472,13 +472,19 @@ jobs:
       #     multi-target project it makes two targets write one file and
       #     xcodebuild fails with "Multiple commands produce".
       # These are command-line overrides, so every one of them applies to
-      # EVERY target in the project rather than to the app alone —
-      # including `STRIP_STYLE=all` on UnityFramework, a dynamic library
-      # whose per-target default is not global stripping. The treatment is
-      # identical for every row and both hosts, so the deltas this bench
-      # exists to report survive it; the absolute UnityFramework byte count
-      # does not, because it is stripped harder here than in a shipping
-      # build. Quote it as a delta, never as a ship size.
+      # EVERY target in the project rather than to the app alone. That is
+      # why STRIP_STYLE is NOT among them, and must not be added back:
+      # forcing `STRIP_STYLE=all` lands it on UnityFramework, which is a
+      # dynamic library, and run 33207852029 failed on both hosts with
+      #   strip: error: symbols referenced by indirect symbol table entries
+      #   that can't be stripped in: .../UnityFramework.framework/UnityFramework
+      # after compiling and linking cleanly. Global stripping is not legal
+      # on a dylib's indirect symbol table. Stripping still happens —
+      # DEPLOYMENT_POSTPROCESSING plus STRIP_INSTALLED_PRODUCT below turn it
+      # on — each target simply gets the style Xcode defines for its own
+      # product type: `all` for the app, non-global for the framework. The
+      # settings are identical for every row and both hosts either way, so
+      # the deltas this bench reports are unaffected by the change.
       - name: Build the Xcode project (unsigned, stripped, arm64)
         env:
           PROJECT: ${{ steps.project.outputs.path }}
@@ -499,7 +505,6 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEPLOYMENT_POSTPROCESSING=YES \
             STRIP_INSTALLED_PRODUCT=YES \
-            STRIP_STYLE=all \
             DEAD_CODE_STRIPPING=YES \
             ENABLE_BITCODE=NO \
             ENABLE_CODE_COVERAGE=NO \
