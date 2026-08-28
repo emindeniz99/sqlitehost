@@ -267,9 +267,18 @@ a bench silently measures nothing.
 away from being false of any given build, and none of the three fails
 visibly when it stops applying, so `measure-ios.mjs` reads all three back
 off the file it weighed — `lipo -archs` for the slice, `LC_CODE_SIGNATURE`
-for the signature, `LC_DYSYMTAB nlocalsym` for the strip — and refuses to
-write a row that is not the unit. That check is written, not exercised: no
-Unity-built framework has been through it.
+for the signature, and `nm` for the strip — and refuses to write a row that
+is not the unit.
+
+The strip check counts NAMED local symbols rather than `LC_DYSYMTAB
+nlocalsym`, because on a dynamic library those two disagree. Measured on
+Xcode 26.6 against an arm64 iOS dylib whose unstripped `nlocalsym` was 18:
+`strip -x`, which is the non-global style Xcode defaults to for a
+framework, succeeds and leaves `nlocalsym` at 1 with zero named local
+symbols — that one entry is Apple's `radr://5614542` placeholder, inserted
+by `strip` itself. Reading `nlocalsym` would therefore call a correctly
+stripped framework unstripped, which is what run 33207852029 did on both
+hosts after `xcodebuild` reported BUILD SUCCEEDED.
 
 `il2cppOnly` is optional in a way the other fields are not: it exists only
 if the link map parses and names archives the script recognises. When it

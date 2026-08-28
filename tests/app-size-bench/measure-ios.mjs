@@ -329,28 +329,51 @@ if (loaded.codeSignature) {
   );
   process.exit(1);
 }
-if (loaded.symbols.local > 0) {
+// Counted from `nm`, not from LC_DYSYMTAB's nlocalsym, because on a
+// dynamic library those two disagree and only one of them answers the
+// question this check is asking.
+//
+// Measured on Xcode 26.6, arm64 iOS dylib, unstripped nlocalsym 18:
+//   strip           -> ERROR (indirect symbol table), nothing stripped
+//   strip -x        -> nlocalsym 1, real local symbols 0
+//   strip -S        -> nlocalsym 1, real local symbols 1
+//   strip -x -S     -> ERROR
+// `-x` is STRIP_STYLE non-global, which is Xcode's default for a framework
+// and therefore what this bench produces. The one symbol it leaves behind
+// is not a symbol at all: it is Apple's `radr://5614542` placeholder,
+// inserted by strip itself. Asserting nlocalsym == 0 would call a
+// correctly stripped framework unstripped — run 33207852029 did exactly
+// that, on both hosts, after xcodebuild reported BUILD SUCCEEDED.
+//
+// What actually matters is that no NAMED local symbol survives: IL2CPP
+// emits one named C function per managed method, and those names are bytes
+// that never ship, so leaving them in inflates precisely the per-method
+// slope rows 9-11 exist to measure.
+const localSymbols = inspect("nm", ["-a", unityFrameworkPath], UNVERIFIABLE)
+  .split(/\r?\n/)
+  .filter((line) => /^[0-9a-f]+ [tdbsr] /.test(line));
+if (localSymbols.length > 0) {
   console.error(
-    `row ${rowNumber}: the measured Mach-O still carries ${loaded.symbols.local.toLocaleString()} local ` +
-      `symbols, so it was never stripped: ${unityFrameworkPath}`,
+    `row ${rowNumber}: the measured Mach-O still carries ${localSymbols.length.toLocaleString()} named ` +
+      `local symbols, so it was never stripped: ${unityFrameworkPath}`,
   );
+  console.error(localSymbols.slice(0, 10).map((line) => `    ${line}`).join("\n"));
   console.error(
-    "`DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES` is what strips it, and " +
-      "`xcodebuild build` does not strip without the first of those. A stripped Mach-O reports LC_DYSYMTAB " +
-      "nlocalsym 0 — measured on Xcode 26.6 on an arm64 iOS dylib, both plain `strip` and `strip -x -S` " +
-      "leave 0 where the unstripped file had 209. Symbol names are bytes that never ship, and IL2CPP emits " +
-      "one named C function per managed method, so an unstripped row inflates exactly the per-method slope " +
-      "rows 9-11 exist to measure.",
+    "`DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES` is what strips it, and `xcodebuild " +
+      "build` does not strip without the first of those. Do NOT add `STRIP_STYLE=all` to make this " +
+      "stricter: strip refuses global stripping on a dylib's indirect symbol table and the build fails.",
   );
   process.exit(1);
 }
 
 const machO = {
   arch,
-  // `codeSignature` is false and `symbols.local` is 0 by construction — the
-  // row exits above otherwise. They are recorded so that a reader of the JSON
-  // can see the file was checked rather than assumed, and so that the other
-  // symbol counts are there to read.
+  // `codeSignature` is false by construction — the row exits above
+  // otherwise. `symbols.local` is NOT 0: a framework stripped non-global
+  // keeps Apple's `radr://5614542` placeholder, so this is normally 1. The
+  // stripped check above counts named local symbols with `nm` instead.
+  // Recorded so a reader of the JSON can see the file was checked rather
+  // than assumed, and so the other symbol counts are there to read.
   codeSignature: loaded.codeSignature,
   symbols: loaded.symbols,
   // Per segment: `vmSize` is the page-rounded virtual size, `fileSize` the
