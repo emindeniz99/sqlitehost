@@ -8,8 +8,13 @@
 # bump a major.
 version: 2
 updates:
+  # Both directories: `/` covers .github/workflows/, and the explicit
+  # composite-action path covers the `uses:` pins inside it — dependabot
+  # does not reach nested composite actions from the root entry alone.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/unity-xcodeproj
     schedule:
       interval: weekly
     groups:

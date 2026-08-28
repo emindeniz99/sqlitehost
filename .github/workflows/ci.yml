@@ -285,4 +285,7 @@ jobs:
       # audits only query public metadata.
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: zizmor --config .github/zizmor.yml .github/workflows/
+        # `.github/actions/` is in scope on purpose: the composite action
+        # ios-size-bench.yml calls carries its own SHA-pinned `uses:` steps,
+        # and auditing only `workflows/` would leave them unwatched.
+        run: zizmor --config .github/zizmor.yml .github/workflows/ .github/actions/

@@ -23,6 +23,13 @@ it publishes a table and an artifact instead of blocking a merge. The
 hand-run instructions below still work unchanged, and are what you want
 when you are investigating rather than monitoring.
 
+The iOS matrix is a third workflow, `ios-size-bench.yml`, monthly and on
+demand, driven by the same rows and the same `SizeBench` entry point plus
+`measure-ios.mjs`. It has never run and no iOS number exists yet. It is
+written to measure a different unit on a different toolchain, and its
+numbers will not be an extension of the Android table. §7 says what it is
+built to measure and what may be compared with what.
+
 ---
 
 ## 1. Hypothesis ledger — what was tested, what must be re-tested
@@ -64,8 +71,10 @@ guidance stays as-is or gets IL2CPP-specific footnotes):
   if time permits). **IL2CPP Code Generation**: "Faster (smaller)
   builds" where available; record the setting used.
 - **Platform**: Android (release, IL2CPP, ARM64 only) is the primary
-  target — its build sizes are easy to measure headlessly. iOS numbers
-  are welcome as a bonus if a mac is available.
+  target — its build sizes are easy to measure headlessly. iOS has a leg
+  of its own, unrun so far, and it is a separate exercise with its own
+  unit, its own pinned toolchain and its own comparability rules; see §7
+  before putting an iOS number anywhere near an Android one.
 - **Measure**, per build: (a) the stripped `libil2cpp.so` size (ARM64)
   from the APK/AAB, (b) `global-metadata.dat` size, (c) the compressed
   download proxy: `gzip -9` of those two files (or the APK size delta).
@@ -190,6 +199,180 @@ Produce `docs/reports/il2cpp-size-report.md` (new folder is fine) with:
 > the two that can genuinely flip; treat their verdicts as the headline
 > of your report. Every build must pass the §4 validity checks before
 > its numbers count.
+
+## 7. The iOS half
+
+**No row of this matrix has been built.** The workflow, the `-sbTarget ios`
+branch of `SizeBench.cs` that drives it and `measure-ios.mjs` are all new,
+and none of them has run, so everything below describes what the code is
+written to do rather than what was seen. The exceptions are the numbers
+explicitly marked *measured*: those come from a trivial hand-written Xcode
+app and from inspecting binaries already on a Mac, never from a Unity
+build. "What is not settled yet" at the end lists the questions only a run
+can answer.
+
+### Why it is two stages and not one
+
+Unity's iOS build emits an Xcode project; Xcode compiles and links it.
+That is how Unity builds for iOS on every host, not a limitation of CI, so
+the bench is a handoff by construction. `ios-size-bench.yml` runs the
+editor in its `xcodeproj-linux` and `xcodeproj-macos` jobs and `xcodebuild`
+in its `compile` job, which
+is always a macOS runner.
+
+The editor half runs on two hosts on purpose — `ubuntu-latest` with
+GameCI's digest-pinned iOS editor container, and a standard macOS runner
+where the same action installs the editor onto the machine. The `compile`
+job's steps are identical for both, which is what would make a byte of
+difference between the two attributable to the Unity host and nothing
+else — an inference that holds only as far as the compile stage is
+deterministic, and nothing has measured that yet. The summary prints that
+delta row by row. One of the two hosts gets deleted once the comparison
+has run; until then both are built, and a row JSON records which host
+produced it in `unityHost`.
+
+The validity gate is unchanged. `SizeBench.ValidateAndBuild` loads
+`Assembly-CSharp` and invokes the row's entry point by reflection **inside
+the editor**, before the build, and writes the result beside the output.
+The iOS leg is written to hit that same gate — `Validate()` runs before
+either platform's `Build()`, ahead of the `-sbTarget` branch — so a row that
+prints the wrong value should fail before its bytes count. Written, not
+observed: no editor has compiled the iOS branch, so the gate's behaviour
+here is inherited from the Android leg rather than seen on this one.
+Neither leg has ever proven that the code survives IL2CPP stripping in a
+running player — that is a different claim and no platform here backs it.
+
+### The unit
+
+Per row — the first three weighed both raw and `gzip -9`, the rest recorded
+as they are:
+
+| Field | What it is |
+|---|---|
+| `unityFramework` | `UnityFramework.framework/UnityFramework` inside the built `.app` — the stripped, unsigned, single-slice arm64 Mach-O |
+| `globalMetadata` | `global-metadata.dat` inside the same `.app` |
+| `total` | the two above, summed, so the delta arithmetic is the same code as Android's |
+| `il2cppOnly` | link-map bytes attributed to the archives the script treats as IL2CPP's — all three of `libGameAssembly.a`, `il2cpp.a` and `libil2cpp.a` (the last is the older layout's name for the runtime) — generated code plus the IL2CPP runtime, engine excluded |
+| `machO` | what the weighed file's own load commands say: its architecture, whether an `LC_CODE_SIGNATURE` is attached, the `LC_SYMTAB`/`LC_DYSYMTAB` symbol counts, and per segment its page-rounded `vmSize`, its `fileOffset` and on-disk `fileSize`, and the byte-granular sizes of the sections inside it, plus `vmTotal` and `fileTotal` summed over the segments |
+| `env` | Unity version, Unity host, Xcode version and build, iOS SDK, runner label |
+
+Every path is found by searching the built product, and the measurement
+fails if the search does not resolve to exactly one file. Unity's manual
+describes the 2022.3 layout — three targets, `libGameAssembly.a` and
+`il2cpp.a` linked into `UnityFramework` — but no build of it has been
+opened in this repository, and a hardcoded path that stops matching is how
+a bench silently measures nothing.
+
+"Stripped, unsigned, single-slice arm64" is three `xcodebuild` arguments
+away from being false of any given build, and none of the three fails
+visibly when it stops applying, so `measure-ios.mjs` reads all three back
+off the file it weighed — `lipo -archs` for the slice, `LC_CODE_SIGNATURE`
+for the signature, `LC_DYSYMTAB nlocalsym` for the strip — and refuses to
+write a row that is not the unit. That check is written, not exercised: no
+Unity-built framework has been through it.
+
+`il2cppOnly` is optional in a way the other fields are not: it exists only
+if the link map parses and names archives the script recognises. When it
+does not, the field is `null` and the row JSON carries the reason. It is
+never estimated from anything else.
+
+### The pinned xcodebuild settings, and why each one is pinned
+
+`xcodebuild` defaults are not what a size measurement wants, so every
+size-relevant setting is on the command line rather than inherited:
+
+| Setting | Why |
+|---|---|
+| `-configuration Release -sdk iphoneos -destination 'generic/platform=iOS'` | A device build of the shipping configuration. A simulator slice is different code against a different SDK. |
+| `ARCHS=arm64 ONLY_ACTIVE_ARCH=NO` | One slice, the one that ships. A fat binary would double the number and hide the change. |
+| `DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES STRIP_STYLE=all` | **`xcodebuild build` does not strip by default.** `STRIP_INSTALLED_PRODUCT` is already `YES` and inert, because `DEPLOYMENT_POSTPROCESSING` is `NO` for the build action. Measured on Xcode 26.6, stripping is worth 22.8% of a trivial app, and should be worth more under IL2CPP, which emits one named C function per managed method — the exact quantity rows 9-11 exist to measure. Unstripped, the per-method slope would be inflated by symbol-name bytes that never ship. |
+| `ENABLE_CODE_COVERAGE=NO CLANG_COVERAGE_MAPPING=NO` | The build action silently enables coverage instrumentation and the archive action does not; on a trivial app that alone was ~28 KB of `libclang_rt.profile_ios` members plus an `__LLVM_COV` segment. |
+| `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CODE_SIGN_ENTITLEMENTS=""` | CI has no Apple account, and unsigned is also the better measurement: signing appends a reserved region (measured: +19,720 B for 1,699 B of real signature) whose padding is lumpy across rows. |
+| `DEAD_CODE_STRIPPING=YES ENABLE_BITCODE=NO` | Both are the current defaults; pinned so a toolchain default cannot move under a month-over-month comparison. Bitcode is dead in current Xcode and was measured to change nothing. |
+| `LD_GENERATE_MAP_FILE=YES` | The link map is what makes `il2cppOnly` possible. `LD_MAP_FILE_PATH` is deliberately **not** set: on a multi-target project it makes two targets write one file and the build fails with `Multiple commands produce`. |
+
+Xcode itself is an input to the measurement, exactly like the editor patch.
+The workflow pins `DEVELOPER_DIR` to a specific Xcode and stamps the
+version, the build number and the iOS SDK into every row JSON. When GitHub
+retires that Xcode the pin fails loudly, which is the point — a silent roll
+would change the compiler under a size measurement without failing
+anything. Treat an Xcode bump as a re-baseline, not as something to compare
+across.
+
+### Comparability
+
+**iOS absolute bytes are not comparable to Android absolute bytes.** Three
+independent reasons, any one of which is sufficient:
+
+1. The BCL profile differs — Android links `unityaot-linux`, iOS
+   `unityaot-macos`.
+2. The compiler differs — Android NDK clang against Apple clang.
+3. The scope differs structurally. On iOS the generated code is linked
+   **into `UnityFramework` together with the whole Unity engine**. On
+   Android, `libil2cpp.so` excludes the engine, which lives in
+   `libunity.so` — a file this bench has never measured. A row that drags
+   in engine code shows up in the iOS number and is invisible in the
+   Android one.
+
+What is valid:
+
+- **iOS row-minus-baseline deltas, compared against each other.** That is
+  what the iOS leg is *intended* to produce. It becomes a result once the
+  build-row-0-twice reproducibility check below has passed: until two
+  identical builds are known to agree, a delta cannot be told from noise.
+- **The shape claims.** H-PROFILES (per-method slope falling classic →
+  compact → ultra), H-SLIM (a net win) and H-GVM (the cost of one generic
+  virtual method) are stated as ratios and orderings rather than as byte
+  counts, which is what makes them the kind of claim a second toolchain
+  can re-test at all. Whether any of them survives that re-test is the
+  hypothesis this leg exists to measure, not a property it may assume.
+  H-FIELDS is deliberately not on that list: it predicts a zero, and the
+  caveat below says a zero cannot be resolved from a file size at all. It
+  is blocked on the sub-file-size numbers — the section sizes inside
+  `machO`, and `il2cppOnly`, which is optional and may be `null`.
+- **`il2cppOnly` as the same *kind* of quantity as Android's
+  `libil2cpp.so`** — generated code plus IL2CPP runtime, engine excluded.
+  Same kind, not the same number: different compiler, different ABI,
+  different BCL, and a different way of counting. `il2cppOnly` is a sum of
+  the extents of the symbols the linker kept, read out of the map `ld`
+  writes at link time, before the strip step; Android's number is a file
+  size. So it excludes the alignment padding, the Mach-O headers and the
+  `__LINKEDIT` data that a file size includes, and no scaling reconciles
+  the two.
+
+One measurement caveat that is specific to Mach-O: segments are 16 KB
+aligned, so an iOS file size is quantized in a way the Android `.so` is not
+at the same granularity. A sub-page difference can vanish or jump a whole
+page. That is why `machO` and `il2cppOnly` are recorded rather than being
+nice-to-haves — but be exact about which of those numbers escapes the
+quantization, because most of them do not. Of what the load commands
+report, only `machO.segments[].sections[].size` is a byte count of real
+content. `segments[].vmSize` is a virtual-memory size rounded up to a page
+and `machO.vmTotal` sums those; `segments[].fileSize` is the segment's
+on-disk extent, which is page-aligned as well for every segment but the
+last, and `machO.fileTotal` sums to the file size itself. (Measured here on
+a single-slice arm64 dylib from the Xcode 26.6 toolchain: `__TEXT`,
+`__DATA_CONST` and `__DATA` at `filesize` 16,384 each against `__LINKEDIT`
+at 24,608, the four summing to the file size exactly, and section sizes
+down to 8 bytes.) So a zero-bytes hypothesis like H-FIELDS has to be
+resolved from the section sizes or from `il2cppOnly`, never from a file
+size, a segment size or a segment total.
+
+### What is not settled yet
+
+Nothing in this section has been produced by a run. Specifically unknown
+until the first one: whether an Xcode project generated on Linux builds
+unmodified on macOS (GameCI ships `dockerWorkspacePath` because absolute
+paths can leak into `project.pbxproj`, and that input is the documented
+lever if it bites — not a `sed` over the pbxproj); where 2022.3 puts the
+generated C++ and whether the project carries any host-specific executable
+an Xcode build phase invokes; whether `Unity-iPhone` is a shared scheme;
+whether the IL2CPP archives (`libGameAssembly.a`, `il2cpp.a`, or the older
+`libil2cpp.a`) separate cleanly in the link map; per-row wall clock and
+peak disk on both stages; and whether iOS row deltas reproduce run to run
+at all. Build row 0 twice on the first full run
+and diff — if the two disagree, every delta below the quantum is noise and
+this section needs a stated resolution floor.
 
 ---
 

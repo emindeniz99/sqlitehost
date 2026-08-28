@@ -89,7 +89,12 @@ SDK and architecture drift. Byte-for-byte regression against
 an ubuntu-latest runner, and a change that is supposed to move bytes
 re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a monthly
 measurement, not a gate: `il2cpp-size-bench.yml` builds the 12-row
-matrix in a real editor and publishes a table.
+matrix in a real editor and publishes a table. `ios-size-bench.yml` is
+written to build the same rows for iOS and publish a second table whose
+bytes are not comparable to the Android one, but it has never run and no
+iOS number exists yet — `docs/guides/il2cpp-size-protocol.md` §7 says why
+the two platforms are not comparable, and lists what only a first run can
+settle.
 
 ## Playground browser tests (`typescript/playground`)
 
@@ -140,7 +145,7 @@ lines (6000.0.82f1, 6000.1.17f1, 6000.2.15f1, 6000.3.22f1, 6000.4.12f1,
 needs the licence secrets, which GitHub does not pass to fork pull
 requests, so a fork gets the licence-free scaffold-guard instead.
 
-Four more workflows carry the suites that do not belong in the main
+Five more workflows carry the suites that do not belong in the main
 matrix, each at the cadence its cost justifies:
 
 | Workflow | Cadence | What |
@@ -148,7 +153,8 @@ matrix, each at the cadence its cost justifies:
 | `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
 | `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
 | `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
-| `il2cpp-size-bench.yml` | monthly + on demand | the Unity IL2CPP app-size matrix (a measurement, never a gate) |
+| `il2cpp-size-bench.yml` | monthly + on demand | the Unity IL2CPP app-size matrix on Android (a measurement, never a gate) |
+| `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement, and it has never run |
 
 So everything in `tests/end-to-end/run-all.sh` now runs in CI — but not
 all of it on every push. A change outside `csharp/` does not wait for the

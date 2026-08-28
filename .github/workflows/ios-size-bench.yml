@@ -1,0 +1,587 @@
+# Unity IL2CPP app-size matrix, iOS half
+# (docs/guides/il2cpp-size-protocol.md §7).
+#
+# Same rows, same sources, same editor version as il2cpp-size-bench.yml —
+# a different platform and a different measured unit. That file is not
+# touched by this one: a single malformed step makes GitHub reject a whole
+# workflow file before any job starts, and the Android matrix is the only
+# Unity measurement in this repository that has ever run green.
+#
+# WHY TWO STAGES. Unity's iOS build emits an Xcode project; Xcode compiles
+# and links it. That is how Unity builds for iOS on every host, not a
+# workaround for anything, so the bench is a handoff by construction:
+# `xcodeproj-linux` / `xcodeproj-macos` run the editor, `compile` runs
+# xcodebuild on a Mac.
+#
+# WHY TWO UNITY HOSTS, IN TWO JOBS. The editor half can run either on
+# ubuntu-latest inside GameCI's iOS editor container or on a macOS runner
+# where the same action installs Unity onto the host. Which one to keep is
+# an open question, so both are built and the summary prints the row-by-row
+# byte delta between them. `compile` is identical for both, which is what
+# WOULD make that delta a property of the Unity host and nothing else — an
+# inference rather than a result. It holds only while every leg really did
+# run the same editor, Xcode and SDK, so summarize-il2cpp.mjs checks that
+# premise against the toolchain fields in the row JSONs before printing
+# the comparison: it withdraws the causal reading when they disagree and
+# calls the premise unverified when they are unset.
+#
+# They are two jobs and not one two-dimensional matrix because the hosts
+# need different parallelism (see the licence paragraph), and a matrix has
+# one `max-parallel` for the whole thing. The thirteen steps they share
+# live in `.github/actions/unity-xcodeproj`, so the split costs no
+# duplication. One of the two hosts gets deleted once the comparison has
+# run — remove it from the `hosts` list in `plan` and delete that host's
+# job (ROADMAP.md carries the reminder).
+#
+# HOW THE LICENCE IS ACTIVATED, AND WHY THAT DIFFERS BY HOST. The two hosts
+# do not consume the Unity licence the same way, and that — more than the
+# Homebrew install it is tempting to blame — is what constrains the macOS
+# half. On Linux the action passes the personal .ulf straight
+# through as `-manualLicenseFile`, which has no concurrency limit, and that
+# is the same path il2cpp-size-bench.yml's Android matrix already runs
+# green. On macOS the .ulf is NOT used that way: unity-builder's
+# `build-parameters.ts` derives a serial from it with
+# `getSerialFromLicenseFile(Input.unityLicense)`, and
+# `dist/platforms/mac/steps/activate.sh` runs
+# `unity-editor -serial "$UNITY_SERIAL" -username "$UNITY_EMAIL" -password …`.
+# Serial activation on a Personal seat has a documented cap of two
+# concurrent activations and returns the seat when the leg ends, so macOS
+# legs that overlap fight over it. Hence `max-parallel: 1` on
+# `xcodeproj-macos`, against `max-parallel: 3` on `xcodeproj-linux`.
+#
+# A job-level `concurrency` group is the obvious way to write "one macOS
+# leg at a time" and is the wrong tool: GitHub keeps at most ONE pending
+# job per concurrency group and cancels the rest — "any existing pending
+# job or workflow in the same concurrency group will be canceled" —
+# regardless of `cancel-in-progress`. A twelve-row macOS matrix would
+# therefore lose ten legs before they started, and lose them silently,
+# because `continue-on-error` covers failure and not cancellation and a
+# job that never starts never evaluates its `if: failure()` note.
+# `max-parallel` queues rather than cancels, which is the behaviour that
+# was wanted. It queues within one run only, which is enough here: the
+# workflow-level group above admits one run per ref, so two runs overlap
+# only across refs, holding two activations — exactly the documented
+# Personal cap. Keeping the serialization in the matrix scheduler also
+# leaves this file with the one concurrency group per workflow that
+# CLAUDE.md asks for.
+#
+# Serial activation has a failure mode with no automatic repair, and no
+# amount of serialization removes it: a leg killed between activation and
+# return — a cancelled run, a runner that dies — leaks the seat. It stays
+# consumed until somebody releases it from the Unity account, and the
+# symptom is the NEXT macOS leg failing to activate.
+#
+# THE macOS HOST IS NON-BLOCKING, ON PURPOSE. `xcodeproj-macos` carries
+# `continue-on-error` for the whole job and `compile` carries it for its
+# macOS legs, so a macOS path broken on GameCI's side leaves this workflow
+# green and its Linux measurement intact: the decision is to leave it
+# sitting there until GameCI fixes it, or delete the host. A failing macOS
+# leg writes a line into the run summary naming itself as the experimental
+# host, so nobody spends an afternoon debugging it as a regression. The
+# Linux host stays blocking.
+#
+# NOTHING BELOW HAS EVER RUN. Every job here is new, the macOS legs are the
+# first macOS jobs in this repository, and the iOS branch of SizeBench.cs
+# was written against Unity's scripting reference rather than compiled.
+# Treat the first dispatch as a debugging session, not a measurement.
+#
+# COST. Standard GitHub-hosted runners, macOS labels included, are free and
+# unlimited on public repositories, and this repository is public. Two
+# limits replace money: at most 5 concurrent macOS jobs account-wide, and
+# larger runners (macos-*-large / -xlarge) ARE billed even here — so
+# `runs-on` must stay a standard label, permanently. The two stages cannot
+# overlap — `compile` needs both editor jobs — so a full run peaks at three
+# concurrent macOS jobs, which is the `compile` wave: three of the five,
+# leaving headroom for anything else the account is running.
+#
+# CADENCE. workflow_dispatch (with a row and host subset) plus a monthly
+# schedule. Deliberately NOT on pull_request: the Android matrix already
+# guards pull requests, this is a measurement rather than a gate, and the
+# macOS half is unproven. Revisit after a few clean monthly runs.
+name: ios-size-bench
+
+on:
+  schedule:
+    # 04:23 UTC on the 7th of each month. A different day from
+    # il2cpp-size-bench.yml's 3rd on purpose: both matrices are hours long
+    # and the macOS concurrency cap is account-wide.
+    - cron: "23 4 7 * *"
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: "Rows to measure, as a JSON array (see tests/app-size-bench/il2cpp-rows.json)"
+        required: false
+        default: "[0,2,4]"
+      hosts:
+        description: "Which host runs the Unity editor"
+        required: false
+        default: "linux,macos"
+        type: choice
+        options:
+          - "linux,macos"
+          - "linux"
+          - "macos"
+
+permissions:
+  contents: read
+
+# A scheduled run IS the measurement, so it is never cancelled: a
+# half-finished matrix is worse than a late one. The pull_request half of
+# the expression cannot fire today — this workflow has no pull_request
+# trigger — and is written the same way as il2cpp-size-bench.yml's so the
+# two do not drift if one is ever added.
+concurrency:
+  group: ios-size-bench-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The same single editor the Android matrix uses. Comparing rows only
+  # means something when every row used the same editor, and comparing the
+  # two Unity hosts only means something when they used the same one too.
+  UNITY_VERSION: 2022.3.62f3
+  # GameCI's iOS editor image for that exact version, pinned by digest.
+  # The tags `-ios-3` and `-ios-3.2` are floating aliases and `-3.2.0` /
+  # `-3.2.1` are genuinely different images, so a tag pin would hand the
+  # licence secrets to a container nobody reviewed. Re-resolve with:
+  #   docker buildx imagetools inspect \
+  #     unityci/editor:ubuntu-2022.3.62f3-ios-3.2.2 \
+  #     --format '{{.Manifest.Digest}}'
+  # There is no macOS equivalent to pin: unityci publishes no macOS image
+  # at all, which is why the macOS host installs the editor instead.
+  IOS_EDITOR_IMAGE: unityci/editor@sha256:ed1bdc5c12738b764f707487a65654aceb0e888d27ce74dccab85c107669edaf
+  # Recorded into every row JSON. Must match the `runs-on:` literals below,
+  # which cannot read this value — `runs-on` has no env context.
+  MACOS_RUNNER_LABEL: macos-26
+
+jobs:
+  # Inert today: this workflow has no pull_request trigger, so the
+  # condition never holds. It is here so that adding one later is a
+  # one-line change that does not hand fork contributors a red X for a
+  # secret GitHub will never give them — same pattern, same wording as
+  # il2cpp-size-bench.yml.
+  licence-guard:
+    name: licence availability
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the skip
+        run: |
+          {
+            echo "### iOS size bench skipped"
+            echo
+            echo "GitHub does not pass repository secrets to a pull request from a fork,"
+            echo "so the Unity licence cannot be activated here. A maintainer can run the"
+            echo "matrix on the merge commit with \`workflow_dispatch\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # What this run measures, and on which Unity hosts. One job so the two
+  # matrices below have a single source rather than a condition repeated
+  # per trigger, and so deleting a host later is one edit.
+  plan:
+    name: plan rows and hosts
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      rows: ${{ steps.pick.outputs.rows }}
+      hosts: ${{ steps.pick.outputs.hosts }}
+    steps:
+      - id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ROWS: ${{ inputs.rows }}
+          INPUT_HOSTS: ${{ inputs.hosts }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            rows='[0,1,2,3,4,5,6,7,8,9,10,11]'
+            hosts_input='linux,macos'
+          else
+            # A dispatch defaults to the same three-row subset the Android
+            # matrix uses on a pull request — baseline, the default profile
+            # and the smallest profile — because a dispatch is usually a
+            # test of this workflow rather than a measurement.
+            rows="${INPUT_ROWS:-[0,2,4]}"
+            hosts_input="${INPUT_HOSTS:-linux,macos}"
+          fi
+          # Garbage in the dispatch input should fail here, not produce a
+          # matrix that silently measures the wrong thing.
+          if ! printf '%s' "$rows" \
+            | jq -e 'type == "array" and length > 0 and all(type == "number" and floor == . and . >= 0 and . <= 11)' >/dev/null; then
+            echo "::error title=Bad row list::rows must be a JSON array of integers 0-11, got: $rows"
+            exit 1
+          fi
+          case "$hosts_input" in
+            "linux,macos") hosts='["linux","macos"]' ;;
+            "linux") hosts='["linux"]' ;;
+            "macos") hosts='["macos"]' ;;
+            *) echo "::error title=Bad host list::hosts must be linux, macos or linux,macos; got: $hosts_input"; exit 1 ;;
+          esac
+          echo "rows=$rows" >> "$GITHUB_OUTPUT"
+          echo "hosts=$hosts" >> "$GITHUB_OUTPUT"
+          echo "rows $rows on hosts $hosts"
+
+  # Stage one, Linux host: the editor emits an Xcode project from inside
+  # GameCI's digest-pinned iOS container. This is the blocking half of the
+  # bench — a failure here fails the run.
+  xcodeproj-linux:
+    name: xcode project — row ${{ matrix.row }} (unity on linux)
+    needs: plan
+    # `plan` decides which hosts this run wants; a host that was not asked
+    # for is skipped, and `compile` below is written to tolerate that.
+    if: contains(fromJSON(needs.plan.outputs.hosts), 'linux')
+    runs-on: ubuntu-latest
+    # No leg has ever run, so this is a bound rather than a measurement —
+    # re-derive it from the first real run rather than leaving 120 in
+    # because it never tripped.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      # Each leg pulls a 5.7 GB editor image, and three of them at once is
+      # what this job is budgeted for. It is this job's own budget: the
+      # macOS legs are a separate job with a separate one, which is the
+      # whole reason the two hosts are not one matrix.
+      max-parallel: 3
+      matrix:
+        row: ${{ fromJSON(needs.plan.outputs.rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The thirteen steps both hosts share. It has to come after the
+      # checkout: a local action cannot be resolved before the repository
+      # is on the runner.
+      - uses: ./.github/actions/unity-xcodeproj
+        with:
+          row: ${{ matrix.row }}
+          host: linux
+          unity-version: ${{ env.UNITY_VERSION }}
+          custom-image: ${{ env.IOS_EDITOR_IMAGE }}
+          # A 5.7 GB compressed image against roughly 14 GB free.
+          reclaim-disk: "true"
+          # Nothing is installed onto this runner, so there is no on-host
+          # editor install to bracket with disk reports.
+          report-host-disk: "false"
+          unity-license: ${{ secrets.UNITY_LICENSE }}
+          unity-email: ${{ secrets.UNITY_EMAIL }}
+          unity-password: ${{ secrets.UNITY_PASSWORD }}
+
+  # Stage one, macOS host: the same editor, installed onto the runner
+  # instead of pulled as an image. Experimental and non-blocking (header).
+  xcodeproj-macos:
+    name: xcode project — row ${{ matrix.row }} (unity on macos)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.hosts), 'macos')
+    # `runs-on` cannot read the env context, so the macOS label is a
+    # literal here and in `compile`, and MACOS_RUNNER_LABEL above repeats
+    # it for the row JSON. Keep the three in step.
+    runs-on: macos-26
+    # The macOS host is the experimental one (see the header). Its legs
+    # report their own failure into the run summary and do not redden the
+    # workflow; the Linux job fails the run exactly as before.
+    continue-on-error: true
+    # Covers both halves of a leg, including unity-builder installing Unity
+    # Hub and the editor before anything is built. No leg has ever run, so
+    # this is a bound, not a measurement.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      # One at a time, and this is the serialization the licence needs: on
+      # this host unity-builder activates a SERIAL, and a Personal seat
+      # allows two concurrent activations (header). The matrix scheduler
+      # QUEUES the remaining legs; a job-level `concurrency` group would
+      # have cancelled all but one of them.
+      max-parallel: 1
+      matrix:
+        row: ${{ fromJSON(needs.plan.outputs.rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The same thirteen steps the Linux job runs, with the three inputs
+      # that genuinely differ by host.
+      - uses: ./.github/actions/unity-xcodeproj
+        with:
+          row: ${{ matrix.row }}
+          host: macos
+          unity-version: ${{ env.UNITY_VERSION }}
+          # Empty: unityci publishes no macOS image, so unity-builder
+          # installs Unity Hub through Homebrew and then the editor onto
+          # the runner. That install and the serial activation the header
+          # describes are the two macOS-only risks the host comparison is
+          # meant to price.
+          custom-image: ""
+          # Deleting preinstalled toolchains is the Linux job's problem;
+          # no measurement here says which of them the Unity Hub installer
+          # needs, so nothing is removed on the Mac.
+          reclaim-disk: "false"
+          # There IS an on-host editor install here — about 10.6 GB — so
+          # print free disk either side of it.
+          report-host-disk: "true"
+          unity-license: ${{ secrets.UNITY_LICENSE }}
+          unity-email: ${{ secrets.UNITY_EMAIL }}
+          unity-password: ${{ secrets.UNITY_PASSWORD }}
+
+      # `continue-on-error` above keeps a failed macOS leg out of the run's
+      # status, so the leg has to say so itself — otherwise the only trace
+      # is a job nobody is told to expect.
+      - name: Note that this macOS leg failed
+        if: failure()
+        env:
+          ROW: ${{ matrix.row }}
+        run: |
+          {
+            echo "### row $ROW — Unity-on-macOS editor leg FAILED (experimental host)"
+            echo
+            echo "macOS is the experimental Unity host in this bench and is non-blocking by"
+            echo "design, so this failure does not redden the run. It is not a regression in"
+            echo "SqliteHost: the Linux legs carry the measurement. Read the header of"
+            echo "\`.github/workflows/ios-size-bench.yml\` before debugging it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Stage two: Xcode compiles and links what the editor emitted. Always a
+  # Mac, whichever host produced the project — which is what would make a
+  # byte of difference between the hosts a property of the Unity host
+  # rather than of the compiler. summarize-il2cpp.mjs is where that premise
+  # is actually tested, against the toolchain recorded in each row JSON;
+  # this job only makes it plausible by treating both hosts identically.
+  compile:
+    name: xcodebuild — row ${{ matrix.row }} (unity on ${{ matrix.host }})
+    needs: [plan, xcodeproj-linux, xcodeproj-macos]
+    # Compile whatever the editor half produced, even when some of its legs
+    # failed: one bad leg must not cost every other row its measurement. A
+    # leg whose project was never uploaded fails loudly at the download
+    # step, which is the truthful outcome rather than a silent gap.
+    # `!cancelled()` and not `always()`: `always()` ignores cancellation
+    # too, so cancelling a full matrix would still launch up to 24 macOS
+    # compile jobs that nothing can stop.
+    #
+    # A run that asked for only one host skips the other editor job
+    # entirely, so the gate is "at least one of them was not skipped"
+    # rather than a single result: the surviving host still has rows to
+    # compile, and the skipped host contributes no legs because
+    # `plan.outputs.hosts` no longer names it.
+    if: ${{ !cancelled() && (needs.xcodeproj-linux.result != 'skipped' || needs.xcodeproj-macos.result != 'skipped') }}
+    runs-on: macos-26
+    # A compile leg is only as experimental as the host that produced its
+    # project: the macOS legs stay non-blocking on both sides of the
+    # handoff, so a broken macOS editor leg cannot redden the run through
+    # its counterpart here either (that counterpart fails at the download
+    # step). The Linux legs remain the ones that gate.
+    continue-on-error: ${{ matrix.host == 'macos' }}
+    # Nobody has compiled this project's IL2CPP output on a 3-CPU runner,
+    # so this bound is a guess and the first run is the measurement.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        row: ${{ fromJSON(needs.plan.outputs.rows) }}
+        host: ${{ fromJSON(needs.plan.outputs.hosts) }}
+    env:
+      # Xcode is an input to this measurement exactly like the editor
+      # patch: a different clang is different bytes. `macos-26` currently
+      # defaults to Xcode 26.6, but the default is not a promise, so the
+      # toolchain is pinned by path and recorded in every row JSON. When
+      # GitHub retires this Xcode the pin fails loudly, which is the
+      # intended behaviour — a silent roll would corrupt month-over-month
+      # comparability without failing anything.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ios-xcodeproj-${{ matrix.row }}-${{ matrix.host }}
+          path: artifact
+
+      - name: Unpack the Xcode project
+        env:
+          ROW: ${{ matrix.row }}
+          HOST: ${{ matrix.host }}
+        run: |
+          set -euo pipefail
+          mkdir -p project
+          tar -xzf "artifact/xcodeproj-row$ROW-$HOST.tgz" -C project
+          ls -l project
+
+      - id: toolchain
+        name: Pin and record the Xcode toolchain
+        run: |
+          set -euo pipefail
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error title=Xcode pin missing::$DEVELOPER_DIR is not on this runner image. Pick a new Xcode from the list below, update DEVELOPER_DIR in .github/workflows/ios-size-bench.yml, and treat the change as a re-baseline: the numbers before and after it are not comparable."
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          df -h /
+          xcodebuild -version | tee /tmp/xcodebuild-version.txt
+          xcrun --sdk iphoneos --show-sdk-version > /tmp/ios-sdk.txt
+          cat /tmp/ios-sdk.txt
+          {
+            echo "xcode=$(sed -n '1s/^Xcode //p' /tmp/xcodebuild-version.txt)"
+            echo "build=$(sed -n '2s/^Build version //p' /tmp/xcodebuild-version.txt)"
+            echo "sdk=$(cat /tmp/ios-sdk.txt)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Which project, and what it calls its schemes and targets. Whether
+      # `Unity-iPhone` is a SHARED scheme in a 2022.3 project generated on
+      # Linux is unverified; if the build below fails on `-scheme`, this
+      # listing is the answer.
+      - id: project
+        name: Locate the Xcode project and list its schemes
+        run: |
+          set -euo pipefail
+          find project -maxdepth 3 -name '*.xcodeproj' | sort > /tmp/xcodeprojs.txt
+          count=$(wc -l < /tmp/xcodeprojs.txt | tr -d ' ')
+          if [ "$count" != "1" ]; then
+            echo "::error title=Ambiguous Xcode project::expected exactly one .xcodeproj in the artifact, found $count"
+            cat /tmp/xcodeprojs.txt
+            exit 1
+          fi
+          project=$(cat /tmp/xcodeprojs.txt)
+          echo "path=$project" >> "$GITHUB_OUTPUT"
+          xcodebuild -list -project "$project"
+
+      # Every size-relevant setting is on the command line rather than
+      # inherited from the action, because the action's defaults are not
+      # what a size measurement wants:
+      #   DEPLOYMENT_POSTPROCESSING=YES  `xcodebuild build` does NOT strip
+      #     by default — STRIP_INSTALLED_PRODUCT is set but inert without
+      #     this. Measured on Xcode 26.6: worth 22.8% of a trivial app, and
+      #     far more under IL2CPP, which emits one named C function per
+      #     managed method — exactly the quantity rows 9-11 measure.
+      #   ENABLE_CODE_COVERAGE / CLANG_COVERAGE_MAPPING=NO  the build
+      #     action silently enables coverage instrumentation (a __LLVM_COV
+      #     segment plus libclang_rt.profile_ios members); archive does
+      #     not. Pin it rather than inferring it from the action.
+      #   CODE_SIGNING_ALLOWED=NO ...  measured to produce a real
+      #     single-slice arm64 Mach-O with no LC_CODE_SIGNATURE on a Mac
+      #     with no certificates. Signing would add a lumpy ~19.7 KB
+      #     reserved region for ~1.7 KB of real signature; unsigned removes
+      #     that confound for free, and CI has no Apple account anyway.
+      #   LD_GENERATE_MAP_FILE=YES  the link map is what makes `il2cppOnly`
+      #     possible. LD_MAP_FILE_PATH is deliberately NOT set: on a
+      #     multi-target project it makes two targets write one file and
+      #     xcodebuild fails with "Multiple commands produce".
+      # These are command-line overrides, so every one of them applies to
+      # EVERY target in the project rather than to the app alone —
+      # including `STRIP_STYLE=all` on UnityFramework, a dynamic library
+      # whose per-target default is not global stripping. The treatment is
+      # identical for every row and both hosts, so the deltas this bench
+      # exists to report survive it; the absolute UnityFramework byte count
+      # does not, because it is stripped harder here than in a shipping
+      # build. Quote it as a delta, never as a ship size.
+      - name: Build the Xcode project (unsigned, stripped, arm64)
+        env:
+          PROJECT: ${{ steps.project.outputs.path }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/dd" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEPLOYMENT_POSTPROCESSING=YES \
+            STRIP_INSTALLED_PRODUCT=YES \
+            STRIP_STYLE=all \
+            DEAD_CODE_STRIPPING=YES \
+            ENABLE_BITCODE=NO \
+            ENABLE_CODE_COVERAGE=NO \
+            CLANG_COVERAGE_MAPPING=NO \
+            LD_GENERATE_MAP_FILE=YES \
+            build
+          df -h /
+
+      - name: Measure the row
+        env:
+          ROW: ${{ matrix.row }}
+          HOST: ${{ matrix.host }}
+          XCODE_VERSION: ${{ steps.toolchain.outputs.xcode }}
+          XCODE_BUILD: ${{ steps.toolchain.outputs.build }}
+          IOS_SDK: ${{ steps.toolchain.outputs.sdk }}
+        run: |
+          set -euo pipefail
+          node tests/app-size-bench/measure-ios.mjs "$ROW" \
+            --product "$PWD/dd/Build/Products" \
+            --derived "$PWD/dd" \
+            --log "project/row$ROW.validate.txt" \
+            --out tests/app-size-bench/out/ios \
+            --host "$HOST" \
+            --unity "$UNITY_VERSION" \
+            --xcode "$XCODE_VERSION" \
+            --xcode-build "$XCODE_BUILD" \
+            --sdk "$IOS_SDK" \
+            --runner "$MACOS_RUNNER_LABEL"
+
+      # The numbers, not the build: the .app and its DerivedData are
+      # hundreds of megabytes and nothing downstream reads them.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-row-${{ matrix.row }}-${{ matrix.host }}
+          path: tests/app-size-bench/out/ios/row${{ matrix.row }}-${{ matrix.host }}.json
+          if-no-files-found: error
+
+      # Same reason as the editor job's note: this leg is non-blocking, so
+      # its failure has to name itself.
+      - name: Note that this macOS leg failed
+        if: failure() && matrix.host == 'macos'
+        env:
+          ROW: ${{ matrix.row }}
+        run: |
+          {
+            echo "### row $ROW — xcodebuild of the Unity-on-macOS project FAILED (experimental host)"
+            echo
+            echo "This compiles what the experimental macOS Unity host produced, so it is"
+            echo "non-blocking by design and does not redden the run — including when it fails"
+            echo "at the download step because that editor leg produced nothing. It is not a"
+            echo "regression in SqliteHost: the Linux legs carry the measurement. Read the"
+            echo "header of \`.github/workflows/ios-size-bench.yml\` before debugging it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  summarize:
+    name: matrix summary
+    needs: compile
+    # Summarize whatever finished: a partial matrix is still evidence, and
+    # summarize-il2cpp.mjs says how many rows it had. `!cancelled()` and not
+    # `always()`, for the same reason as `compile` above — there is nothing
+    # to summarize once a run has been cancelled.
+    if: ${{ !cancelled() && needs.compile.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ios-row-*
+          merge-multiple: true
+          path: ios-rows
+      # One row JSON per row per host, which is what makes the host
+      # comparison section at the end of the table possible.
+      - name: Build the matrix table
+        run: node tests/app-size-bench/summarize-il2cpp.mjs ios-rows
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-size-matrix
+          path: ios-rows
+          if-no-files-found: error

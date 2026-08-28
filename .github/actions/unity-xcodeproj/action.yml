@@ -1,0 +1,270 @@
+# One row of the iOS size bench, editor half: check the sources out, build
+# them, run the Unity editor for iOS and upload the Xcode project it emits.
+#
+# WHY THIS IS AN ACTION AND NOT A JOB. ios-size-bench.yml runs the editor
+# half on two hosts — ubuntu-latest inside GameCI's digest-pinned iOS
+# editor container, and a standard macOS runner where the same action
+# installs the editor onto the machine. Those two hosts need different
+# `max-parallel` budgets, so they are two jobs; the thirteen steps between
+# them are identical, so they live here once. Everything that genuinely
+# differs by host is an input:
+#
+#   custom-image      the container to run the editor in. Empty on macOS,
+#                     where unity-builder installs Unity Hub and the editor
+#                     onto the runner because unityci publishes no macOS
+#                     image. Non-empty also means the editor ran as root
+#                     inside a container, which is what the chown step
+#                     below repairs.
+#   reclaim-disk      delete preinstalled toolchains this job never uses.
+#                     Only the Linux host needs it (5.7 GB compressed
+#                     image against ~14 GB free).
+#   report-host-disk  print free disk either side of the on-host editor
+#                     install. Only meaningful where there is one.
+#
+# The Unity secrets arrive as inputs because the `secrets` context does not
+# exist inside a composite action. Every action used here stays SHA-pinned
+# with its tag in a trailing comment, exactly as in the workflow.
+#
+# NOT HERE: `actions/checkout`. A local action cannot be resolved before
+# the repository is on the runner, so each calling job checks out first.
+# Nor the macOS-only "this leg failed" summary note: it belongs to the
+# non-blocking macOS job and has no Linux counterpart to share.
+name: Unity iOS Xcode project for one bench row
+description: >-
+  Run the Unity editor for iOS on one app-size-bench row and upload the
+  generated Xcode project as a tarball.
+
+inputs:
+  row:
+    description: "Row index from tests/app-size-bench/il2cpp-rows.json"
+    required: true
+  host:
+    description: >-
+      Which machine is running the editor — `linux` or `macos`. Recorded in
+      the artifact name, the tarball name and the run summary; it selects
+      no behaviour of its own, so that every behavioural difference between
+      the two hosts is one of the explicit inputs below.
+    required: true
+  unity-version:
+    description: "Editor version, e.g. 2022.3.62f3"
+    required: true
+  custom-image:
+    description: >-
+      Digest-pinned container image to run the editor in. Empty means
+      unity-builder installs the editor onto the runner instead, and it is
+      also the signal that the build output does NOT need chowning back to
+      the runner user.
+    required: false
+    default: ""
+  reclaim-disk:
+    description: "`true` to delete preinstalled toolchains before the build"
+    required: false
+    default: "false"
+  report-host-disk:
+    description: "`true` to print free disk either side of an on-host editor install"
+    required: false
+    default: "false"
+  unity-license:
+    description: "Contents of the personal .ulf licence file"
+    required: true
+  unity-email:
+    description: "Unity account e-mail"
+    required: true
+  unity-password:
+    description: "Unity account password"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Preinstalled toolchains this job never uses. The iOS editor image is
+    # 5.7 GB compressed, and a GitHub-hosted Linux runner starts with
+    # roughly 14 GB free.
+    - name: Reclaim disk
+      if: inputs.reclaim-disk == 'true'
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                    /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                    /usr/share/swift
+        sudo docker image prune --all --force || true
+        df -h /
+
+    # Nothing is deleted on a host that installs the editor onto itself:
+    # the Unity editor plus the iOS module is about 10.6 GB installed
+    # against a documented 14 GB disk, which has been reported to fit, and
+    # no measurement here says which preinstalled tool the Unity Hub
+    # installer needs. This is the number the runner started with; the step
+    # right after unity-builder is the one that says whether the editor
+    # actually fit.
+    - name: Report free disk before the Unity install
+      if: inputs.report-host-disk == 'true'
+      shell: bash
+      run: df -h /
+
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      with:
+        version: 10.34.5
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: "24"
+        cache: pnpm
+
+    - name: Generate the bench sources
+      shell: bash
+      env:
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm -r --silent run build
+        node tests/app-size-bench/generate.mjs
+
+    - name: Assemble row ${{ inputs.row }}
+      shell: bash
+      env:
+        ROW: ${{ inputs.row }}
+      run: bash tests/app-size-bench/prepare-row.sh "$ROW"
+
+    # The row table is the single definition of what each row means. Read
+    # with node rather than the jq the Android workflow uses because
+    # setup-node above has already put node on both runners and the
+    # conditional `-sbDefines` rule below is plainer in JS than in a jq
+    # expression. jq is preinstalled on both runner images, so this is a
+    # preference and not a portability constraint.
+    # The string it builds is the Android one with two changes:
+    # `-sbTarget ios`, and an output DIRECTORY instead of an .apk, because
+    # a Unity iOS build produces an Xcode project rather than a file.
+    - id: row
+      name: Read the row's build parameters
+      shell: bash
+      env:
+        ROW: ${{ inputs.row }}
+      run: |
+        set -euo pipefail
+        params=$(node -e '
+          const { readFileSync } = require("node:fs");
+          const row = Number(process.env.ROW);
+          const rows = JSON.parse(readFileSync("tests/app-size-bench/il2cpp-rows.json", "utf8"));
+          const spec = rows.find((r) => r.row === row);
+          if (!spec) {
+            console.error("unknown row " + process.env.ROW);
+            process.exit(1);
+          }
+          const parts = ["-sbTarget ios", "-sbOutput Builds/row" + row, "-sbValidate " + spec.validate];
+          // An empty -sbDefines would be dropped by the argument parser,
+          // so the flag is only emitted when the row actually sets defines.
+          if (spec.defines !== "") parts.push("-sbDefines " + spec.defines);
+          process.stdout.write(parts.join(" "));
+        ')
+        echo "params=$params" >> "$GITHUB_OUTPUT"
+        echo "row $ROW -> $params"
+
+    - uses: game-ci/unity-builder@d829bfc901f2347c8fe18898f06712b66916ef42 # v5.0.0
+      env:
+        UNITY_LICENSE: ${{ inputs.unity-license }}
+        UNITY_EMAIL: ${{ inputs.unity-email }}
+        UNITY_PASSWORD: ${{ inputs.unity-password }}
+      with:
+        unityVersion: ${{ inputs.unity-version }}
+        targetPlatform: iOS
+        # Digest-pinned container on the Linux host. Empty on the macOS
+        # host, where the action installs Unity Hub through Homebrew and
+        # then the editor onto the runner — there is no container to pin
+        # and no macOS image to pin it to. That install and the serial
+        # activation the workflow header describes are the two macOS-only
+        # risks the host comparison is meant to price.
+        customImage: ${{ inputs.custom-image }}
+        # unity-builder also takes `cacheUnityInstallationOnMac`, and it
+        # is deliberately left unset (it defaults to false): every macOS
+        # leg reinstalls the editor. The install is about 10.6 GB and the
+        # repository-wide Actions cache budget is 10 GB, evicted
+        # least-recently-used — one editor entry would push out the
+        # SQLite engine source archives (engine-matrix.yml), the pnpm
+        # store every JS job restores, and the Playwright chromium
+        # (playground-e2e.yml). Slower monthly runs here are cheaper than
+        # cold caches in the workflows that gate pull requests.
+        projectPath: tests/app-size-bench/unity-project
+        # SizeBench pins every player setting the protocol names, against
+        # NamedBuildTarget.iOS, and writes the Xcode project itself, so
+        # unity-builder only has to start the editor.
+        buildMethod: SizeBench.ValidateAndBuild
+        customParameters: ${{ steps.row.outputs.params }}
+        # prepare-row.sh wrote Assets/Sources into the checkout, which is
+        # a dirty tree by unity-builder's definition.
+        allowDirtyBuild: true
+        versioning: None
+
+    # The disk report above is taken before the ~10.6 GB install, so it
+    # cannot show whether the editor fit. This one can. It runs on failure
+    # too, because "the install is what ran out of disk" is exactly the
+    # case where the number is worth having.
+    - name: Report free disk after the Unity install
+      if: ${{ !cancelled() && inputs.report-host-disk == 'true' }}
+      shell: bash
+      run: df -h /
+
+    # The editor runs as root inside the container; without this the steps
+    # below cannot read what it wrote. A host that installs the editor onto
+    # itself runs it as the runner user and needs nothing — which is why
+    # this is gated on there being a container at all rather than on the
+    # host name.
+    - name: Make the build readable by the runner
+      if: inputs.custom-image != ''
+      shell: bash
+      run: sudo chown -R "$(id -u):$(id -g)" tests/app-size-bench/unity-project/Builds
+
+    # The layout of a Unity 2022.3 iOS build is not verified anywhere in
+    # this repository, and measure-ios.mjs refuses to guess at it. This
+    # listing is how the first run answers that question — read it before
+    # trusting any number below it.
+    - name: Describe the generated Xcode project
+      shell: bash
+      env:
+        ROW: ${{ inputs.row }}
+        HOST: ${{ inputs.host }}
+      run: |
+        set -euo pipefail
+        out="tests/app-size-bench/unity-project/Builds/row$ROW"
+        test -d "$out"
+        find "$out" -maxdepth 2 | sort > /tmp/xcodeproj-tree.txt
+        {
+          echo "### row $ROW — Xcode project generated on $HOST"
+          echo
+          echo '```'
+          du -sh "$out"
+          echo "$(wc -l < /tmp/xcodeproj-tree.txt) entries at depth <= 2:"
+          head -80 /tmp/xcodeproj-tree.txt
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # A tar rather than the directory itself, for two documented reasons.
+    # upload-artifact zips what it uploads and states that "file
+    # permissions are not maintained ... all files will have 644", and
+    # Unity's generated project invokes its own shell scripts from Xcode
+    # build phases — non-executable, they fail the compile job. It also
+    # excludes hidden files unless asked. tar carries the tree across
+    # intact, and one file moves faster than the ~790 the project contains.
+    - name: Pack the Xcode project
+      shell: bash
+      env:
+        ROW: ${{ inputs.row }}
+        HOST: ${{ inputs.host }}
+      run: |
+        set -euo pipefail
+        tar -czf "xcodeproj-row$ROW-$HOST.tgz" \
+          -C tests/app-size-bench/unity-project/Builds \
+          "row$ROW" "row$ROW.validate.txt"
+        ls -l "xcodeproj-row$ROW-$HOST.tgz"
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ios-xcodeproj-${{ inputs.row }}-${{ inputs.host }}
+        path: xcodeproj-row${{ inputs.row }}-${{ inputs.host }}.tgz
+        if-no-files-found: error
+        # Already gzipped; zipping it again would burn runner time for
+        # nothing.
+        compression-level: 0
+        # The compile job in this same run is the only consumer, and this
+        # is roughly 175 MB per row per host.
+        retention-days: 1
