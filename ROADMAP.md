@@ -50,7 +50,7 @@ and its CI cannot hold. Delete entries when shipped.
   the full golden-regeneration dance across all three languages in one
   deliberate change — not a quick patch. Lints are not a sandbox either
   way (docs/validation.md), but this one is cheap signal worth adding.
-- **Pick the iOS bench's Unity host, now that the comparison has run.**
+- **Explain the iOS bench's residual host difference.**
   `.github/workflows/ios-size-bench.yml` generates the Xcode project twice
   per row — on `ubuntu-latest` in GameCI's digest-pinned iOS editor
   container, and on a macOS runner where the same action installs the
