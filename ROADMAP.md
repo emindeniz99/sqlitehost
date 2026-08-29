@@ -71,13 +71,17 @@ and its CI cannot hold. Delete entries when shipped.
   gz included, so the build is reproducible run to run and the remaining
   difference is attributable to the host. Same size, different content.
 
-  Nothing forces a decision, which is why this is a roadmap item and not a
-  bug: keeping both costs one extra macOS editor leg per row, and dropping
-  `macos` from the `hosts` list in the `plan` job costs the cross-check.
-  What must NOT happen is publishing a number without saying which host
-  produced it. The unexplained part — why two hosts emit same-sized,
-  different-content binaries — is unexamined; 4 bytes did not justify the
-  dig, but the cause is unknown rather than known-benign.
+  DECIDED: both hosts stay. The cross-check costs one extra macOS editor
+  leg per row on a free runner, and this comparison is the only thing that
+  would notice if the two paths ever diverged by more than a rounding
+  error. Note that dropping `macos` would never have removed iOS builds or
+  the Mac — `xcodebuild` runs on a macOS runner for both hosts; the
+  `hosts` dimension only selects which machine runs the Unity EDITOR.
+
+  Still open from it: why two hosts emit same-sized, different-content
+  binaries. 4 bytes did not justify the dig, so the cause is unknown rather
+  than known-benign, and any published iOS number should name the host it
+  came from.
 - **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
   now ships the DllImport adapter (scalar functions included; Unity
   consumers vendoring it add `[MonoPInvokeCallback]` on two callbacks
