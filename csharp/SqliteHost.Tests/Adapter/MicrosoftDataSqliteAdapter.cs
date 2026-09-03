@@ -71,6 +71,7 @@ namespace SqliteHost.Tests.Adapter
 
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
+            RejectEmbeddedNul(sql);
             sqlite3 db = _connection.Handle
                 ?? throw new InvalidOperationException("Connection must be open to prepare statements.");
             int rc = raw.sqlite3_prepare_v2(db, sql, out sqlite3_stmt statement);
@@ -229,8 +230,32 @@ namespace SqliteHost.Tests.Adapter
             IsDisposed = true;
         }
 
+        /// <summary>
+        /// Adapter contract (docs/adapter-contract.md): SQLite reads SQL as
+        /// a C string and stops at the first NUL byte, so an embedded NUL
+        /// truncates the statement — it can strip a DELETE's WHERE clause
+        /// and execute the remainder as if it were the whole thing. Here it
+        /// is worse than a truncation: Microsoft.Data.Sqlite splits a batch
+        /// by re-preparing the tail SQLite hands back, and with an embedded
+        /// NUL that tail stops shrinking, so the call never returns
+        /// (measured). Reject the text before it reaches the wrapper.
+        /// </summary>
+        private static void RejectEmbeddedNul(string sql)
+        {
+            int index = sql.IndexOf('\0');
+            if (index >= 0)
+            {
+                throw new SqliteHostAdapterException(
+                    "SQL text contains an embedded NUL character at index " + index
+                    + ": sqlite3 stops reading at the NUL, so the rest of the statement"
+                    + " would be silently dropped instead of executed.",
+                    0, null);
+            }
+        }
+
         private SqliteCommand CreateCommand(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
+            RejectEmbeddedNul(sql);
             var command = _connection.CreateCommand();
             command.CommandText = sql;
             if (bindings != null)

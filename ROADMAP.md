@@ -32,16 +32,6 @@ and its CI cannot hold. Delete entries when shipped.
   `scripts/check-npm-publishable.mjs` blocks the publish until this is
   resolved — publish codegen-core too, bundle it, or drop the
   dependency.
-- **The adapter conformance suite has no multi-statement or NUL coverage**,
-  and two test adapters violate the contract because of it. Measured while
-  fixing the native adapter's NUL truncation: `sqlite-net` accepts
-  `DELETE FROM t\0 WHERE k = 'x'` and deletes every row, and
-  `Microsoft.Data.Sqlite` never returns on the same input (a hang, not a
-  truncation). Both are test-only adapters, so nothing shipped is affected,
-  but `docs/adapter-contract.md` forbids the behaviour for every adapter and
-  only `SqliteHost.Adapters.Native` is actually tested for it. The fix is a
-  conformance-level multi-statement + embedded-NUL case, which will fail for
-  those two adapters until they are patched.
 - **Statement denylist has no DDL coverage**: `FORBIDDEN_LEADING_KEYWORDS`
   (codegen/core/src/ir.ts) stops `DELETE`/`UPDATE`-class statements but not
   `DROP TABLE`/`DROP TRIGGER`/`ALTER TABLE` against runtime-owned objects.

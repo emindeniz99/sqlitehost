@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace SqliteHost.Conformance
@@ -470,6 +471,82 @@ namespace SqliteHost.Conformance
                 () => connection.Execute("SELECT abs(a) FROM scratch", null));
         }
 
+        // ---- one statement per call (tail) and embedded NUL ---------------
+
+        [SkippableFact]
+        public void MultiStatementSql_NeverRunsTheFirstStatementAlone()
+        {
+            // "One statement per call" (docs/adapter-contract.md). Two
+            // responses are conformant: reject before stepping anything
+            // (what a prepare_v2-style adapter does with the tail it is
+            // handed), or execute the whole batch (what an ADO.NET wrapper
+            // does). Running the first statement and dropping the rest is
+            // the one response the contract forbids, because the caller
+            // cannot tell it apart from success.
+            using ISqliteHostConnection connection = Open();
+
+            Exception thrown = CallBounded(
+                "Execute of two-statement SQL",
+                () => connection.Execute(
+                    "CREATE TABLE a (x INTEGER); CREATE TABLE b (y INTEGER)", null));
+
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name IN ('a', 'b') ORDER BY name",
+                null, row => row.GetText(0));
+            if (thrown != null)
+            {
+                // Rejected: nothing may have run, not even the first
+                // statement — a half-applied batch leaves the workspace in
+                // the same state silent truncation would.
+                Assert.Empty(tables);
+            }
+            else
+            {
+                Assert.Equal(new[] { "a", "b" }, tables);
+            }
+        }
+
+        [SkippableFact]
+        public void EmbeddedNul_IsRejected_NeverTruncatesTheStatement()
+        {
+            // SQLite reads SQL as a C string and stops at the first NUL
+            // byte, so an embedded NUL cuts the rest of the statement off
+            // before the compiler ever sees it — and it never reaches the
+            // tail a multi-statement check inspects either. The dangerous
+            // shape is not a hidden second statement but a truncated first
+            // one: the NUL below removes a DELETE's WHERE clause, and the
+            // truncated statement then compiles cleanly and deletes every
+            // row. Silent partial execution, so the adapter must refuse the
+            // text instead of compiling it.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE t (k TEXT)", null);
+            connection.Execute("INSERT INTO t (k) VALUES ('keep'), ('drop')", null);
+
+            Exception thrown = CallBounded(
+                "Execute of SQL containing an embedded NUL",
+                () => connection.Execute("DELETE FROM t\0 WHERE k = 'drop'", null));
+
+            Assert.NotNull(thrown);
+            var rows = connection.Query("SELECT k FROM t ORDER BY k", null, row => row.GetText(0));
+            Assert.Equal(new[] { "drop", "keep" }, rows);
+        }
+
+        [SkippableFact]
+        public void TrailingTerminatorAndComment_AreNotMultiStatement()
+        {
+            // The other half of the tail rule: a trailing terminator or
+            // comment is legal authoring, not a second statement, and an
+            // adapter that rejects the text above must not reject these.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE t (x INTEGER);", null);
+            connection.Execute("CREATE TABLE u (x INTEGER); -- note", null);
+
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name IN ('t', 'u') ORDER BY name",
+                null, row => row.GetText(0));
+            Assert.Equal(new[] { "t", "u" }, tables);
+        }
+
         // ---- optional capability: inline scalar functions ----------------
         // Runs only against adapters implementing
         // ISqliteHostScalarFunctionConnection; skipped with a reason
@@ -778,6 +855,46 @@ namespace SqliteHost.Conformance
         }
 
         // ---- helpers ------------------------------------------------------
+
+        /// <summary>
+        /// Runs <paramref name="call"/> on a worker and returns the
+        /// exception it threw, or null when it returned normally — failing
+        /// the test if it does not return at all within
+        /// <see cref="BoundedCallSeconds"/>.
+        ///
+        /// A contract violation is not always a wrong answer: a wrapper
+        /// that splits a batch by re-preparing the tail SQLite hands back
+        /// never terminates on SQL containing an embedded NUL, because the
+        /// tail stops shrinking (measured on Microsoft.Data.Sqlite). A
+        /// plain call would wedge the whole test host, so the wait is
+        /// bounded and a hang is reported as the failure it is.
+        /// </summary>
+        private static Exception CallBounded(string description, Action call)
+        {
+            Exception captured = null;
+            Task worker = Task.Run(() =>
+            {
+                try
+                {
+                    call();
+                }
+                catch (Exception ex)
+                {
+                    captured = ex;
+                }
+            });
+            if (!worker.Wait(TimeSpan.FromSeconds(BoundedCallSeconds)))
+            {
+                Assert.True(false,
+                    description + " did not return within " + BoundedCallSeconds
+                    + "s: the adapter hangs on this input, which is a conformance"
+                    + " violation (docs/adapter-contract.md).");
+            }
+            return captured;
+        }
+
+        /// <summary>Budget for a single small statement; generous for slow CI, still bounded.</summary>
+        private const int BoundedCallSeconds = 30;
 
         private static IReadOnlyList<SqliteHostBinding> Bind(
             params (string Name, SqliteHostBindingValue Value)[] bindings)

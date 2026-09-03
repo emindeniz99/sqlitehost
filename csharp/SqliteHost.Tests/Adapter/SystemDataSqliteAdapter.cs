@@ -190,8 +190,34 @@ namespace SqliteHost.Tests.Adapter
             _connection.Dispose();
         }
 
+        /// <summary>
+        /// Adapter contract (docs/adapter-contract.md): SQLite reads SQL as
+        /// a C string and stops at the first NUL byte, so an embedded NUL
+        /// truncates the statement — it can strip a DELETE's WHERE clause
+        /// and execute the remainder as if it were the whole thing.
+        /// System.Data.SQLite splits a batch the same way
+        /// Microsoft.Data.Sqlite does — by re-preparing the tail — so it
+        /// either truncates silently or never returns; which one it is could
+        /// not be measured here, because it has no macOS arm64 native
+        /// (CONTRIBUTING.md). Rejecting the text before it reaches the
+        /// wrapper makes the contract hold either way.
+        /// </summary>
+        private static void RejectEmbeddedNul(string sql)
+        {
+            int index = sql.IndexOf('\0');
+            if (index >= 0)
+            {
+                throw new SqliteHostAdapterException(
+                    "SQL text contains an embedded NUL character at index " + index
+                    + ": sqlite3 stops reading at the NUL, so the rest of the statement"
+                    + " would be silently dropped instead of executed.",
+                    0, null);
+            }
+        }
+
         private SQLiteCommand CreateCommand(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
+            RejectEmbeddedNul(sql);
             var command = _connection.CreateCommand();
             command.CommandText = sql;
             if (bindings != null)

@@ -61,7 +61,21 @@ failures:
   native adapter throws before stepping anything, since
   `sqlite3_prepare_v2` hands the tail back rather than running it; an
   ADO.NET-style wrapper that executes the whole batch is also
-  conformant.
+  conformant. The conformance suite tests both spellings
+  (`MultiStatementSql_NeverRunsTheFirstStatementAlone`), and tests that
+  a trailing terminator or comment is *not* treated as a second
+  statement.
+- SQL text carrying an embedded NUL must be rejected before anything is
+  compiled. SQLite reads SQL as a C string and stops at the first NUL
+  byte, so the NUL truncates the statement: `DELETE FROM t\0 WHERE k =
+  'x'` compiles cleanly as an unrestricted `DELETE` and empties the
+  table, and anything after the NUL never reaches the tail the rule
+  above inspects. Wrappers that split a batch by re-preparing that tail
+  can also fail to terminate on such text — measured on
+  `Microsoft.Data.Sqlite`, which hangs rather than truncating. Both are
+  the silent partial execution this section forbids, so the suite's
+  `EmbeddedNul_IsRejected_NeverTruncatesTheStatement` requires a throw,
+  under a bounded wait so a hang fails as a hang.
 
 ## Workspace lifecycle
 
@@ -130,7 +144,7 @@ suite for the exact matrix.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (24 core
+`AdapterConformanceTestsBase` — the xunit contract suite (27 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the
