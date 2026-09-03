@@ -33,6 +33,7 @@ test("the file selector appears only for tabs that emit several files", async ({
   const files = playground.locator("#file option");
   await expect(files).toHaveText([
     "runtime-types/src/generated/envelope.ts",
+    "authoring-sdk/src/generated/protocol.ts",
     "authoring-sdk/src/generated/sample-host.ts",
   ]);
 
