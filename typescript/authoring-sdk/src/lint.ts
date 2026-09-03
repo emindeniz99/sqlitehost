@@ -9,6 +9,11 @@
  */
 
 import {
+  validateScript,
+  type BindingValue,
+  type Script,
+} from "@sqlite-host/runtime-types";
+import {
   BINDING_TYPE_COMPAT,
   FEATURE_INLINE_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
@@ -17,12 +22,7 @@ import {
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONPORTABLE_FUNCTIONS,
-} from "@sqlite-host/codegen-core";
-import {
-  validateScript,
-  type BindingValue,
-  type Script,
-} from "@sqlite-host/runtime-types";
+} from "./generated/protocol.js";
 import type {
   HostManifest,
   ManifestMethod,

@@ -141,7 +141,11 @@ const tsFiles = tsEmitter.emitTypeScript(compiled.ir);
 check("typescript emitter: emits exactly the pinned file set", () => {
   assert.deepEqual(
     tsFiles.map((f) => f.path).sort(),
-    [tsEmitter.ENVELOPE_FILE_PATH, tsEmitter.hostTypesFilePath()].sort(),
+    [
+      tsEmitter.ENVELOPE_FILE_PATH,
+      tsEmitter.PROTOCOL_FILE_PATH,
+      tsEmitter.hostTypesFilePath(),
+    ].sort(),
   );
 });
 for (const file of tsFiles) {

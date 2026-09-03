@@ -14,11 +14,10 @@
 #
 # NOT here: scripts/check-npm-publishable.mjs. It exits 1 today by design —
 # the three publishable manifests still carry `"private": true` as the
-# registry-bootstrap gate, and @sqlite-host/authoring depends on the
-# unpublished @sqlite-host/codegen-core. Gating pull requests on it would
-# paint main red for a state the repo intends to be in. It runs in
-# release.yml, where failing is the point, and as the advisory
-# `publish-readiness` job below on the weekly schedule.
+# registry-bootstrap gate. Gating pull requests on it would paint main red
+# for a state the repo intends to be in. It runs in release.yml, where
+# failing is the point, and as the advisory `publish-readiness` job below
+# on the weekly schedule.
 name: packaging
 
 on:
