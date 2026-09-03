@@ -174,17 +174,34 @@ ahead-of-time: no `Reflection.Emit`, no runtime code generation.
 - **No imperative control flow across steps.** No loops, no `goto`, no
   early `continue` — deliberately (R6). Recursive CTEs cover data-driven
   iteration; `script_control` covers halt/abort.
-- **No time or VM-step budget — a single statement can hang the app.**
-  A runaway recursive CTE or an accidental cartesian join runs until it
-  exhausts memory or the OS kills the process; on a game's main thread
-  there is no recovery path. SQLite ships exactly the knobs to cap this
-  — `sqlite3_progress_handler()` + `sqlite3_interrupt()`,
-  `sqlite3_limit(SQLITE_LIMIT_VDBE_OP)` and the other
-  `sqlite3_limit()` values, `sqlite3_set_authorizer()`
-  (<https://sqlite.org/security.html>) — and **v1 sets none of them**;
-  `docs/adapter-contract.md` does not require an adapter to set them
-  either. Do not quote SQLite's resource-limit story as ours until it
-  does. Mitigation today is authoring discipline plus the validators.
+- **No time or VM-step budget, by decision — a single statement may run
+  as long as it likes.** A recursive CTE with no terminating condition,
+  or an accidental cartesian join, runs until it exhausts memory or the
+  OS kills the process; on a game's main thread there is no recovery
+  path. SQLite ships exactly the knobs to cap this —
+  `sqlite3_progress_handler()` + `sqlite3_interrupt()`,
+  `sqlite3_limit(SQLITE_LIMIT_VDBE_OP)` and the other `sqlite3_limit()`
+  values, `sqlite3_set_authorizer()`
+  (<https://sqlite.org/security.html>) — and **none of them are set, on
+  purpose**. `docs/adapter-contract.md` does not require an adapter to
+  set them either.
+
+  This is a trust-model decision, not an unfinished one. Scripts are
+  authored by the first-party backend and validated before delivery
+  (R5), and the client trusts the backend it is paired with; a statement
+  the backend chose to send is a statement the client is meant to run.
+  Capping it would mean the runtime overruling the backend, which is the
+  wrong direction of authority for this architecture. `SELECT max(x)`
+  over an unbounded `WITH RECURSIVE` is therefore **allowed**, and the
+  validators do not reject it.
+
+  What that leaves is a bug class, not an attack surface: a runaway
+  statement is a mistake the backend made, and it is caught where every
+  other backend mistake is caught — in authoring, review and the
+  validators — rather than by a runtime guard. Two honest consequences
+  follow. Do not quote SQLite's resource-limit story as this project's;
+  it is deliberately unused. And an adapter that *does* set these knobs
+  is making a local choice, not implementing the contract.
 - **SQL is an awkward language for arithmetic-heavy logic.** Anything
   beyond "select, compare, branch, call" belongs in a host method.
 - **Hot update is partial, and the line is the host boundary.** An
