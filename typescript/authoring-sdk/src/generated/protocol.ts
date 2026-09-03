@@ -131,11 +131,14 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
  * first meaningful token.
  */
 export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
+  "alter",
   "analyze",
   "attach",
   "begin",
   "commit",
+  "create",
   "detach",
+  "drop",
   "end",
   "pragma",
   "reindex",
