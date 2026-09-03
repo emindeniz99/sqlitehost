@@ -1,6 +1,6 @@
 {
   "name": "@sqlite-host/playground",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "Browser playground for SqliteHost: edit a .tsp host definition and see the generated manifest, DDL, C#, Java, and TypeScript live",

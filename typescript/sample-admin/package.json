@@ -1,6 +1,6 @@
 {
   "name": "@sqlite-host/sample-admin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "Demo admin CLI for SqliteHost: prints the sample host method/table reference and lints a script payload",
