@@ -45,7 +45,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
@@ -178,6 +178,21 @@ const globalMetadataPath = exactlyOne(
 // and the engine's data files, which is exactly why the protocol measures
 // two files instead of an app.
 const appBytes = appEntries.reduce((sum, e) => (e.directory ? sum : sum + statSync(e.path).size), 0);
+
+// A per-file inventory of that same bundle, relative to the .app root and
+// sorted biggest first. It exists to answer one open question: the twelve-row
+// two-host matrix found a CONSTANT 393,472 B of bundle payload present in the
+// Linux-host build and absent from the macOS-host build, on every row
+// including the baseline and both probes — a fixed set of files, unrelated to
+// the row's sources, and entirely outside the two files the protocol
+// measures. `appBytes` alone can only say how much; this says which.
+// Directories are excluded (their sizes are the sum of their contents) and
+// the two measured files are in here too, so the list reconciles to
+// `appBytes` exactly.
+const appInventory = appEntries
+  .filter((e) => !e.directory)
+  .map((e) => ({ path: relative(app, e.path), bytes: statSync(e.path).size }))
+  .sort((a, b) => b.bytes - a.bytes || a.path.localeCompare(b.path));
 
 const weigh = (path) => {
   const bytes = readFileSync(path);
@@ -495,6 +510,7 @@ const result = {
   linkMap,
   machO,
   appBytes,
+  appInventory,
   // What the search actually matched, so a reader can check the discovery
   // instead of trusting it.
   paths: {
