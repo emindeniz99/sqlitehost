@@ -25,13 +25,6 @@ and its CI cannot hold. Delete entries when shipped.
   `LICENSE`) and the Maven namespace `io.github.emindeniz99` is already
   verified. Step-by-step:
   [docs/guides/publishing.md](./docs/guides/publishing.md).
-- **`@sqlite-host/authoring` depends on an unpublished package**: its
-  `dependencies` name `@sqlite-host/codegen-core` as `workspace:*`, and
-  codegen-core is private. pnpm rewrites that to a real range in the
-  tarball, so every consumer install would 404.
-  `scripts/check-npm-publishable.mjs` blocks the publish until this is
-  resolved — publish codegen-core too, bundle it, or drop the
-  dependency.
 - **The adapter conformance suite has no multi-statement or NUL coverage**,
   and two test adapters violate the contract because of it. Measured while
   fixing the native adapter's NUL truncation: `sqlite-net` accepts

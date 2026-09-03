@@ -175,7 +175,14 @@ For each of `typespec/library`, `typescript/runtime-types`,
 - [ ] Workspace deps: `@sqlite-host/authoring` depends on
   `@sqlite-host/runtime-types` via `workspace:*` — `pnpm publish`
   rewrites this to the real version automatically (one reason to
-  publish with pnpm, not raw npm).
+  publish with pnpm, not raw npm). That is its **only** workspace
+  dependency, and it is published too; the protocol constants the lint
+  needs come from the vendored projection
+  `typescript/authoring-sdk/src/generated/protocol.ts` rather than from
+  the private `@sqlite-host/codegen-core`.
+  `scripts/check-npm-publishable.mjs` fails the release if a
+  publishable package ever grows a `workspace:` dependency on an
+  unpublished one again.
 
 ### Publishing
 

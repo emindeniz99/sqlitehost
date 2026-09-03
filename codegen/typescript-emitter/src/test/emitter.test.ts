@@ -7,9 +7,11 @@ import { test } from "node:test";
 import { parseManifest, type HostLibraryIr } from "@sqlite-host/codegen-core";
 import { emitEnvelope } from "../emit-envelope.js";
 import { emitHostTypes } from "../emit-host-types.js";
+import { emitProtocol } from "../emit-protocol.js";
 import {
   DEFAULT_BASE_NAME,
   ENVELOPE_FILE_PATH,
+  PROTOCOL_FILE_PATH,
   emitTypeScript,
   hostTypesFilePath,
 } from "../emit.js";
@@ -22,6 +24,10 @@ const manifestJson = readFileSync(
 );
 const envelopeGolden = readFileSync(
   join(projectRoot, "typescript", ENVELOPE_FILE_PATH),
+  "utf8",
+);
+const protocolGolden = readFileSync(
+  join(projectRoot, "typescript", PROTOCOL_FILE_PATH),
   "utf8",
 );
 const hostTypesGolden = readFileSync(
@@ -267,17 +273,32 @@ test("emitHostTypes output is byte-identical to the vendored sample-host.ts", ()
   assert.equal(emitHostTypes(sampleIr(), DEFAULT_BASE_NAME), hostTypesGolden);
 });
 
-test("emitTypeScript returns both files under their vendored paths", () => {
+test("emitProtocol output is byte-identical to the vendored protocol.ts", () => {
+  assert.equal(emitProtocol(), protocolGolden);
+});
+
+test("emitProtocol is host-independent: same bytes from an unrelated IR", () => {
+  // The constants are protocol-level, so a consumer emitting for their own
+  // host must receive the same file the authoring SDK ships.
+  assert.equal(
+    emitTypeScript(smokeIr(), { baseName: "acme-warehouse" })[1].contents,
+    protocolGolden,
+  );
+});
+
+test("emitTypeScript returns all three files under their vendored paths", () => {
   const files = emitTypeScript(sampleIr());
   assert.deepEqual(
     files.map((file) => file.path),
     [
       "runtime-types/src/generated/envelope.ts",
+      "authoring-sdk/src/generated/protocol.ts",
       "authoring-sdk/src/generated/sample-host.ts",
     ],
   );
   assert.equal(files[0].contents, envelopeGolden);
-  assert.equal(files[1].contents, hostTypesGolden);
+  assert.equal(files[1].contents, protocolGolden);
+  assert.equal(files[2].contents, hostTypesGolden);
 });
 
 test("emitting twice from independent parses is deterministic", () => {
@@ -482,6 +503,10 @@ test("CLI writes golden-identical files from a manifest", () => {
   assert.equal(
     readFileSync(join(outDir, ENVELOPE_FILE_PATH), "utf8"),
     envelopeGolden,
+  );
+  assert.equal(
+    readFileSync(join(outDir, PROTOCOL_FILE_PATH), "utf8"),
+    protocolGolden,
   );
   assert.equal(
     readFileSync(join(outDir, hostTypesFilePath()), "utf8"),

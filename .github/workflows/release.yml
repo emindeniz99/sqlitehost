@@ -133,9 +133,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # `<pkg>...` selects the package AND its workspace dependencies, in
-      # topological order — @sqlite-host/authoring does not compile
-      # without @sqlite-host/codegen-core and @sqlite-host/runtime-types
-      # built first.
+      # topological order — @sqlite-host/authoring does not compile without
+      # @sqlite-host/runtime-types built first.
       - name: Build
         run: |
           pnpm --filter "@sqlite-host/runtime-types..." \
