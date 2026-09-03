@@ -1,6 +1,7 @@
 /**
  * Programmatic emit API: map a HostLibraryIr to the generated
- * TypeScript source files. Paths are relative to the repo's
+ * TypeScript source files (the protocol envelope contract, the
+ * host-independent protocol constants, and the per-host authoring module). Paths are relative to the repo's
  * `typescript/` workspace so the byte-golden tests (and the CLI) can
  * mirror the vendored layout.
  */
@@ -8,6 +9,7 @@
 import type { HostLibraryIr } from "@sqlite-host/codegen-core";
 import { emitEnvelope } from "./emit-envelope.js";
 import { emitHostTypes } from "./emit-host-types.js";
+import { emitProtocol } from "./emit-protocol.js";
 
 export interface EmittedFile {
   /** Path relative to the `typescript/` workspace root. */
@@ -29,6 +31,9 @@ export const DEFAULT_BASE_NAME = "sample-host";
 /** Vendored location of the protocol envelope contract. */
 export const ENVELOPE_FILE_PATH = "runtime-types/src/generated/envelope.ts";
 
+/** Vendored location of the host-independent protocol constants. */
+export const PROTOCOL_FILE_PATH = "authoring-sdk/src/generated/protocol.ts";
+
 /** Vendored location of the per-host authoring module. */
 export function hostTypesFilePath(baseName: string = DEFAULT_BASE_NAME): string {
   return `authoring-sdk/src/generated/${baseName}.ts`;
@@ -42,6 +47,7 @@ export function emitTypeScript(
   const baseName = options.baseName ?? DEFAULT_BASE_NAME;
   return [
     { path: ENVELOPE_FILE_PATH, contents: emitEnvelope(ir) },
+    { path: PROTOCOL_FILE_PATH, contents: emitProtocol() },
     { path: hostTypesFilePath(baseName), contents: emitHostTypes(ir, baseName) },
   ];
 }

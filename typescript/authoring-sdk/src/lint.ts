@@ -9,6 +9,11 @@
  */
 
 import {
+  validateScript,
+  type BindingValue,
+  type Script,
+} from "@sqlite-host/runtime-types";
+import {
   BINDING_TYPE_COMPAT,
   FEATURE_INLINE_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
@@ -17,12 +22,7 @@ import {
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONPORTABLE_FUNCTIONS,
-} from "@sqlite-host/codegen-core";
-import {
-  validateScript,
-  type BindingValue,
-  type Script,
-} from "@sqlite-host/runtime-types";
+} from "./generated/protocol.js";
 import type {
   HostManifest,
   ManifestMethod,
@@ -395,15 +395,16 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
 
       // forbidden-statement: the statement's leading keyword names a
       // statement kind outside the script surface — transaction control,
-      // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX (docs/validation.md).
-      // Matching only the FIRST token is what keeps `pragma_table_info(...)`
-      // in a SELECT, a `WITH … INSERT`, and the literal 'PRAGMA' legal.
+      // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX, schema DDL
+      // (docs/validation.md). Matching only the FIRST token is what keeps
+      // `pragma_table_info(...)` in a SELECT, a `WITH … INSERT`, and the
+      // literal 'PRAGMA' legal.
       const leading = leadingKeyword(tokens);
       if (leading !== null && FORBIDDEN_LEADING_KEYWORDS.includes(leading)) {
         findings.push({
           code: "forbidden-statement",
           severity: "error",
-          message: `statement starts with "${leading.toUpperCase()}" — transaction control, ATTACH/DETACH and PRAGMA/VACUUM/ANALYZE/REINDEX are not part of the script surface (docs/validation.md)`,
+          message: `statement starts with "${leading.toUpperCase()}" — transaction control, ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX and schema DDL (CREATE/ALTER/DROP) are not part of the script surface (docs/validation.md)`,
           ...at,
         });
       }
