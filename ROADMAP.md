@@ -56,20 +56,40 @@ and its CI cannot hold. Delete entries when shipped.
   container, and on a macOS runner where the same action installs the
   editor onto the machine — then compiles both with one identical
   `xcodebuild` step, so a byte difference between them belongs to the
-  Unity host. Measured on rows 0/2/4 (runs 33208162606 and 33217023452):
+  Unity host. The full twelve-row matrix has now run on both hosts
+  (run 33255105207, 48/48 legs green), and the toolchain premise holds
+  exactly: both hosts recorded Unity 2022.3.62f3, Xcode 26.6 / 17F113,
+  iOS SDK 26.5 and the same runner image, and every row's `validity`
+  fields match. The difference is therefore attributable to the host, and
+  it separates into three distinct effects rather than the one "±4 bytes"
+  the three-row sample suggested:
 
-  | | Δ raw | Δ gz | Δ UnityFramework | Δ il2cppOnly |
-  |---|---|---|---|---|
-  | baseline | 0 | 0 | 0 | 0 |
-  | compact50 | 0 | +81 B | 0 | −4 B |
-  | ultra50 | 0 | +50 B | 0 | +4 B |
+  1. **A constant 393,472 B (384.25 KiB) of non-code bundle payload**,
+     present in the Linux-host `.app` and absent from the macOS-host
+     `.app`, on all twelve rows including `baseline` and both probes.
+     `appBytes - total.raw` is fixed per host (3,283,430 vs 2,889,958),
+     so this is a fixed set of bundled files, not anything the row's
+     sources influence. It is by far the largest host effect and it sits
+     entirely *outside* the measured unit, so it cancels in every
+     published delta. What those files are is not yet known: the bench
+     records the bundle's total size but no per-file inventory.
+  2. **±4 B inside `libGameAssembly.a`** on rows 2, 4 and 6, which is
+     exactly and only where `il2cppOnly` differs (−4, +4, −4). The sign
+     alternates, so it is an alignment-class difference in one archive,
+     not a systematic gain or loss.
+  3. **+8 B of `UnityFramework` raw** on row 9 alone — the only row where
+     a published raw quantity differs at all.
 
-  Every published quantity — `total raw`, `UnityFramework`,
-  `global-metadata.dat` — is identical on both hosts. The residue is
-  ~0.0007% of a 12 MB artifact and it is REAL, not noise: the same row
-  built twice on the same host came back byte-identical on every field,
-  gz included, so the build is reproducible run to run and the remaining
-  difference is attributable to the host. Same size, different content.
+  So on 11 of 12 rows every published quantity — `total raw`,
+  `UnityFramework`, `global-metadata.dat` — is byte-identical across the
+  two hosts, and on the twelfth it differs by 8 bytes out of 12 MB. The
+  numbers in `docs/compatibility.md` are host-independent at the
+  precision they are quoted to.
+
+  Next step to close this: record a per-file inventory of the `.app`
+  bundle in `tests/app-size-bench/measure-ios.mjs`, which turns effect 1
+  from a number into a filename list on the next scheduled run. Effects 2
+  and 3 are single-word differences and are not worth a dig on their own.
 
   DECIDED: both hosts stay. The cross-check costs one extra macOS editor
   leg per row on a free runner, and this comparison is the only thing that
@@ -78,10 +98,6 @@ and its CI cannot hold. Delete entries when shipped.
   the Mac — `xcodebuild` runs on a macOS runner for both hosts; the
   `hosts` dimension only selects which machine runs the Unity EDITOR.
 
-  Still open from it: why two hosts emit same-sized, different-content
-  binaries. 4 bytes did not justify the dig, so the cause is unknown rather
-  than known-benign, and any published iOS number should name the host it
-  came from.
 - **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
   now ships the DllImport adapter (scalar functions included; Unity
   consumers vendoring it add `[MonoPInvokeCallback]` on two callbacks

@@ -369,33 +369,49 @@ down to 8 bytes.) So a zero-bytes hypothesis like H-FIELDS has to be
 resolved from the section sizes or from `il2cppOnly`, never from a file
 size, a segment size or a segment total.
 
-### What is not settled yet
+### What has now run, and what is still not settled
 
-Nothing in this section has been produced by a run. Specifically unknown
-until the first one: whether an Xcode project generated on Linux builds
-unmodified on macOS (GameCI ships `dockerWorkspacePath` because absolute
-paths can leak into `project.pbxproj`, and that input is the documented
-lever if it bites — not a `sed` over the pbxproj); where 2022.3 puts the
-generated C++ and whether the project carries any host-specific executable
-an Xcode build phase invokes; whether `Unity-iPhone` is a shared scheme;
-whether the IL2CPP archives (`libGameAssembly.a`, `il2cpp.a`, or the older
-`libil2cpp.a`) separate cleanly in the link map; per-row wall clock and
-and peak disk on both stages.
+The full matrix has run: twelve rows on both Unity hosts, 48 of 48 legs
+green (run 33255105207). Everything the first draft of this section listed
+as unknown is answered by it — an Xcode project generated in the Linux
+container builds unmodified on macOS with no `dockerWorkspacePath`
+intervention, the IL2CPP archives separate cleanly in the link map
+(`libGameAssembly.a` and `libil2cpp.a` are distinct entries), `Unity-iPhone`
+is a shared scheme, and a full two-host twelve-row pass takes about 85
+minutes of wall clock.
 
-Reproducibility is no longer open. Row 2 was built twice from the same
+Reproducibility is not open either. Row 2 was built twice from the same
 commit on the same host and every recorded field matched exactly —
 `il2cppOnly`, both raw sizes, both gz sizes — so there is no noise floor to
 subtract from a delta.
 
-That result is what makes the host comparison meaningful, and the host
-comparison did NOT come out clean. On rows 0/2/4 the two Unity hosts agree
-exactly on every published quantity (`total raw`, `UnityFramework`,
-`global-metadata.dat`) and disagree on two that are not published: gz by
-+81 B and +50 B, and `il2cppOnly` by −4 B and +4 B, with the sign differing
-between rows. Identical sizes, different content. Since the same host
-reproduces bit-for-bit, that residue is a real property of which machine
-ran the editor and not noise — roughly 0.0007% of a 12 MB artifact, real,
-and unexplained. Publish which host a number came from.
+That is what makes the host comparison meaningful, and at twelve rows it
+reads very differently from the three-row sample. The toolchain premise
+holds exactly (both hosts: Unity 2022.3.62f3, Xcode 26.6 / 17F113, iOS SDK
+26.5, same runner image, matching `validity` on every row), so the
+differences are host-attributable — and they separate into three effects:
+
+- A **constant 393,472 B of bundle payload** in the Linux-host `.app` that
+  the macOS-host `.app` does not carry, on every row including the baseline
+  and both probes. `appBytes - total.raw` is fixed per host, so it is a
+  fixed file set, independent of the row's sources, and entirely outside
+  the two files this protocol measures. It cancels in every published
+  delta. Which files they are is still unknown, which is why
+  `measure-ios.mjs` now records a per-file `appInventory` — the next
+  scheduled run turns this number into a list of names.
+- **±4 B inside `libGameAssembly.a`** on rows 2, 4 and 6, exactly and only
+  where `il2cppOnly` differs, with the sign alternating. An
+  alignment-class difference in one archive.
+- **+8 B of `UnityFramework` raw** on row 9 — the only row where a
+  published raw quantity differs at all.
+
+On eleven of twelve rows every published quantity is byte-identical across
+the two hosts; on the twelfth it differs by 8 bytes in 12 MB. The numbers
+published in `docs/compatibility.md` are host-independent at the precision
+they are quoted to. Still name the host a number came from.
+
+The one thing this section cannot yet report is peak disk per stage; the
+run does not record it.
 
 ---
 

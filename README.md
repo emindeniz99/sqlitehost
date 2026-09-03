@@ -87,6 +87,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/testing.md](./docs/testing.md) | test matrix |
 | [docs/packaging.md](./docs/packaging.md) | intended distribution |
 | [docs/reports/il2cpp-size-report.md](./docs/reports/il2cpp-size-report.md) | measured Unity IL2CPP app-size matrix (Android/ARM64) |
+| [docs/reports/ios-il2cpp-size-report.md](./docs/reports/ios-il2cpp-size-report.md) | measured Unity IL2CPP app-size matrix (iOS/ARM64) |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | prerequisites, running each suite, commit and merge conventions, release model |
 | [SECURITY.md](./SECURITY.md) | threat model, what counts as a vulnerability, how to report one |
 | [docs/guides/publishing.md](./docs/guides/publishing.md) | per-registry publishing checklists and the one-time owner bootstrap |

@@ -225,6 +225,37 @@ beats compact above ~14 methods raw (~21 gzipped); small hosts
 (≲15 methods) should prefer compact**. Full decomposition in
 `docs/reports/il2cpp-size-report.md`.
 
+The same twelve rows also run on **iOS/ARM64** (Unity 2022.3.62f3,
+Xcode 26.6, iOS SDK 26.5; `.github/workflows/ios-size-bench.yml`,
+run 33255105207, 48/48 legs green). The measured unit differs — on iOS
+the IL2CPP output links into `UnityFramework` rather than a separate
+`libil2cpp.so` — so Δ here is `UnityFramework` + `global-metadata.dat`:
+
+| Stack (50 methods) | iOS raw Δ | iOS gz Δ (download) |
+|---|---|---|
+| classic profile | 515 KB | 139 KB |
+| **compact profile** | **418 KB** | **113 KB** |
+| compact + `SQLITEHOST_SLIM` | 364 KB | 96 KB |
+| ultra profile | 345 KB | 101 KB |
+| **ultra + `SQLITEHOST_SLIM`** | **274 KB** | **79 KB** |
+
+The profile ordering carries over from Android unchanged — ultra beats
+compact beats classic at 50 methods, and `SQLITEHOST_SLIM` is a net win
+on both profiles. **The crossover does not carry over.** iOS marginal
+cost per method is classic **5.72 KB** → compact **4.38 KB** → ultra
+**2.02 KB** raw (fixed runtime: 229 / 198 / 244 KB), which puts the
+compact↔ultra crossover at **~19 methods raw (~28 gzipped)** against
+Android's ~14 raw (~21 gzipped). Ultra's fixed cost is the largest on
+both platforms, so it needs a *bigger* host to pay for itself on iOS
+than on Android: **below ~19 methods, prefer compact on iOS.**
+
+Do not read across the two tables. They are not comparable and not
+convertible: different BCL profile (`unityaot-macos` vs
+`unityaot-linux`), different compiler, and on iOS the engine itself
+links into the measured binary while Android's `libil2cpp.so` excludes
+it. Use the platform's own row. Full iOS decomposition in
+`docs/reports/ios-il2cpp-size-report.md`.
+
 Two structural findings drove the architecture here (an earlier
 revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
 
