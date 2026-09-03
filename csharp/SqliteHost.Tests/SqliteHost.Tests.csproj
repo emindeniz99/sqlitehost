@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <!-- Dynamic native override: SQLITEHOST_NATIVE_SQLITE=<path.so> loads an
          arbitrary sqlite3 build instead of the bundled e_sqlite3 (see
          Adapter/NativeSqliteOverride.cs and tests/compatibility-sqlite/). -->
