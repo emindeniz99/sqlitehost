@@ -1,0 +1,28 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-statement-drop",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValue"
+  ],
+  "steps": [
+    {
+      "id": "silence-the-queue",
+      "statements": [
+        {
+          "sql": "DROP TRIGGER trg_call_get_value_queue",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT INTO call_get_value (call_id, input_key) VALUES (:callId, 'example-key')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "read-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

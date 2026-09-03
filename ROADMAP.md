@@ -25,14 +25,6 @@ and its CI cannot hold. Delete entries when shipped.
   `LICENSE`) and the Maven namespace `io.github.emindeniz99` is already
   verified. Step-by-step:
   [docs/guides/publishing.md](./docs/guides/publishing.md).
-- **Statement denylist has no DDL coverage**: `FORBIDDEN_LEADING_KEYWORDS`
-  (codegen/core/src/ir.ts) stops `DELETE`/`UPDATE`-class statements but not
-  `DROP TABLE`/`DROP TRIGGER`/`ALTER TABLE` against runtime-owned objects.
-  Closing it changes a cross-language golden (the keyword list is projected
-  into the generated Java `Protocol` and the shared fixtures), so it needs
-  the full golden-regeneration dance across all three languages in one
-  deliberate change — not a quick patch. Lints are not a sandbox either
-  way (docs/validation.md), but this one is cheap signal worth adding.
 - **Explain the iOS bench's residual host difference.**
   `.github/workflows/ios-size-bench.yml` generates the Xcode project twice
   per row — on `ubuntu-latest` in GameCI's digest-pinned iOS editor

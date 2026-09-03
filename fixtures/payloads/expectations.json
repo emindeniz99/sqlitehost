@@ -502,6 +502,20 @@
       "warnings": []
     },
     {
+      "payload": "invalid/forbidden-statement-drop.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/protocol-table-write.json",
       "valid": false,
       "errors": [

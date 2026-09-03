@@ -28,9 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ATTACH is the only filesystem escape a script has: on a file-backed
  * workspace it grants read and write access to any reachable database.
  * PRAGMA can change semantics under the runtime's feet or, via
- * {@code writable_schema=ON}, rewrite the queue triggers outright. None of
- * these is caught by prepare-only validation, because all of them compile
- * perfectly.</p>
+ * {@code writable_schema=ON}, rewrite the queue triggers outright. Schema
+ * DDL reaches the same queue triggers by the front door: a script that
+ * drops one silences every host call made through that table while the run
+ * still reports Completed. None of these is caught by prepare-only
+ * validation, because all of them compile perfectly.</p>
  *
  * <p>Why protocol-table-write matters: the drain and the result-write policy
  * both assume they are the only writers of the queue and result tables. A
@@ -100,10 +102,55 @@ class StatementDenylistTest {
         for (String sql : List.of("BEGIN", "BEGIN IMMEDIATE", "COMMIT", "END",
                 "ROLLBACK", "SAVEPOINT sp1", "RELEASE sp1",
                 "ATTACH DATABASE '/tmp/x.db' AS x", "DETACH DATABASE x",
-                "PRAGMA foreign_keys = ON", "VACUUM", "ANALYZE", "REINDEX")) {
+                "PRAGMA foreign_keys = ON", "VACUUM", "ANALYZE", "REINDEX",
+                "DROP TABLE result_get_value", "ALTER TABLE result_get_value RENAME TO x",
+                "CREATE TABLE t (a INTEGER)")) {
             List<ValidationFinding> found = forbidden(sql);
             assertEquals(1, found.size(), sql + ": " + found);
             assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+    }
+
+    @Test
+    void schemaDdlIsDeniedBecauseTheRuntimeOwnsTheSchema() throws IOException {
+        // Why DDL is denied at all: none of it is caught by any other rule.
+        // Dropping a queue trigger compiles, prepares and runs — and then
+        // every INSERT into that call table enqueues nothing, the drain
+        // finds nothing, and the run reports Completed with zero calls
+        // executed. Renaming a result table breaks its reader the same way.
+        // CREATE TRIGGER is the write-laundering case: protocol-table-write
+        // only ever reads a statement's own target, never a trigger body, so
+        // a trigger that inserts into a result table forges results the host
+        // never produced. A script owns no schema — `script_vars` is its
+        // scratch surface — so denying the whole class costs nothing legal.
+        for (String sql : List.of(
+                "DROP TRIGGER trg_call_get_value_queue",
+                "DROP TABLE pending_host_calls",
+                "ALTER TABLE pending_host_calls RENAME TO parked",
+                "ALTER TABLE result_get_value ADD COLUMN extra INTEGER",
+                "CREATE TRIGGER t AFTER INSERT ON script_vars BEGIN"
+                        + " INSERT INTO result_get_value (call_id, status, result_value)"
+                        + " VALUES ('x', 'done', 1); END",
+                "CREATE TEMP TABLE result_get_value (call_id TEXT)",
+                "CREATE INDEX ix ON script_vars (name)")) {
+            List<ValidationFinding> found = forbidden(sql);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+            assertTrue(found.get(0).message().contains("DDL"), found.get(0).message());
+        }
+    }
+
+    @Test
+    void identifiersThatMerelyStartWithADdlKeywordStayLegal() throws IOException {
+        // Same false-positive budget as the rest of the list: only the first
+        // token counts, so a table or column whose name begins with a DDL
+        // keyword is untouched. `created_at` is the one a real script hits.
+        for (String sql : List.of(
+                "SELECT created_at FROM script_vars",
+                "SELECT * FROM drop_log",
+                "INSERT INTO alter_queue (a) VALUES (1)",
+                "SELECT 'DROP TABLE pending_host_calls' AS label")) {
+            assertEquals(List.of(), forbidden(sql), sql);
         }
     }
 
