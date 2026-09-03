@@ -393,12 +393,12 @@ differences are host-attributable — and they separate into three effects:
 
 - A **constant 393,472 B of bundle payload** in the Linux-host `.app` that
   the macOS-host `.app` does not carry, on every row including the baseline
-  and both probes. `appBytes - total.raw` is fixed per host, so it is a
-  fixed file set, independent of the row's sources, and entirely outside
-  the two files this protocol measures. It cancels in every published
-  delta. Which files they are is still unknown, which is why
-  `measure-ios.mjs` now records a per-file `appInventory` — the next
-  scheduled run turns this number into a list of names.
+  and both probes — outside the two files this protocol measures, so it
+  cancels in every published delta. The per-file `appInventory` named it in
+  one follow-up run (33724537438): `Data/level0.resS` (393,216 B, absent on
+  macOS) plus 256 B on `Data/level0`, reconciling exactly. The Linux-host
+  editor split the scene's raw resource bytes into a streaming sidecar and
+  the macOS-host editor did not.
 - **±4 B inside `libGameAssembly.a`** on rows 2, 4 and 6, exactly and only
   where `il2cppOnly` differs, with the sign alternating. An
   alignment-class difference in one archive.

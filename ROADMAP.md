@@ -25,53 +25,52 @@ and its CI cannot hold. Delete entries when shipped.
   `LICENSE`) and the Maven namespace `io.github.emindeniz99` is already
   verified. Step-by-step:
   [docs/guides/publishing.md](./docs/guides/publishing.md).
-- **Explain the iOS bench's residual host difference.**
+- **The iOS bench's host difference is explained; both hosts stay.**
   `.github/workflows/ios-size-bench.yml` generates the Xcode project twice
   per row — on `ubuntu-latest` in GameCI's digest-pinned iOS editor
   container, and on a macOS runner where the same action installs the
   editor onto the machine — then compiles both with one identical
   `xcodebuild` step, so a byte difference between them belongs to the
-  Unity host. The full twelve-row matrix has now run on both hosts
-  (run 33255105207, 48/48 legs green), and the toolchain premise holds
-  exactly: both hosts recorded Unity 2022.3.62f3, Xcode 26.6 / 17F113,
-  iOS SDK 26.5 and the same runner image, and every row's `validity`
-  fields match. The difference is therefore attributable to the host, and
-  it separates into three distinct effects rather than the one "±4 bytes"
-  the three-row sample suggested:
+  Unity host. The twelve-row matrix ran on both (run 33255105207, 48/48
+  legs green) with the toolchain premise holding exactly: same Unity
+  2022.3.62f3, Xcode 26.6 / 17F113, iOS SDK 26.5, same runner image,
+  matching `validity` on every row.
 
-  1. **A constant 393,472 B (384.25 KiB) of non-code bundle payload**,
-     present in the Linux-host `.app` and absent from the macOS-host
-     `.app`, on all twelve rows including `baseline` and both probes.
-     `appBytes - total.raw` is fixed per host (3,283,430 vs 2,889,958),
-     so this is a fixed set of bundled files, not anything the row's
-     sources influence. It is by far the largest host effect and it sits
-     entirely *outside* the measured unit, so it cancels in every
-     published delta. What those files are is not yet known: the bench
-     records the bundle's total size but no per-file inventory.
-  2. **±4 B inside `libGameAssembly.a`** on rows 2, 4 and 6, which is
-     exactly and only where `il2cppOnly` differs (−4, +4, −4). The sign
-     alternates, so it is an alignment-class difference in one archive,
-     not a systematic gain or loss.
-  3. **+8 B of `UnityFramework` raw** on row 9 alone — the only row where
-     a published raw quantity differs at all.
+  The large effect was a constant 393,472 B of bundle payload carried by
+  the Linux-host `.app` and not the macOS-host one, on every row
+  including the baseline and both probes. The per-file `appInventory`
+  added to `measure-ios.mjs` named it in a single follow-up run
+  (33724537438, row 0, both hosts): the Linux-host bundle has 32 files
+  and the macOS-host one 31, and the whole difference is
 
-  So on 11 of 12 rows every published quantity — `total raw`,
-  `UnityFramework`, `global-metadata.dat` — is byte-identical across the
-  two hosts, and on the twelfth it differs by 8 bytes out of 12 MB. The
-  numbers in `docs/compatibility.md` are host-independent at the
-  precision they are quoted to.
+  | file | Δ (macos − linux) |
+  |---|---:|
+  | `Data/level0.resS` | −393,216 B (absent on macOS) |
+  | `Data/level0` | −256 B |
+  | | **−393,472 B**, reconciling exactly |
 
-  Next step to close this: record a per-file inventory of the `.app`
-  bundle in `tests/app-size-bench/measure-ios.mjs`, which turns effect 1
-  from a number into a filename list on the next scheduled run. Effects 2
-  and 3 are single-word differences and are not worth a dig on their own.
+  A `.resS` is Unity's streaming-resource sidecar: the scene's raw
+  texture/audio/mesh bytes split out of the serialized scene file. So the
+  Linux-host editor split the scene's resource data into a sidecar and
+  the macOS-host editor did not, and `level0` differs by the 256 B of
+  bookkeeping that is consistent with naming one. That last clause is an
+  inference from sizes — the bench records file sizes, not contents.
 
-  DECIDED: both hosts stay. The cross-check costs one extra macOS editor
-  leg per row on a free runner, and this comparison is the only thing that
-  would notice if the two paths ever diverged by more than a rounding
-  error. Note that dropping `macos` would never have removed iOS builds or
-  the Mac — `xcodebuild` runs on a macOS runner for both hosts; the
-  `hosts` dimension only selects which machine runs the Unity EDITOR.
+  This never touched a published number: the measured unit is
+  `UnityFramework` + `global-metadata.dat`, both outside these two files,
+  and row 0's `total.raw` is byte-identical across hosts. What remains is
+  two single-word differences with no further explanation and no reason
+  to chase one: ±4 B inside `libGameAssembly.a` on rows 2, 4 and 6 (sign
+  alternating, an alignment-class difference) and +8 B of
+  `UnityFramework` on row 9. Eleven of twelve rows are byte-identical on
+  every published quantity.
+
+  Both hosts stay. The cross-check costs one extra macOS editor leg per
+  row on a free runner, and it is the only thing that would notice if the
+  two paths ever diverged by more than this. Dropping `macos` would never
+  have removed iOS builds or the Mac — `xcodebuild` runs on a macOS
+  runner for both hosts; the `hosts` dimension only selects which machine
+  runs the Unity EDITOR.
 
 - **Unity-packaged SQLite adapter**: `SqliteHost.Adapters.Native`
   now ships the DllImport adapter (scalar functions included; Unity

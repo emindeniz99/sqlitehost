@@ -128,9 +128,28 @@ Three separable effects:
    including the baseline and both probes. `appBytes - total.raw` is fixed
    per host (3,283,430 vs 2,889,958), so it is a fixed file set unrelated
    to the row's sources, and it sits entirely outside the two measured
-   files — it cancels in every published delta. Which files they are is
-   not yet known; `measure-ios.mjs` now records a per-file `appInventory`,
-   so the next scheduled run names them.
+   files — it cancels in every published delta.
+
+   **Identified.** The per-file `appInventory` recorded by
+   `measure-ios.mjs` resolved it in one follow-up run (33724537438, row 0,
+   both hosts). The Linux-host bundle holds 32 files and the macOS-host
+   one 31, and the entire difference is two entries:
+
+   | file | Δ (macos − linux) |
+   |---|---:|
+   | `Data/level0.resS` | −393,216 B — absent on macOS |
+   | `Data/level0` | −256 B |
+   | | **−393,472 B**, reconciling to `appBytes` exactly |
+
+   A `.resS` is Unity's streaming-resource sidecar: the raw
+   texture/audio/mesh bytes of a scene, split out of the serialized scene
+   file next to it. The Linux-host editor split this scene's resource data
+   into a sidecar; the macOS-host editor did not. The 256 B on `level0` is
+   consistent with the bookkeeping that names such a sidecar — an
+   inference from sizes, since the bench records sizes and not contents.
+
+   Neither file is in the measured unit, and row 0's `total.raw` is
+   byte-identical across the two hosts.
 2. **±4 B inside `libGameAssembly.a`** on rows 2, 4 and 6 — exactly and
    only where `il2cppOnly` differs, with the sign alternating. An
    alignment-class difference in one archive.
