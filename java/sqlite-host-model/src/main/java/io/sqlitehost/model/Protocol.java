@@ -110,8 +110,9 @@ public final class Protocol {
      * meaningful token ({@code ir.ts FORBIDDEN_LEADING_KEYWORDS}).
      */
     public static final Set<String> FORBIDDEN_LEADING_KEYWORDS = Set.of(
-            "analyze", "attach", "begin", "commit", "detach", "end", "pragma",
-            "reindex", "release", "rollback", "savepoint", "vacuum");
+            "alter", "analyze", "attach", "begin", "commit", "create", "detach",
+            "drop", "end", "pragma", "reindex", "release", "rollback",
+            "savepoint", "vacuum");
 
     private Protocol() {
     }

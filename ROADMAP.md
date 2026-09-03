@@ -25,31 +25,6 @@ and its CI cannot hold. Delete entries when shipped.
   `LICENSE`) and the Maven namespace `io.github.emindeniz99` is already
   verified. Step-by-step:
   [docs/guides/publishing.md](./docs/guides/publishing.md).
-- **`@sqlite-host/authoring` depends on an unpublished package**: its
-  `dependencies` name `@sqlite-host/codegen-core` as `workspace:*`, and
-  codegen-core is private. pnpm rewrites that to a real range in the
-  tarball, so every consumer install would 404.
-  `scripts/check-npm-publishable.mjs` blocks the publish until this is
-  resolved — publish codegen-core too, bundle it, or drop the
-  dependency.
-- **The adapter conformance suite has no multi-statement or NUL coverage**,
-  and two test adapters violate the contract because of it. Measured while
-  fixing the native adapter's NUL truncation: `sqlite-net` accepts
-  `DELETE FROM t\0 WHERE k = 'x'` and deletes every row, and
-  `Microsoft.Data.Sqlite` never returns on the same input (a hang, not a
-  truncation). Both are test-only adapters, so nothing shipped is affected,
-  but `docs/adapter-contract.md` forbids the behaviour for every adapter and
-  only `SqliteHost.Adapters.Native` is actually tested for it. The fix is a
-  conformance-level multi-statement + embedded-NUL case, which will fail for
-  those two adapters until they are patched.
-- **Statement denylist has no DDL coverage**: `FORBIDDEN_LEADING_KEYWORDS`
-  (codegen/core/src/ir.ts) stops `DELETE`/`UPDATE`-class statements but not
-  `DROP TABLE`/`DROP TRIGGER`/`ALTER TABLE` against runtime-owned objects.
-  Closing it changes a cross-language golden (the keyword list is projected
-  into the generated Java `Protocol` and the shared fixtures), so it needs
-  the full golden-regeneration dance across all three languages in one
-  deliberate change — not a quick patch. Lints are not a sandbox either
-  way (docs/validation.md), but this one is cheap signal worth adding.
 - **Explain the iOS bench's residual host difference.**
   `.github/workflows/ios-size-bench.yml` generates the Xcode project twice
   per row — on `ubuntu-latest` in GameCI's digest-pinned iOS editor

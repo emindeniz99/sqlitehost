@@ -3,8 +3,9 @@
 Status: **implemented** (Phase 1 + Phase 2). This documents the problem,
 the inventory, and the mechanism; the "Phasing" section below records what
 actually shipped. The single source is `codegen/core/src/ir.ts`, projected
-into the generated `ProtocolConstants.g.cs` / `Protocol.java` and pinned by
-the cross-language golden and per-language equivalence tests.
+into the generated `ProtocolConstants.g.cs` / `Protocol.java` /
+`protocol.ts` and pinned by the cross-language golden and per-language
+equivalence tests.
 
 ## Motivation
 
@@ -116,7 +117,12 @@ projects the movable constants into a generated file per language — the
 same "emit + byte-golden" pattern that already produces the DTOs, the
 Java model, and the manifest. No new runtime loader:
 
-- **TypeScript** already imports `ir.ts` directly — no change.
+- **TypeScript** gets a generated `protocol.ts` under the authoring SDK's
+  `src/generated/`. The emitters themselves keep importing `ir.ts`
+  directly — they live in this repository. The authoring SDK does not: it
+  publishes to npm while `codegen-core` stays private, so importing the
+  source would put an unpublishable dependency in its manifest. It reads
+  the projection instead, on the same terms as Java and C#.
 - **Java** gets a generated `Protocol` constants class. The existing
   Jackson manifest reader is untouched; no new loader is introduced.
 - **C#** gets a generated, byte-golden `ProtocolConstants.g.cs` (plus its

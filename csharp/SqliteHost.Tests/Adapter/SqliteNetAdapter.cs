@@ -215,12 +215,68 @@ namespace SqliteHost.Tests.Adapter
 
         private sqlite3_stmt PrepareOnly(string sql)
         {
-            int rc = raw.sqlite3_prepare_v2(Handle, sql, out sqlite3_stmt statement);
+            RejectEmbeddedNul(sql);
+            int rc = raw.sqlite3_prepare_v2(Handle, sql, out sqlite3_stmt statement, out string tail);
             if (rc != raw.SQLITE_OK)
             {
                 throw Error("sqlite3_prepare_v2", rc);
             }
+            RejectSqlAfterFirstStatement(statement, tail);
             return statement;
+        }
+
+        /// <summary>
+        /// Adapter contract (docs/adapter-contract.md): sqlite3_prepare_v2
+        /// reads SQL as a C string and stops at the first NUL byte, so an
+        /// embedded NUL truncates the statement — it can strip a DELETE's
+        /// WHERE clause, and it hides everything after it from the tail
+        /// check below, because SQLite never read that far. Both are the
+        /// silent partial execution the contract forbids, so the NUL is
+        /// rejected before anything is compiled. (Same guard, same reason
+        /// as SqliteHost.Adapters.Native.)
+        /// </summary>
+        private static void RejectEmbeddedNul(string sql)
+        {
+            int index = sql.IndexOf('\0');
+            if (index >= 0)
+            {
+                throw new SqliteHostAdapterException(
+                    "SQL text contains an embedded NUL character at index " + index
+                    + ": sqlite3 stops reading at the NUL, so the rest of the statement"
+                    + " would be silently dropped instead of executed.",
+                    0, null);
+            }
+        }
+
+        /// <summary>
+        /// sqlite3_prepare_v2 compiles only the first statement and hands
+        /// the rest back as the tail; running just the first is the silent
+        /// partial execution the contract forbids. Preparing the tail
+        /// rather than scanning it for non-whitespace tolerates trailing
+        /// terminators and comments, so only a second executable statement
+        /// (or a tail that fails to compile) is rejected. Nothing has been
+        /// stepped when this throws.
+        /// </summary>
+        private void RejectSqlAfterFirstStatement(sqlite3_stmt statement, string tail)
+        {
+            if (string.IsNullOrEmpty(tail))
+            {
+                return;
+            }
+            int rc = raw.sqlite3_prepare_v2(Handle, tail, out sqlite3_stmt tailStatement);
+            bool tailIsExecutable = tailStatement != null && !tailStatement.IsInvalid;
+            if (tailStatement != null)
+            {
+                tailStatement.Dispose();
+            }
+            if (rc != raw.SQLITE_OK || tailIsExecutable)
+            {
+                statement.Dispose();
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 left SQL after the first statement: multi-statement SQL"
+                    + " is not supported; send each statement in its own Execute/Query/Prepare call.",
+                    0, null);
+            }
         }
 
         private sqlite3_stmt PrepareCore(string sql, IReadOnlyList<SqliteHostBinding> bindings)

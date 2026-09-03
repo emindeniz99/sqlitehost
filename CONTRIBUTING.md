@@ -68,7 +68,7 @@ is covered by the Linux and Windows CI jobs. Locally, skip it:
 dotnet test --filter "FullyQualifiedName!~SystemDataSqlite"
 ```
 
-That leaves 473 tests: 467 pass, 6 skip.
+That leaves 503 tests: 497 pass, 6 skip.
 
 **No .NET 8 runtime installed?** The test assembly targets `net8.0` and
 will not start on a machine that only has newer runtimes. Roll it
