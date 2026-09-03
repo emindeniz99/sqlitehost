@@ -422,7 +422,7 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
 
 /**
  * Statement kinds a script may not use, identified by the statement's FIRST
- * meaningful token (the forbidden-statement lint, docs/validation.md). Three
+ * meaningful token (the forbidden-statement lint, docs/validation.md). Four
  * distinct hazards, all outside the script surface:
  *
  *  - transaction control (`begin`/`commit`/`end`/`rollback`/`savepoint`/
@@ -438,6 +438,15 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
  *    contract. PRAGMA in particular can change semantics under the runtime's
  *    feet (`foreign_keys`, `recursive_triggers`, `case_sensitive_like`) or
  *    rewrite the schema outright (`writable_schema=ON`).
+ *  - `alter`/`create`/`drop`: schema DDL. The runtime owns the workspace
+ *    schema and a script has no reason to change it. `DROP TRIGGER` on a
+ *    queue trigger is the sharp case — inserts into the call table then
+ *    enqueue nothing, the drain finds nothing, and the run still reports
+ *    Completed with zero calls executed. `ALTER TABLE … RENAME` moves a
+ *    result table out from under its reader, and `CREATE TRIGGER` launders
+ *    writes past the protocol-table-write rule, which only ever sees a
+ *    statement's own target and never a trigger body. `script_vars` is the
+ *    sanctioned scratch surface, so nothing legitimate is lost.
  *
  * Matching the FIRST token only is what keeps this precise: `pragma_table_info`
  * table-valued functions inside a SELECT, a column named `begin`, and the
@@ -448,11 +457,14 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
  * (docs/proposals/rule-parameters-as-data.md).
  */
 export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
+  "alter",
   "analyze",
   "attach",
   "begin",
   "commit",
+  "create",
   "detach",
+  "drop",
   "end",
   "pragma",
   "reindex",

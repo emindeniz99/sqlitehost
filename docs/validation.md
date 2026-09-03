@@ -206,7 +206,7 @@ list lives in `docs/sqlite-surface.md`.
 | Code | Severity | Rule |
 |---|---|---|
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
-| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
+| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
 | `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
 
 Why these are errors rather than warnings:
@@ -241,6 +241,19 @@ Why these are errors rather than warnings:
   result-write policy both assume it. A script can otherwise forge a
   result the host never produced, or delete queued calls so they never
   drain while the run reports success.
+- **The runtime owns the schema, so a script has no DDL to do.**
+  `DROP TRIGGER trg_call_<method>_queue` is the sharp case: with the queue
+  trigger gone, inserts into that call table enqueue nothing, the drain
+  finds nothing, and the run reports `Completed` with zero executed calls
+  — the same silent-success shape as a rolled-back transaction.
+  `ALTER TABLE result_<method> RENAME TO …` breaks the reader instead, and
+  `CREATE TRIGGER` launders writes past `protocol-table-write`, which only
+  ever reads a statement's own target and never a trigger body. `CREATE`
+  is denied along with the other two because a script's scratch surface is
+  `script_vars`, not tables of its own, so the whole class costs nothing
+  legal. Denying the leading keyword is also the only cheap form this can
+  take: a target check would have to model every DDL shape, and `CREATE`
+  has no target to check at all.
 
 What stays legal, and is pinned by tests in both validators:
 
@@ -249,23 +262,23 @@ What stays legal, and is pinned by tests in both validators:
   neither trip the lint nor smuggle a protocol write past it.
 - `pragma_table_info(...)` and the other `pragma_*` table-valued
   functions inside a `SELECT`; a table named `pragma_helper`; a column
-  named `begin`; the string literal `'PRAGMA …'`; `CASE … END`. Only the
-  first token is treated as a statement keyword, and only identifier
-  tokens — a leading `'PRAGMA'` literal is a string, not a statement.
+  named `begin` or `created_at`; the string literal `'PRAGMA …'`;
+  `CASE … END`. Only the first token is treated as a statement keyword,
+  and only identifier tokens — a leading `'PRAGMA'` literal is a string,
+  not a statement.
 - **Reading** any runtime-owned table. Only writes are denied.
 - Writing **call tables** and their input list child tables (that is how
   a script makes a host call), `script_vars`, and `script_control`.
 
-**Known limit — DDL is not covered.** `DROP`, `ALTER` and `CREATE` are
-not denied keywords, and `protocol-table-write` resolves a target only
-for `INSERT`/`REPLACE`/`UPDATE`/`DELETE`, so a statement like
-`DROP TRIGGER trg_call_<method>_queue` or
-`ALTER TABLE result_<method> RENAME TO …` passes all three lints today.
-The effect matches what the denylist exists to prevent: with the queue
-trigger gone, inserts into a call table enqueue nothing, the drain finds
-nothing, and the run reports `Completed` with zero executed calls. The
-runtime owns the schema and a script has no reason to change it, so
-treat DDL as out of bounds even though nothing stops you yet.
+**Known limit — the DDL rule is keyword-shaped, not target-shaped.**
+`CREATE`/`ALTER`/`DROP` are denied wherever they lead a statement, so the
+rule cannot tell a script's own temporary table from a runtime-owned one
+and does not try. That is the intended trade: a script has no sanctioned
+schema of its own, and a target-aware version would need a DDL grammar
+these tokenizers deliberately do not have. `protocol-table-write` still
+resolves targets only for `INSERT`/`REPLACE`/`UPDATE`/`DELETE`, which is
+now sound rather than a gap, because no statement that changes the schema
+can reach it.
 
 ### Result-read lineage (java validator only in v1)
 

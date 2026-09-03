@@ -266,16 +266,18 @@ public final class ValidationEngine {
 
         // forbidden-statement: the statement's leading keyword names a
         // statement kind outside the script surface — transaction control,
-        // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX (docs/validation.md).
-        // Matching only the FIRST token is what keeps `pragma_table_info(...)`
-        // in a SELECT, a `WITH … INSERT`, and the literal 'PRAGMA' legal.
+        // ATTACH/DETACH, PRAGMA/VACUUM/ANALYZE/REINDEX, schema DDL
+        // (docs/validation.md). Matching only the FIRST token is what keeps
+        // `pragma_table_info(...)` in a SELECT, a `WITH … INSERT`, and the
+        // literal 'PRAGMA' legal.
         String leading = SqlAnalyzer.leadingKeyword(tokens);
         if (leading != null && Protocol.FORBIDDEN_LEADING_KEYWORDS.contains(leading)) {
             findings.add(ValidationFinding.error(ValidationCodes.FORBIDDEN_STATEMENT,
                     stepId, statementIndex,
                     "statement starts with '" + leading.toUpperCase(Locale.ROOT)
-                            + "' — transaction control, ATTACH/DETACH and"
-                            + " PRAGMA/VACUUM/ANALYZE/REINDEX are not part of the"
+                            + "' — transaction control, ATTACH/DETACH,"
+                            + " PRAGMA/VACUUM/ANALYZE/REINDEX and schema DDL"
+                            + " (CREATE/ALTER/DROP) are not part of the"
                             + " script surface (docs/validation.md)"));
         }
 

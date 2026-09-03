@@ -42,14 +42,6 @@ and its CI cannot hold. Delete entries when shipped.
   only `SqliteHost.Adapters.Native` is actually tested for it. The fix is a
   conformance-level multi-statement + embedded-NUL case, which will fail for
   those two adapters until they are patched.
-- **Statement denylist has no DDL coverage**: `FORBIDDEN_LEADING_KEYWORDS`
-  (codegen/core/src/ir.ts) stops `DELETE`/`UPDATE`-class statements but not
-  `DROP TABLE`/`DROP TRIGGER`/`ALTER TABLE` against runtime-owned objects.
-  Closing it changes a cross-language golden (the keyword list is projected
-  into the generated Java `Protocol` and the shared fixtures), so it needs
-  the full golden-regeneration dance across all three languages in one
-  deliberate change — not a quick patch. Lints are not a sandbox either
-  way (docs/validation.md), but this one is cheap signal worth adding.
 - **Explain the iOS bench's residual host difference.**
   `.github/workflows/ios-size-bench.yml` generates the Xcode project twice
   per row — on `ubuntu-latest` in GameCI's digest-pinned iOS editor
