@@ -1,6 +1,6 @@
 {
   "name": "@sqlite-host/authoring",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "SqliteHost TypeScript authoring SDK: generated typed method surface, manifest metadata/autocomplete, fluent script builder, and static payload lint",

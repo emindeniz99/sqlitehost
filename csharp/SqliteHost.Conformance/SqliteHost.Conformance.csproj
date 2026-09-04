@@ -14,7 +14,7 @@
 
   <PropertyGroup Label="NuGet pack metadata">
     <PackageId>SqliteHost.Conformance</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Emin Deniz</Authors>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/emindeniz99/sqlitehost</RepositoryUrl>
@@ -25,14 +25,14 @@
     <!-- Minimal xunit surface that supports netstandard2.0: the attributes
          ([SkippableFact] via Xunit.SkippableFact) and assertions only; the
          consumer's test project brings the runner. -->
-    <PackageReference Include="xunit.core" Version="2.9.3" />
-    <PackageReference Include="xunit.assert" Version="2.9.3" />
-    <PackageReference Include="Xunit.SkippableFact" Version="1.5.85" />
+    <PackageReference Include="xunit.core" Version="2.9.3"/>
+    <PackageReference Include="xunit.assert" Version="2.9.3"/>
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.85"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
-    <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj" />
+    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj"/>
+    <ProjectReference Include="../SqliteHost.Runtime/SqliteHost.Runtime.csproj"/>
   </ItemGroup>
 
 </Project>
