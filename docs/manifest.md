@@ -25,13 +25,24 @@ indent, LF, trailing newline. Committed snapshot:
 ## Method descriptor
 
 `operationName` (TypeSpec op), `methodName` (protocol name),
-`handlerName`, `apiLevel`, `mutates` (default true; false = inline
-eligible), resolved `callTable`/`resultTable`/`queueTrigger`,
+`handlerName`, `apiLevel`, `mutates`, resolved
+`callTable`/`resultTable`/`queueTrigger`,
 `input`/`result` shapes, and `inline` (function exposure block —
 `functionName`, `minArgs`, `maxArgs`, `args`, `returns` — or null): `modelName`, scalar
 `fields` (`propertyName`, `sqlName`, `column`, `scalarType`,
 `optional`), and `listFields` (`propertyName`, `sqlName`, `childTable`,
 `itemModelName`, `itemFields`).
+
+`mutates` is authoring provenance, not a contract. It records what
+`@hostMethod` declared. The inline-eligibility decision is made once, in
+the frontend, and is materialized as the `inline` block; after that
+nothing acts on `mutates`. It is carried, not read: the Java manifest
+reader requires the key and stores it on `MethodDescriptor`, the
+TypeScript metadata type declares it, and no emitter, runtime or
+validator branches on it anywhere. A manifest whose `mutates` is `true`
+beside a non-null `inline` still emits the inline function and nothing
+warns. To learn whether a method is exposed as a function, read
+`inline !== null`.
 
 All physical names in the manifest are **resolved** — consumers
 (validators, DDL generators, editors) never re-derive naming. The
