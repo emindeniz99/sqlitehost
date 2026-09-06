@@ -1,0 +1,20 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-blank-step-id",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "  ",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, text_value) VALUES ('k', 'v')",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

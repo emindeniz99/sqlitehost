@@ -383,6 +383,97 @@ namespace SqliteHost.Conformance
             Assert.Equal(new[] { "True|null" }, rows);
         }
 
+        [SkippableFact]
+        public void NullColumn_EveryTypedGetter_FailsLoud()
+        {
+            // A NULL column has no int, no text, no blob and no double. The
+            // two shapes an adapter can reach for instead are both wrong:
+            // returning 0 / "" / an empty array is silent data loss, and
+            // returning null for a reference type moves the failure to the
+            // caller's next dereference. IsNull is the question to ask, so
+            // every typed getter refuses and says so (docs/adapter-contract.md,
+            // "Value fidelity").
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (t TEXT, b BLOB, i INTEGER, r REAL)", null);
+            connection.Execute("INSERT INTO scratch (t, b, i, r) VALUES (NULL, NULL, NULL, NULL)", null);
+
+            var probes = connection.Query("SELECT t, b, i, r FROM scratch", null, row =>
+            {
+                var seen = new List<string>();
+                for (int index = 0; index < 4; index++)
+                {
+                    seen.Add("isNull" + index + "=" + row.IsNull(index));
+                }
+                seen.Add(Refused(() => row.GetText(0)));
+                seen.Add(Refused(() => row.GetBlob(1)));
+                seen.Add(Refused(() => row.GetInt32(2)));
+                seen.Add(Refused(() => row.GetInt64(2)));
+                seen.Add(Refused(() => row.GetBool(2)));
+                seen.Add(Refused(() => row.GetFloat32(3)));
+                seen.Add(Refused(() => row.GetFloat64(3)));
+                return string.Join(",", seen);
+            });
+
+            Assert.Equal(
+                new[]
+                {
+                    "isNull0=True,isNull1=True,isNull2=True,isNull3=True,"
+                    + "refused,refused,refused,refused,refused,refused,refused"
+                },
+                probes);
+        }
+
+        [SkippableFact]
+        public void EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray()
+        {
+            // The distinction the write side already makes — Blob(new byte[0])
+            // and Null() bind differently — has to survive the read back, or
+            // a round trip through the workspace turns one into the other.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, b BLOB)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, b) VALUES (1, :empty), (2, :nothing)",
+                Bind(
+                    ("empty", SqliteHostBindingValue.Blob(new byte[0])),
+                    ("nothing", SqliteHostBindingValue.Null())));
+
+            var rows = connection.Query("SELECT b FROM scratch ORDER BY id", null, row =>
+            {
+                if (row.IsNull(0))
+                {
+                    return "null:" + Refused(() => row.GetBlob(0));
+                }
+                byte[] blob = row.GetBlob(0);
+                return "blob:" + (blob == null ? "<null>" : blob.Length.ToString());
+            });
+
+            Assert.Equal(new[] { "blob:0", "null:refused" }, rows);
+        }
+
+        /// <summary>
+        /// "refused" when the read threw the documented NULL-column
+        /// InvalidOperationException, otherwise a description of what it did
+        /// instead — so a failure names the wrong behaviour rather than just
+        /// saying false != true.
+        /// </summary>
+        private static string Refused(Func<object> read)
+        {
+            object value;
+            try
+            {
+                value = read();
+            }
+            catch (InvalidOperationException)
+            {
+                return "refused";
+            }
+            catch (Exception ex)
+            {
+                return "threw " + ex.GetType().Name;
+            }
+            return "returned " + (value == null ? "<null>" : value.ToString());
+        }
+
         // ---- runtime conformance (adapter driven through the runtime) ----
 
         // Lexical binding validation is one of the optional strict checks

@@ -215,6 +215,14 @@ jobs:
         run: node tests/cross-language-golden/run.mjs
       - name: Script-delivery goldens (envelopes signed by Node)
         run: node tests/delivery-golden/run.mjs
+      # The runners prove each validator reports what a case expects; this
+      # proves the corpus itself is sound — no orphan fixture, no orphan
+      # entry, one fault per invalid case, and a fixture for every pinned
+      # code. Reads files only; nothing to build.
+      - name: Fixture corpus check
+        run: node scripts/check-fixture-corpus.mjs
+      - name: Fixture corpus checker self-test
+        run: node scripts/check-fixture-corpus.mjs --self-test
       - name: Unity package sync check
         run: node unity/sync.mjs --check
       - name: Unity vendor-trim (each profile compiles alone)

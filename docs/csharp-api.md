@@ -370,6 +370,12 @@ public interface IHostMethodSpecBuilder<THandlers, TInput, TResult>
     // shape rules (scalar-only input, exactly one scalar result, no
     // lists) are re-checked here fail-loud.
     IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName);
+    // Same, with the arity the manifest already carries. Generated code
+    // uses this overload; the one-argument form derives minArgs/maxArgs
+    // from the declared input fields, which is what a hand-written
+    // definition needs.
+    IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(
+        string functionName, int minArgs, int maxArgs);
     IHostMethodSpec<THandlers> Build();
 }
 ```
@@ -501,6 +507,9 @@ public interface ICompactHostMethodBuilder<THandlers>
         Action<ICompactListItemResultFieldsBuilder> configureItem);
     ICompactHostMethodBuilder<THandlers> Handler(Func<object, object, object> handler); // required
     ICompactHostMethodBuilder<THandlers> Inline(string functionName);
+    // Arity-carrying overload used by generated code; see the
+    // classic builder above.
+    ICompactHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs);
     IHostMethodSpec<THandlers> Build();
 }
 
@@ -543,6 +552,9 @@ public interface IUltraHostMethodBuilder<THandlers>
     IUltraHostMethodBuilder<THandlers> Handler(
         Func<object, SqliteHostUltraCall, SqliteHostUltraResult> handler);   // required
     IUltraHostMethodBuilder<THandlers> Inline(string functionName);
+    // Arity-carrying overload used by generated code; see the
+    // classic builder above.
+    IUltraHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs);
     IHostMethodSpec<THandlers> Build();
 }
 

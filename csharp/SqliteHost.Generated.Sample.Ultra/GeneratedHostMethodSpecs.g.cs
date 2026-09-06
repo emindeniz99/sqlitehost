@@ -26,7 +26,7 @@ namespace Example.Game.Generated.Ultra
                 .ApiLevel(1)
                 .InputText("key")
                 .ResultLong("value")
-                .Inline("fn_get_value")
+                .Inline("fn_get_value", 1, 1)
                 .Handler(InvokeGetValue)
                 .Build();
         }

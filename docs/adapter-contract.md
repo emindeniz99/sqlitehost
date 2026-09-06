@@ -147,11 +147,40 @@ above 2^31), bool as 0/1, text (empty and non-ASCII), blob (empty and
 large), explicit null, float32/float64 (REAL) — see the conformance
 suite for the exact matrix.
 
+**NULL is not a value.** Every typed getter on `ISqliteHostRow` —
+`GetInt32`, `GetInt64`, `GetBool`, `GetText`, `GetBlob`, `GetFloat32`,
+`GetFloat64` — requires a non-NULL column, and throws
+`InvalidOperationException` naming the column when it gets one. It must
+never substitute `0`, `""`, `new byte[0]` or a null reference. Both
+silent readings lose information: a substituted zero cannot be told
+apart from a stored zero, and a null reference only postpones the
+failure to the caller's next dereference. `IsNull(index)` is the way to
+ask, and asking it first is the caller's job — the runtime does exactly
+that for every optional field.
+
+Two consequences worth spelling out, because an adapter can get them
+wrong without any test noticing:
+
+- **An empty blob is not a NULL blob.** `GetBlob` on a stored
+  zero-length blob returns a zero-length array; on a NULL column it
+  throws. `sqlite3_column_blob` returns a null pointer for *both*, so a
+  P/Invoke adapter that infers NULL from the pointer conflates them —
+  check `sqlite3_column_type` instead.
+- **±Infinity and NaN are legitimate REAL values on the way out.** The
+  finite-only rule is the JSON envelope's (`docs/script-envelope.md`),
+  and a REAL column can hold an infinity — SQLite parses the literal
+  `9e999` into one. A getter must return it as read rather than
+  refusing it.
+
+`NullColumn_EveryTypedGetter_FailsLoud` and
+`EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray` in the conformance suite
+pin both.
+
 ## Conformance suite
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (27 core
+`AdapterConformanceTestsBase` — the xunit contract suite (29 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

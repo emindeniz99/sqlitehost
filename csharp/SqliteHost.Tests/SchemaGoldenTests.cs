@@ -69,9 +69,7 @@ namespace SqliteHost.Tests
         public void SupportedFeatures_ArePinnedProtocolV1Features()
         {
             var definition = GeneratedHostDefinition.Build();
-            Assert.Equal(
-                new[] { "typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars", "scriptControl" },
-                definition.SupportedFeatures);
+            Assert.Equal(ProtocolConstants.FeaturesV1, definition.SupportedFeatures);
         }
 
         [Fact]

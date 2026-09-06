@@ -414,13 +414,28 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => raw.sqlite3_column_type(_statement, index) == raw.SQLITE_NULL;
-        public int GetInt32(int index) => raw.sqlite3_column_int(_statement, index);
-        public long GetInt64(int index) => raw.sqlite3_column_int64(_statement, index);
-        public bool GetBool(int index) => raw.sqlite3_column_int64(_statement, index) != 0;
-        public string GetText(int index) => raw.sqlite3_column_text(_statement, index).utf8_to_string();
-        public byte[] GetBlob(int index) => raw.sqlite3_column_blob(_statement, index).ToArray();
-        public float GetFloat32(int index) => (float)raw.sqlite3_column_double(_statement, index);
-        public double GetFloat64(int index) => raw.sqlite3_column_double(_statement, index);
+        public int GetInt32(int index) { RequireNotNull(index); return raw.sqlite3_column_int(_statement, index); }
+        public long GetInt64(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index); }
+        public bool GetBool(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index) != 0; }
+        public string GetText(int index) { RequireNotNull(index); return raw.sqlite3_column_text(_statement, index).utf8_to_string(); }
+        public byte[] GetBlob(int index) { RequireNotNull(index); return raw.sqlite3_column_blob(_statement, index).ToArray(); }
+        public float GetFloat32(int index) { RequireNotNull(index); return (float)raw.sqlite3_column_double(_statement, index); }
+        public double GetFloat64(int index) { RequireNotNull(index); return raw.sqlite3_column_double(_statement, index); }
+
+        /// <summary>
+        /// A NULL column has no typed value; the contract is to say so
+        /// rather than invent one (docs/adapter-contract.md, "Value
+        /// fidelity").
+        /// </summary>
+        private void RequireNotNull(int index)
+        {
+            if (IsNull(index))
+            {
+                throw new InvalidOperationException(
+                    "Column " + index + " is NULL; check IsNull(" + index
+                    + ") before reading a typed value.");
+            }
+        }
     }
 
     public sealed class SqliteNetPreparedStatement : ISqliteHostPreparedStatement

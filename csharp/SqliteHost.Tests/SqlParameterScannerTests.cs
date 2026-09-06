@@ -154,6 +154,42 @@ namespace SqliteHost.Tests
         {
             Assert.Equal(new[] { "c" }, SqlParameterScanner.ScanParameterNames("a$b then $c"));
         }
+
+        [Fact]
+        public void ParameterNamesCarrySqlitesTclVariableSuffixes()
+        {
+            // SQLite's variable syntax admits a doubled colon inside the name
+            // and one trailing '(...)' group, for every prefix — verified
+            // against the sqlite3 CLI 3.51.0, where `SELECT :a::b` reports a
+            // missing value for the binding parameter `:a::b`, not for `:a`.
+            // The Java validator and the TypeScript authoring lint scan it
+            // this way; a runtime that splits the name rejects at run time
+            // exactly the payloads they accept.
+            Assert.Equal(new[] { "a::b" }, SqlParameterScanner.ScanParameterNames("SELECT :a::b"));
+            Assert.Equal(new[] { "x::y" }, SqlParameterScanner.ScanParameterNames("SELECT @x::y"));
+            Assert.Equal(new[] { "a::b::c" }, SqlParameterScanner.ScanParameterNames("SELECT :a::b::c"));
+            Assert.Equal(new[] { "a::" }, SqlParameterScanner.ScanParameterNames("SELECT :a::"));
+            Assert.Equal(new[] { "a(1)" }, SqlParameterScanner.ScanParameterNames("SELECT $a(1)"));
+            Assert.Equal(new[] { "a(1)" }, SqlParameterScanner.ScanParameterNames("SELECT :a(1)"));
+            Assert.Equal(new[] { "a()" }, SqlParameterScanner.ScanParameterNames("SELECT $a()"));
+            Assert.Equal(new[] { "a::b(1)" }, SqlParameterScanner.ScanParameterNames("SELECT $a::b(1)"));
+        }
+
+        [Fact]
+        public void NeighbouringVariableFormsSqliteRejectsStayRejected()
+        {
+            // Each of these is a tokenizer error in the engine, so no scanner
+            // reading may invent a well-formed parameter out of them: ":a:b"
+            // is two adjacent variables (a parse error), "::a" and "$(1)"
+            // have no IdChar to name, and a '(' group that does not close on
+            // the same token is illegal. Same expectations the Java
+            // tokenizer tests pin.
+            Assert.Equal(new[] { "a", "b" }, SqlParameterScanner.ScanParameterNames("SELECT :a:b"));
+            Assert.Equal(new[] { "a" }, SqlParameterScanner.ScanParameterNames("SELECT ::a"));
+            Assert.Empty(SqlParameterScanner.ScanParameterNames("SELECT $(1)"));
+            Assert.Empty(SqlParameterScanner.ScanParameterNames("SELECT $a( 1)"));
+            Assert.Empty(SqlParameterScanner.ScanParameterNames("SELECT $a(1"));
+        }
     }
 }
 #endif

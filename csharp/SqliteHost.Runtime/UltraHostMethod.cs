@@ -83,6 +83,14 @@ namespace SqliteHost
         /// with the same rules and messages as the classic profile.
         /// </summary>
         IUltraHostMethodBuilder<THandlers> Inline(string functionName);
+        /// <summary>
+        /// Same, with the arity the manifest already carries. Generated
+        /// code uses this overload; the one-argument form derives the
+        /// arity from the declared input fields instead, which is what a
+        /// hand-written definition needs.
+        /// </summary>
+        IUltraHostMethodBuilder<THandlers> Inline(
+            string functionName, int minArgs, int maxArgs);
 
         IHostMethodSpec<THandlers> Build();
     }
@@ -222,6 +230,8 @@ namespace SqliteHost
         private int _apiLevel = 1;
         private Func<object, SqliteHostUltraCall, SqliteHostUltraResult> _handler;
         private string _inlineFunctionName;
+        private int _inlineMinArgs = InlineShapeRules.NotDeclared;
+        private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
 
         public UltraHostMethodBuilder(string methodName)
         {
@@ -407,6 +417,11 @@ namespace SqliteHost
 
         public IUltraHostMethodBuilder<THandlers> Inline(string functionName)
         {
+            return Inline(functionName, InlineShapeRules.NotDeclared, InlineShapeRules.NotDeclared);
+        }
+
+        public IUltraHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs)
+        {
             if (string.IsNullOrEmpty(functionName))
             {
                 throw new ArgumentException(
@@ -414,6 +429,8 @@ namespace SqliteHost
                     nameof(functionName));
             }
             _inlineFunctionName = functionName;
+            _inlineMinArgs = minArgs;
+            _inlineMaxArgs = maxArgs;
             return this;
         }
 
@@ -482,7 +499,9 @@ namespace SqliteHost
                     inputFields,
                     inputListFields.Count,
                     resultFields.Count,
-                    resultListFields.Count)));
+                    resultListFields.Count,
+                    _inlineMinArgs,
+                    _inlineMaxArgs)));
         }
 
         private IUltraHostMethodBuilder<THandlers> AddInput(string sqlName, HostScalarType type, bool optional)

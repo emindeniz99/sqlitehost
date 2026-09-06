@@ -13,6 +13,8 @@ namespace SqliteHost
         private int _apiLevel = 1;
         private Func<THandlers, TInput, TResult> _handler;
         private string _inlineFunctionName;
+        private int _inlineMinArgs = InlineShapeRules.NotDeclared;
+        private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
 
         public HostMethodSpecBuilder(string methodName)
         {
@@ -53,6 +55,11 @@ namespace SqliteHost
 
         public IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName)
         {
+            return Inline(functionName, InlineShapeRules.NotDeclared, InlineShapeRules.NotDeclared);
+        }
+
+        public IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName, int minArgs, int maxArgs)
+        {
             if (string.IsNullOrEmpty(functionName))
             {
                 throw new ArgumentException(
@@ -60,6 +67,8 @@ namespace SqliteHost
                     nameof(functionName));
             }
             _inlineFunctionName = functionName;
+            _inlineMinArgs = minArgs;
+            _inlineMaxArgs = maxArgs;
             return this;
         }
 
@@ -86,7 +95,9 @@ namespace SqliteHost
                     _inputs.Fields,
                     _inputs.ListFields.Count,
                     _results.Fields.Count,
-                    _results.ListFields.Count)));
+                    _results.ListFields.Count,
+                    _inlineMinArgs,
+                    _inlineMaxArgs)));
         }
     }
 }

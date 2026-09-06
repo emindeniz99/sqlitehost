@@ -1,0 +1,132 @@
+{
+  "manifestVersion": 1,
+  "engine": "sqlite-host-v1",
+  "library": {
+    "namespace": "Example.HighApi",
+    "interfaceName": "HighApiHostMethods",
+    "apiLevel": 2,
+    "minSqliteVersionNumber": 3019003,
+    "features": [
+      "typedNamedBindings",
+      "splitResultTables",
+      "scriptInputs",
+      "scriptVars",
+      "scriptControl"
+    ]
+  },
+  "naming": {
+    "callTablePrefix": "call_",
+    "resultTablePrefix": "result_",
+    "inputColumnPrefix": "input_",
+    "resultColumnPrefix": "result_",
+    "inputListTableInfix": "__input_",
+    "resultListTableInfix": "__result_",
+    "functionPrefix": "fn_"
+  },
+  "columns": {
+    "callId": "call_id",
+    "itemIndex": "item_index",
+    "status": "status",
+    "doneValue": "done",
+    "queueId": "queue_id",
+    "method": "method",
+    "name": "name",
+    "valueType": "value_type",
+    "intValue": "int_value",
+    "realValue": "real_value",
+    "textValue": "text_value",
+    "blobValue": "blob_value",
+    "action": "action",
+    "message": "message"
+  },
+  "queueTable": {
+    "name": "pending_host_calls",
+    "columns": [
+      "queue_id",
+      "call_id",
+      "method",
+      "status"
+    ]
+  },
+  "inputsTable": {
+    "name": "script_inputs",
+    "columns": [
+      "name",
+      "value_type",
+      "int_value",
+      "real_value",
+      "text_value",
+      "blob_value"
+    ]
+  },
+  "varsTable": {
+    "name": "script_vars",
+    "columns": [
+      "name",
+      "value_type",
+      "int_value",
+      "real_value",
+      "text_value",
+      "blob_value"
+    ]
+  },
+  "controlTable": {
+    "name": "script_control",
+    "columns": [
+      "action",
+      "message"
+    ]
+  },
+  "scriptEnvelope": {
+    "engine": "sqlite-host-v1",
+    "bindingTypes": [
+      "null",
+      "int32",
+      "int64",
+      "bool",
+      "text",
+      "blob",
+      "float32",
+      "float64"
+    ]
+  },
+  "methods": [
+    {
+      "operationName": "NewFeature",
+      "methodName": "newFeature",
+      "handlerName": "NewFeature",
+      "apiLevel": 2,
+      "mutates": true,
+      "callTable": "call_new_feature",
+      "resultTable": "result_new_feature",
+      "queueTrigger": "trg_call_new_feature_queue",
+      "input": {
+        "modelName": "NewFeatureInput",
+        "fields": [
+          {
+            "propertyName": "key",
+            "sqlName": "key",
+            "column": "input_key",
+            "scalarType": "string",
+            "optional": false
+          }
+        ],
+        "listFields": []
+      },
+      "result": {
+        "modelName": "NewFeatureResult",
+        "fields": [
+          {
+            "propertyName": "ok",
+            "sqlName": "ok",
+            "column": "result_ok",
+            "scalarType": "boolean",
+            "optional": false
+          }
+        ],
+        "listFields": []
+      },
+      "inline": null
+    }
+  ]
+}

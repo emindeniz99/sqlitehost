@@ -13,7 +13,10 @@
 import {
   CONTROL_ACTION_FAIL,
   CONTROL_ACTION_HALT,
+  DEFAULT_MIN_SQLITE_VERSION_NUMBER,
+  ENGINE_V1,
   FEATURE_INLINE_FUNCTIONS,
+  FEATURES_V1,
   generateSchemaScript,
   METHOD_NAME_PATTERN,
   PENDING_STATUS,
@@ -322,13 +325,29 @@ function fieldBlock(
   return lines;
 }
 
+/**
+ * Arguments of the generated `.Inline(...)` call: the resolved function
+ * name plus the IR's arity. The arity is a manifest value (frontend.ts
+ * derives it once from the declared input fields), and the Java and
+ * TypeScript emitters already carry it into their generated specs;
+ * emitting it here stops the C# runtime from re-deriving a second copy of
+ * the same rule for generated hosts.
+ */
+function inlineArgs(method: HostMethodIr): string {
+  const inline = method.inline;
+  if (inline === null) {
+    throw new Error("inlineArgs called for a method with no inline exposure");
+  }
+  return `${csharpString(inline.functionName)}, ${inline.minArgs}, ${inline.maxArgs}`;
+}
+
 function specMethod(method: HostMethodIr): string {
   // Inline scalar-function exposure sits between .Results and .Handler
   // (docs/csharp-api.md); non-inline methods emit nothing.
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   const lines = [
     `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${method.operationName}Spec()`,
     "        {",
@@ -465,7 +484,7 @@ function compactSpecMembers(
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   members.push(
     [
       `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,
@@ -662,7 +681,7 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   members.push(
     [
       `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,
@@ -918,6 +937,34 @@ export function emitProtocolConstants(): string {
     "        /// host exposes at least one inline function.",
     "        /// </summary>",
     `        internal const string FeatureInlineFunctions = ${csharpString(FEATURE_INLINE_FUNCTIONS)};`,
+    "",
+    "        /// <summary>",
+    "        /// Script envelope engine identifier (ir.ts ENGINE_V1). A script",
+    "        /// whose engine is anything else is rejected before any statement",
+    "        /// runs; the Java and TypeScript envelopes carry the same literal.",
+    "        /// </summary>",
+    `        internal const string EngineV1 = ${csharpString(ENGINE_V1)};`,
+    "",
+    "        /// <summary>",
+    "        /// Minimum SQLite a host requires when its definition does not say",
+    "        /// otherwise (ir.ts DEFAULT_MIN_SQLITE_VERSION_NUMBER): 3.19.3 in",
+    "        /// SQLITE_VERSION_NUMBER form.",
+    "        /// </summary>",
+    `        internal const int DefaultMinSqliteVersionNumber = ${DEFAULT_MIN_SQLITE_VERSION_NUMBER};`,
+    "",
+    "        /// <summary>",
+    "        /// Protocol v1 features every definition advertises (ir.ts",
+    "        /// FEATURES_V1), in manifest order. FeatureInlineFunctions is not",
+    "        /// one of them: it is factory-conditional and added by the runtime.",
+    "        /// </summary>",
+    "        internal static readonly IReadOnlyList<string> FeaturesV1 =",
+    "            new List<string>",
+    "            {",
+    ...FEATURES_V1.map(
+      (name, index) =>
+        `                ${csharpString(name)}${index === FEATURES_V1.length - 1 ? "" : ","}`,
+    ),
+    "            };",
     "",
     "#if !SQLITEHOST_SLIM",
     "        /// <summary>",

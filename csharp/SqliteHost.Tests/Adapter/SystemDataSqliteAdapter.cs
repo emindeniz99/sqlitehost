@@ -267,13 +267,28 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => _reader.IsDBNull(index);
-        public int GetInt32(int index) => _reader.GetInt32(index);
-        public long GetInt64(int index) => _reader.GetInt64(index);
-        public bool GetBool(int index) => _reader.GetInt64(index) != 0;
-        public string GetText(int index) => _reader.GetString(index);
-        public byte[] GetBlob(int index) => (byte[])_reader.GetValue(index);
-        public float GetFloat32(int index) => _reader.GetFloat(index);
-        public double GetFloat64(int index) => _reader.GetDouble(index);
+        public int GetInt32(int index) { RequireNotNull(index); return _reader.GetInt32(index); }
+        public long GetInt64(int index) { RequireNotNull(index); return _reader.GetInt64(index); }
+        public bool GetBool(int index) { RequireNotNull(index); return _reader.GetInt64(index) != 0; }
+        public string GetText(int index) { RequireNotNull(index); return _reader.GetString(index); }
+        public byte[] GetBlob(int index) { RequireNotNull(index); return (byte[])_reader.GetValue(index); }
+        public float GetFloat32(int index) { RequireNotNull(index); return _reader.GetFloat(index); }
+        public double GetFloat64(int index) { RequireNotNull(index); return _reader.GetDouble(index); }
+
+        /// <summary>
+        /// A NULL column has no typed value; the contract is to say so
+        /// rather than invent one (docs/adapter-contract.md, "Value
+        /// fidelity").
+        /// </summary>
+        private void RequireNotNull(int index)
+        {
+            if (IsNull(index))
+            {
+                throw new InvalidOperationException(
+                    "Column " + index + " is NULL; check IsNull(" + index
+                    + ") before reading a typed value.");
+            }
+        }
     }
 
     /// <summary>In-memory workspace factory over the System.Data.SQLite adapter (scalar-function capable).</summary>

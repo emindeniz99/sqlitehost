@@ -63,7 +63,11 @@ TypeScript artifacts are tested against the same committed fixtures
 Opens an in-memory SQLite database, creates the generated schema,
 **prepares** every script statement (compile only — catches grammar
 errors, missing tables/columns, unsupported functions), and finalizes
-without stepping. Reported as `sql-prepare-error`.
+without stepping.
+
+| Code | Severity | Rule |
+|---|---|---|
+| `sql-prepare-error` | error | a statement failed to compile against the schema generated from the manifest. Java-only: the TypeScript authoring lint has no engine. It is the sole finding for a fault only a compiler can see (`invalid/unknown-column.json`) and a second, corroborating one wherever a lint-rejected statement is also uncompilable |
 
 ### Prepare-only is not a floor check — and cannot become one
 
@@ -110,13 +114,19 @@ Static rules over the parsed script + manifest. Error codes are pinned
 here and asserted by `fixtures/payloads/expectations.json`; the
 `validators` field there says which implementations must catch each
 code (`java` = full engine, `typescript` = static authoring subset).
-One code has no payload fixture and cannot have one as the harness
-stands: `method-api-level-too-high`. Every case binds to
-`sample-host.manifest.json`, whose methods are all `apiLevel` 1, and the
-envelope check rejects `requiredApiLevel < 1`, so no payload against
-that manifest can put a method above the script. It is covered by unit
-tests in both languages; closing the gap needs a per-case manifest
-override in both conformance runners.
+Every code in the tables below has at least one fixture, and
+`scripts/check-fixture-corpus.mjs` fails the build if one loses its last.
+
+`method-api-level-too-high` was the exception until the corpus grew a
+second manifest. Every case bound to `sample-host.manifest.json`, whose
+methods are all `apiLevel` 1, and the envelope check rejects
+`requiredApiLevel < 1` — so no payload against that manifest could put a
+method above the script. A case may now name its own manifest with an
+optional `"manifest"` key (relative to `fixtures/payloads/`, defaulting
+to the top-level one), and `typespec/examples/high-api-host-methods.tsp`
+is a one-method host at `apiLevel` 2 that exists for this rule.
+Manifests are never hand-written, so it is emitted and byte-pinned by
+`tests/cross-language-golden/run.mjs` like the sample host.
 
 One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
 whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader
@@ -322,9 +332,12 @@ can reach it.
 
 Both codes carry `"validators": ["java", "typescript"]` in
 `fixtures/payloads/expectations.json`, and the TypeScript rule lives in
-`typescript/authoring-sdk/src/lint.ts`. The two tokenizers are not
-identical: only the Java one resolves a bracket-quoted result table, which
-is why `invalid/result-read-unknown-call-bracket.json` expects Java alone.
+`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all three
+quoting forms for a result table — `"…"`, `` `…` `` and `[…]` — so
+`invalid/result-read-unknown-call-bracket.json` expects both. That case
+read `["java"]` until the matrix became exact: the TypeScript tokenizer
+had grown bracket support and containment could not see that the
+`validators` list had gone stale.
 
 Static `call_id` resolution covers literals and bindings with text
 values (`call_id = :x` where `x` is bound); computed ids (e.g.
@@ -334,6 +347,30 @@ documented best-effort linting, not proof.
 ## Validity
 
 A payload is **publishable** when it has zero errors; warnings don't
-block. Implementations may report extra findings on invalid payloads,
-but must produce no errors and exactly the expected warnings on valid
-fixtures.
+block.
+
+**The conformance matrix is exact.** For every case in
+`fixtures/payloads/expectations.json`, an implementation's reported
+errors and reported warnings must each *equal* the codes listed for it —
+an extra finding fails the suite exactly as a missing one does. The
+comparison is over sorted lists rather than sets, so multiplicity is part
+of the expectation: a code reported twice must be expected twice. Every
+`invalid/` fixture is single-fault, and `scripts/check-fixture-corpus.mjs`
+holds the corpus to that shape.
+
+Containment was the rule until the exact match landed, and every
+validator divergence found in two audit rounds walked through it: an
+implementation could report anything at all as long as the expected code
+was somewhere in the list, so a rule that fired on the wrong payload, a
+stale `validators` list, and a fixture carrying two faults all read as
+green.
+
+The one finding that legitimately accompanies another is
+`sql-prepare-error`: layer 3 compiles the same statement the semantic
+lint just rejected, so a fixture whose SQL is also uncompilable
+(`invalid/inline-unknown-function.json`,
+`invalid/inline-arity-mismatch.json`,
+`invalid/protocol-table-write-vertical-tab.json`) carries a second,
+Java-only expected code. It corroborates the fault rather than being a
+second one, which is why the corpus checker allows it alongside a lint
+code and nothing else.

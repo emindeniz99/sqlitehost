@@ -1,5 +1,5 @@
 {
-  "description": "Validator conformance matrix. Every case is validated against fixtures/manifests/sample-host.manifest.json. `validators` names the implementations that MUST report the code: `java` = sqlite-host-validator (full engine, includes prepare-only SQLite checks), `typescript` = @sqlite-host/authoring lint (static subset, no SQLite). Implementations may report additional findings for invalid payloads, but valid payloads must produce no errors and exactly the listed warnings.",
+  "description": "Validator conformance matrix. Each case is validated against the manifest its optional `manifest` key names, defaulting to the top-level `manifest` (the sample host). `validators` names the implementations that MUST report the finding: `java` = sqlite-host-validator (full engine, includes prepare-only SQLite checks), `typescript` = @sqlite-host/authoring lint (static subset, no SQLite). Both runners assert an EXACT match: the errors and the warnings an implementation reports must equal the codes listed for it here, sorted — no extra findings, no missing ones. The comparison is over sorted lists, not sets, so multiplicity counts: a code reported twice is two findings and must appear twice.",
   "manifest": "../manifests/sample-host.manifest.json",
   "cases": [
     {
@@ -159,6 +159,12 @@
             "java",
             "typescript"
           ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
         }
       ],
       "warnings": []
@@ -172,6 +178,12 @@
           "validators": [
             "java",
             "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
           ]
         }
       ],
@@ -477,7 +489,8 @@
         {
           "code": "result-read-unknown-call",
           "validators": [
-            "java"
+            "java",
+            "typescript"
           ]
         }
       ],
@@ -582,7 +595,21 @@
       "warnings": []
     },
     {
-      "payload": "invalid/blank-strings.json",
+      "payload": "invalid/blank-step-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/blank-statement-sql.json",
       "valid": false,
       "errors": [
         {
@@ -764,6 +791,12 @@
             "java",
             "typescript"
           ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
         }
       ],
       "warnings": []
@@ -774,6 +807,29 @@
       "errors": [
         {
           "code": "list-child-without-parent",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": [
+        {
+          "code": "unused-required-method",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ]
+    },
+    {
+      "payload": "invalid/method-api-level-too-high.json",
+      "manifest": "../manifests/high-api-host.manifest.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "method-api-level-too-high",
           "validators": [
             "java",
             "typescript"
