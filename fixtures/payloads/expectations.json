@@ -548,6 +548,34 @@
       "warnings": []
     },
     {
+      "payload": "invalid/blank-binding-name.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/blank-required-feature.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/blank-strings.json",
       "valid": false,
       "errors": [

@@ -178,8 +178,8 @@ export function validateStatement(value: unknown, path: string): EnvelopeFinding
       findings.push(invalid(`${path}.bindings`, "bindings must be an object map"));
     } else {
       for (const [name, binding] of Object.entries(bindings)) {
-        if (name === "") {
-          findings.push(invalid(`${path}.bindings`, "binding names must be non-empty"));
+        if (isBlank(name)) {
+          findings.push(invalid(`${path}.bindings`, "binding names must be non-blank"));
         }
         findings.push(...validateBindingValue(binding, `${path}.bindings.${name}`));
       }
@@ -218,8 +218,8 @@ function validateStringArray(
     return;
   }
   value.forEach((entry, index) => {
-    if (typeof entry !== "string" || entry === "") {
-      findings.push(invalid(`${path}[${index}]`, "must be a non-empty string"));
+    if (typeof entry !== "string" || isBlank(entry)) {
+      findings.push(invalid(`${path}[${index}]`, "must be a non-blank string"));
     }
   });
 }

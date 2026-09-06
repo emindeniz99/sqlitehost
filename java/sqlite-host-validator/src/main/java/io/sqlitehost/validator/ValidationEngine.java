@@ -96,9 +96,16 @@ public final class ValidationEngine {
         for (RuntimeInput input : script.inputs()) {
             if (isBlank(input.name()) || input.value() == null) {
                 findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
-                        "runtime inputs must have a non-empty name and a value"));
+                        "runtime inputs must have a non-blank name and a value"));
             }
         }
+        // A blank entry in requiredFeatures/requiredMethods names nothing, so
+        // it is a shape error, not a lookup that missed. Reporting it as
+        // unknown-required-feature said "this host does not have that
+        // feature" about a feature the author never named — and TypeScript
+        // reported invalid-envelope for the identical payload.
+        checkNamedList(script.requiredFeatures(), "requiredFeatures", findings);
+        checkNamedList(script.requiredMethods(), "requiredMethods", findings);
         for (int s = 0; s < script.steps().size(); s++) {
             Step step = script.steps().get(s);
             if (isBlank(step.id())) {
@@ -112,7 +119,16 @@ public final class ValidationEngine {
             for (int i = 0; i < step.statements().size(); i++) {
                 if (isBlank(step.statements().get(i).sql())) {
                     findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
-                            step.id(), i, "statement has empty sql"));
+                            step.id(), i, "statement has blank sql"));
+                }
+                for (String binding : step.statements().get(i).bindings().keySet()) {
+                    if (isBlank(binding)) {
+                        // No SQL parameter can carry a blank name (SQLite's
+                        // IdChar excludes whitespace), so this is a shape
+                        // error rather than a binding nothing referenced.
+                        findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
+                                step.id(), i, "binding names must be non-blank"));
+                    }
                 }
             }
         }
@@ -153,12 +169,18 @@ public final class ValidationEngine {
                             + manifest.library().apiLevel()));
         }
         for (String feature : script.requiredFeatures()) {
+            if (isBlank(feature)) {
+                continue; // already invalid-envelope
+            }
             if (!manifest.library().features().contains(feature)) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_REQUIRED_FEATURE,
                         "required feature '" + feature + "' is not in the manifest features"));
             }
         }
         for (String method : script.requiredMethods()) {
+            if (isBlank(method)) {
+                continue; // already invalid-envelope
+            }
             if (manifest.methodByName(method) == null) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_REQUIRED_METHOD,
                         "required method '" + method + "' is not in the manifest"));
@@ -218,6 +240,9 @@ public final class ValidationEngine {
             }
         }
         for (String binding : bindings.keySet()) {
+            if (isBlank(binding)) {
+                continue; // already invalid-envelope
+            }
             if (!parameters.contains(binding)) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNUSED_BINDING,
                         stepId, statementIndex,
@@ -836,6 +861,17 @@ public final class ValidationEngine {
             }
         }
         return null;
+    }
+
+    /** Every entry of requiredFeatures/requiredMethods must name something. */
+    private static void checkNamedList(
+            List<String> entries, String field, List<ValidationFinding> findings) {
+        for (String entry : entries) {
+            if (isBlank(entry)) {
+                findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
+                        field + " entries must be non-blank strings"));
+            }
+        }
     }
 
     /**

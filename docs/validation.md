@@ -135,7 +135,7 @@ verdict was reached (bad arguments, an unreadable file).
 
 | Code | Severity | Rule |
 |---|---|---|
-| `invalid-envelope` | error | missing/empty required envelope fields (including a step whose `statements` list is empty or missing) |
+| `invalid-envelope` | error | missing or blank required envelope fields (including a step whose `statements` list is empty or missing, a blank binding name, and a blank `requiredFeatures`/`requiredMethods` entry). A field whose *shape* is wrong is this code, never a lookup failure: a blank feature name is `invalid-envelope`, not `unknown-required-feature`, because nothing was named to look up |
 | `duplicate-step-id` | error | step ids must be unique |
 | `required-api-level-too-high` | error | `requiredApiLevel` > manifest apiLevel |
 | `method-api-level-too-high` | error | a used method (call-table INSERT or inline function invocation) has `apiLevel` > the script's `requiredApiLevel` — the script under-declares the API level it depends on |

@@ -122,6 +122,37 @@ class ValidationEngineTest {
     }
 
     @Test
+    void aBlankBindingNameIsAShapeErrorNotAnUnusedBinding() throws IOException {
+        // WHY one code and not the other: no SQL parameter can carry a blank
+        // name (SQLite's IdChar excludes whitespace), so nothing was named to
+        // go unreferenced. Reporting unused-binding also disagreed with the
+        // TypeScript lint, which called the identical payload
+        // invalid-envelope.
+        List<String> codes = errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"SELECT :a\",\"bindings\":{"
+                + "\"a\":{\"type\":\"text\",\"value\":\"x\"},"
+                + "\"\":{\"type\":\"text\",\"value\":\"y\"}}}]}]}"));
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), codes);
+    }
+
+    @Test
+    void aBlankRequiredFeatureOrMethodIsAShapeErrorNotAFailedLookup() throws IOException {
+        // WHY one code and not the other: unknown-required-feature says "this
+        // host does not have that feature" about a feature the author never
+        // named. TypeScript called the identical payload invalid-envelope.
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredFeatures\":[\"\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":[{\"sql\":\"SELECT 1\"}]}]}")));
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredMethods\":[\"  \"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":[{\"sql\":\"SELECT 1\"}]}]}")));
+    }
+
+    @Test
     void unknownEngineIsInvalidEnvelope() throws IOException {
         assertTrue(errorCodes(validate("{\"engine\":\"sqlite-host-v9\"," + ENGINE_PROBE_TAIL))
                 .contains(ValidationCodes.INVALID_ENVELOPE));
