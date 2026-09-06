@@ -80,10 +80,15 @@
 # host, so nobody spends an afternoon debugging it as a regression. The
 # Linux host stays blocking.
 #
-# NOTHING BELOW HAS EVER RUN. Every job here is new, the macOS legs are the
-# first macOS jobs in this repository, and the iOS branch of SizeBench.cs
-# was written against Unity's scripting reference rather than compiled.
-# Treat the first dispatch as a debugging session, not a measurement.
+# THIS HAS RUN, AND THE NUMBERS ARE REAL. Six green workflow_dispatch runs
+# since 2026-08-28 (the first two dispatches failed and were fixed). Run
+# 33255105207 is the full 48-leg matrix, every leg green on both hosts;
+# 34042698998 on 2026-09-06 is the most recent. What those runs measured is
+# written up in docs/reports/ios-il2cpp-size-report.md.
+#
+# Every run so far was dispatched by hand: nothing has fired from the
+# monthly schedule yet, so that trigger is the one part of this file still
+# unexercised.
 #
 # COST. Standard GitHub-hosted runners, macOS labels included, are free and
 # unlimited on public repositories, and this repository is public. Two
@@ -230,9 +235,10 @@ jobs:
     # for is skipped, and `compile` below is written to tolerate that.
     if: contains(fromJSON(needs.plan.outputs.hosts), 'linux')
     runs-on: ubuntu-latest
-    # No leg has ever run, so this is a bound rather than a measurement —
-    # re-derive it from the first real run rather than leaving 120 in
-    # because it never tripped.
+    # Still a bound rather than a measurement, but no longer a blind one:
+    # in the 48-leg run 33255105207 the slowest Linux leg finished in under
+    # six minutes. 120 stays for the cold-image-pull-on-a-bad-day case, not
+    # because nothing has been measured.
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -248,10 +254,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # The thirteen steps both hosts share. It has to come after the
-      # checkout: a local action cannot be resolved before the repository
-      # is on the runner.
-      - uses: ./.github/actions/unity-xcodeproj
+      # The thirteen steps both hosts share. `$/` rather than `./`: the
+      # self-repository form GitHub added in July 2026 resolves the action
+      # from this repository at the running commit instead of from whatever
+      # the workspace happens to hold, which is what lets a "fully pinned"
+      # policy see it at all. It still has to come after the checkout —
+      # every step inside operates on the repository's files.
+      - uses: $/.github/actions/unity-xcodeproj
         with:
           row: ${{ matrix.row }}
           host: linux
@@ -281,8 +290,9 @@ jobs:
     # workflow; the Linux job fails the run exactly as before.
     continue-on-error: true
     # Covers both halves of a leg, including unity-builder installing Unity
-    # Hub and the editor before anything is built. No leg has ever run, so
-    # this is a bound, not a measurement.
+    # Hub and the editor before anything is built. In run 33255105207 the
+    # slowest macOS leg took under ten minutes with that install included;
+    # 120 stays as headroom for a slow Hub install, not for the unknown.
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -300,8 +310,9 @@ jobs:
           persist-credentials: false
 
       # The same thirteen steps the Linux job runs, with the three inputs
-      # that genuinely differ by host.
-      - uses: ./.github/actions/unity-xcodeproj
+      # that genuinely differ by host. `$/` for the reason given on the
+      # Linux job's copy.
+      - uses: $/.github/actions/unity-xcodeproj
         with:
           row: ${{ matrix.row }}
           host: macos

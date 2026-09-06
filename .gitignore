@@ -16,6 +16,11 @@ target/
 .tsp-output/
 tsp-output/
 
+# Written per leg by .github/workflows/unity-ci.yml to compile the package
+# with -define:SQLITEHOST_SLIM. It is the workflow's lever, not a package
+# file, and committing it would make every consumer's build slim.
+unity/com.sqlitehost.runtime/Runtime/csc.rsp
+
 # playground build output: the bundle embeds the whole TypeSpec compiler
 # (~2 MB) and src/generated/ is a snapshot of node_modules .tsp files —
 # both are reproducible from `pnpm --dir typescript/playground run build:web`
@@ -35,6 +40,11 @@ typescript/playground/playwright-report/
 !.env.example
 *.pfx
 *.p12
+# Unity personal licence file. .github/workflows/unity-ci.yml tells a
+# maintainer to open Unity_lic.ulf locally and paste it into the
+# UNITY_LICENSE secret, which puts the credential one stray copy away from
+# the worktree. None is in the tree today; this is preventive.
+*.ulf
 
 # OS junk
 .DS_Store

@@ -96,10 +96,14 @@ repo's own emitters; `measure-nativeaot.mjs` publishes every row under
 What it enforces are ratios computed in one run — profile ordering,
 falling per-method cost, DTO fields as a no-op, `SQLITEHOST_SLIM` a net
 win, and the reflection-free build still running — so it is immune to
-SDK and architecture drift. Byte-for-byte regression against
-`baseline.json` also fails the job: the recorded deltas were measured on
-an ubuntu-latest runner, and a change that is supposed to move bytes
-re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a
+SDK and architecture drift. A size regression against `baseline.json`
+fails the job too — inside a tolerance band, not byte for byte. Each
+recorded delta, and the GVM probe delta, may move by
+`max(|recorded| × 3%, 10 KiB)` raw and `max(|recorded| × 3%, 5 KiB)`
+gzipped; 3% of even the largest row is under the raw floor today, so in
+practice every row is judged against the flat floor. The deltas were
+measured on an ubuntu-latest runner, and a change that is supposed to move
+bytes re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a
 measurement rather than a numeric gate, but it is not off the pull-request
 path: `il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
 demand, and a 3-row subset on any pull request touching
@@ -142,25 +146,30 @@ Orchestrates the full matrix locally: `dotnet test`, `mvn -q test`,
 
 ## What CI runs
 
-`.github/workflows/ci.yml` on every push and pull request:
+`.github/workflows/ci.yml` on every push and pull request — seven job
+definitions, thirteen jobs once the three matrices expand:
 
 | Job | What |
 |---|---|
-| `node 20/22/24/26` | `pnpm -r test` across the declared Node lines |
-| `jdk 17/21/25` | `mvn -q test` across the LTS lines at or above the pom floor |
-| `dotnet (ubuntu-latest, windows-latest)` | `dotnet test` — runtime, adapters, integration fixtures |
-| `goldens` | emitter goldens, delivery goldens, `unity/sync.mjs --check`, vendor-trim, version lockstep |
-| `app size (NativeAOT)` | every bench row published and measured; the size claims that are ratios |
-| `zizmor` | workflow security lint |
+| `node 20/22/24/26` | `pnpm -r run build` then `pnpm -r run test` across the declared Node lines |
+| `jdk 17/21/25` | `mvn -B test` across the LTS lines at or above the pom floor, then the whole suite again under a forced Turkish locale |
+| `dotnet (ubuntu-latest, windows-latest)` | `dotnet test` — runtime, adapters, integration fixtures — plus a Release compile of `SqliteHost.Runtime` under `SQLITEHOST_SLIM` |
+| `dotnet (slim)` | the same test project run under `-p:SqliteHostSlim=true`. The tests pinning the stripped strict checks compile out behind the same `#if`, so what executes is the functional core — a fail-loud gate accidentally stripped with them shows up here and nowhere else |
+| `cross-language goldens` | emitter goldens, delivery goldens, the fixture-corpus check and its self-test, `unity/sync.mjs --check`, vendor-trim, version lockstep |
+| `app size (NativeAOT)` | every bench row published and measured: the ratio claims, plus the baseline band described above |
+| `zizmor` | workflow security lint, pinned to one version and failing on any finding |
 
 `.github/workflows/unity-ci.yml` compiles `com.sqlitehost.runtime`
 inside eight real Unity editors, one after another, and runs its EditMode
 tests in each: the 2021.3.45f2 floor, 2022.3.62f3, and the six Unity 6
 lines (6000.0.82f1, 6000.1.17f1, 6000.2.15f1, 6000.3.22f1, 6000.4.12f1,
 6000.5.9f1). Those are the versions a free personal licence can activate;
-`docs/compatibility.md` lists the lines it therefore cannot reach. The job
-needs the licence secrets, which GitHub does not pass to fork pull
-requests, so a fork gets the licence-free scaffold-guard instead.
+`docs/compatibility.md` lists the lines it therefore cannot reach, and
+which four of the eight compile the `SQLITEHOST_SLIM` build rather than
+the shipping one — that split is what puts a real editor in front of the
+vendoring build at all. The job needs the licence secrets, which GitHub
+does not pass to fork pull requests, so a fork gets the licence-free
+scaffold-guard instead.
 
 Five more workflows carry the suites that do not belong in the main
 matrix, each at the cadence its cost justifies:
