@@ -97,9 +97,11 @@ namespace SqliteHost
 
         /// <summary>
         /// Minimum accepted SQLite version in the SQLITE_VERSION_NUMBER
-        /// encoding (major*1000000 + minor*1000 + patch), e.g. 3019003;
-        /// defaults to 3019003 when the builder's MinSqliteVersion is not
-        /// called. Enforced by the runtime's workspace version gate.
+        /// encoding (major*1000000 + minor*1000 + patch); defaults to the
+        /// contract floor projected as
+        /// <c>ProtocolConstants.DefaultMinSqliteVersionNumber</c> when the
+        /// builder's MinSqliteVersion is not called. Enforced by the
+        /// runtime's workspace version gate.
         /// </summary>
         public int MinSqliteVersionNumber
         {

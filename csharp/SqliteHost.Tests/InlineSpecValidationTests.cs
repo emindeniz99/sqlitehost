@@ -304,9 +304,7 @@ namespace SqliteHost.Tests
             var definition = SqliteHostDefinition
                 .ForHandlers<object>()
                 .Methods(new[] { InlineGetValueSpec("fn_get_value") });
-            Assert.Equal(
-                new[] { "typedNamedBindings", "splitResultTables", "scriptInputs", "scriptVars", "scriptControl" },
-                definition.SupportedFeatures);
+            Assert.Equal(ProtocolConstants.FeaturesV1, definition.SupportedFeatures);
         }
 
         // ---- SqliteHostScalarFunction shape ------------------------------

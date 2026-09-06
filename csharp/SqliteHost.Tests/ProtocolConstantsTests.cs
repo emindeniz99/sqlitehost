@@ -16,6 +16,26 @@ namespace SqliteHost.Tests
     public class ProtocolConstantsTests
     {
         [Fact]
+        public void FeaturesV1_IsWhatEveryDefinitionAdvertises()
+        {
+            var definition = SqliteHostDefinition
+                .ForHandlers<object>()
+                .Methods(new IHostMethodSpec<object>[0]);
+            Assert.Equal(ProtocolConstants.FeaturesV1, definition.SupportedFeatures);
+        }
+
+        [Fact]
+        public void DefaultMinSqliteVersionNumber_IsAppliedWhenTheBuilderStaysSilent()
+        {
+            var definition = SqliteHostDefinition
+                .ForHandlers<object>()
+                .Methods(new IHostMethodSpec<object>[0]);
+            Assert.Equal(
+                ProtocolConstants.DefaultMinSqliteVersionNumber,
+                definition.MinSqliteVersionNumber);
+        }
+
+        [Fact]
         public void EngineV1_IsTheEngineTheRuntimeAccepts()
         {
             Assert.Equal("sqlite-host-v1", ProtocolConstants.EngineV1);
@@ -28,6 +48,9 @@ namespace SqliteHost.Tests
         /// </summary>
         [Theory]
         [InlineData("\"sqlite-host-v1\"")]
+        [InlineData("\"typedNamedBindings\"")]
+        [InlineData("\"splitResultTables\"")]
+        [InlineData("3019003")]
         public void HandWrittenRuntimeSources_DoNotRestateProtocolLiterals(string literal)
         {
             var offenders = new List<string>();
