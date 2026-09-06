@@ -244,7 +244,8 @@ of keys; the verifier selects by `kid` **and** `alg`.
 5. No key with this `kid` **and** this `alg` → `unknown-key`.
 6. Signature over `signedBytes` does not verify → `bad-signature`.
 7. `expiresAt` present and `nowUnixMs > expiresAt` → `expired`.
-8. Otherwise `Ok(payloadBytes)`.
+8. `issuedAt > nowUnixMs + maxIssuedAtSkew` → `issued-in-future`.
+9. Otherwise `Ok(payloadBytes)`.
 
 Three of those orderings are load-bearing:
 
@@ -265,8 +266,28 @@ Three of those orderings are load-bearing:
   key set is keyed by the *pair*; "I have that id but not for that
   algorithm" is precisely "I do not have that key".
 
+Step 8 is a **ceiling on `issuedAt`**, and it is checked after the
+signature for exactly the same reason expiry is. Without it, one
+envelope carrying `issuedAt=9007199254740991` — minted during a key
+compromise, or emitted by a signer with microseconds in a milliseconds
+field — permanently freezes its `scriptId`: the cache contract below
+accepts only a strictly greater value, so every legitimate envelope
+that follows is rejected by the app's own defence, with no recovery
+short of shipping a build that wipes the cache or renames the
+`scriptId`.
+
+The device clock is untrusted for *ordering* and is never used for it
+(see the cache contract). It is sound as a sanity *ceiling*, because
+the error is one-directional: a wound-back clock only makes this check
+stricter. The skew defaults to five minutes and is
+`ScriptEnvelopeVerificationOptions.MaxIssuedAtSkewMs`; `long.MaxValue`
+disables it, for a fleet with no usable clock at all.
+
 `expiresAt` is inclusive: `nowUnixMs == expiresAt` still verifies, and
-the envelope dies at the first millisecond after. `minApiLevel` is
+the envelope dies at the first millisecond after. The `issuedAt`
+ceiling is inclusive the same way — a backend a few minutes ahead of a
+device is ordinary, and a bound that fired on it would cause outages
+rather than prevent them. `minApiLevel` is
 **reported, never enforced** — the library has no idea what api level
 the host was generated at (`docs/api-levels.md`), so it hands the value
 to the app, which does.
@@ -336,6 +357,12 @@ Consequences worth stating plainly:
 - **`issuedAt` must be monotonic per `scriptId` at the signer.** Two
   signers racing on the same `scriptId` can emit out-of-order
   timestamps and clients will pin the higher one.
+- **A far-future `issuedAt` is a lockout, not just a race.** The
+  high-water rule has no upper bound of its own, so the verifier
+  supplies one (step 8 above). An envelope the verifier rejects as
+  `issued-in-future` must not update the stored high-water mark —
+  which follows automatically, since the app only ever stores values
+  from a *verified* result.
 - **Device clock is not trusted for ordering.** The rule compares two
   *signed* `issuedAt` values against each other, never against the
   device clock. Only `expiresAt` involves `nowUnixMs`, and a device

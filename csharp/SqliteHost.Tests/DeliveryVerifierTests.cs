@@ -401,6 +401,99 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void IssuedAtAtTheSkewCeiling_Verifies()
+        {
+            // The ceiling is inclusive, like expiresAt. A backend clock a
+            // few minutes ahead of the device is ordinary, and rejecting it
+            // would make the check a source of outages rather than a bound.
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 300000L).ToString());
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).IsValid);
+        }
+
+        [Fact]
+        public void IssuedAtBeyondTheSkewCeiling_IsIssuedInFuture()
+        {
+            // One millisecond past the ceiling is the other side of the
+            // boundary. A distinct reason matters operationally: the answer
+            // is "check the signer's clock", not "retry the download".
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 300001L).ToString());
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void MaxIssuedAtEnvelope_CannotFreezeAScriptIdForever()
+        {
+            // The lockout this bound exists for. issuedAt = 2^53-1 is what
+            // an attacker mints during a key compromise, or what a signer
+            // emits with microseconds in a milliseconds field. The app's
+            // MUST rule is "accept only a strictly greater issuedAt", so
+            // one such envelope pins the high-water mark at the maximum and
+            // every legitimate envelope for that scriptId afterwards is
+            // rejected by the app's own defence, with no recovery short of
+            // shipping a build that wipes the cache.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void SignatureIsCheckedBeforeTheIssuedAtCeiling()
+        {
+            // Same rule as expiry: until the signature verifies, issuedAt is
+            // an integer an attacker typed. Reporting issued-in-future for
+            // an unsigned envelope would act on an unverified header field
+            // and hand out an oracle for the device clock.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            envelope[envelope.Length - 6] ^= 0x01;
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.BadSignature,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void ExpiryIsReportedBeforeTheIssuedAtCeiling()
+        {
+            // Both bounds broken at once keeps reporting `expired`: the
+            // normative verification order in the proposal is what apps
+            // branch on, and the new check is appended to it, not spliced
+            // into the middle.
+            byte[] envelope = Build(
+                Payload("{}"), issuedAt: (Now + 300001L).ToString(), expiresAt: (Now - 1).ToString());
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.Expired,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void ACallerCanWidenOrDisableTheIssuedAtCeiling()
+        {
+            // A fleet whose devices have no reliable clock at all must be
+            // able to opt out, or the bound becomes a reason not to upgrade.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            var wide = new ScriptEnvelopeVerificationOptions
+            {
+                MaxIssuedAtSkewMs = long.MaxValue
+            };
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, wide).IsValid);
+        }
+
+        [Fact]
+        public void ACallerCanTightenTheIssuedAtCeiling()
+        {
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 1000L).ToString());
+            var tight = new ScriptEnvelopeVerificationOptions
+            {
+                MaxIssuedAtSkewMs = 999
+            };
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, tight).Reason);
+        }
+
+        [Fact]
         public void EvenRsaModulus_ThrowsAtConstruction()
         {
             // Every RSA modulus is a product of two odd primes, so an even

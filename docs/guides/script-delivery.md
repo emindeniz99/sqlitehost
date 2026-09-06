@@ -66,7 +66,16 @@ Three rules that matter more than they look:
 - **`expiresAt` is a blast-radius limit, not the security model.** It
   bounds how long a captured envelope stays replayable and how long a
   compromised key keeps working before your next app update drops it.
-  Hours-to-days is the useful range.
+  Hours-to-days is the useful range. Set it on every envelope you
+  expect a client to cache — see step 4.
+- **`issuedAt` must be a real timestamp, not a counter.** The verifier
+  rejects an envelope issued more than five minutes past the `now` you
+  hand it (`IssuedInFuture`). That bound exists because the rollback
+  rule below has no upper end of its own: one envelope stamped with a
+  far-future `issuedAt` — a signer bug, microseconds in a milliseconds
+  field, or an attacker during a key compromise — pins the client's
+  high-water mark where nothing legitimate can pass it again, and the
+  only recovery is an app update that wipes the cache.
 - **To roll back, re-sign the old payload with a new `issuedAt`.** Do
   not re-serve yesterday's envelope: that is byte-identical to an
   attacker replaying it, and step 4 will (correctly) reject it.
@@ -160,6 +169,7 @@ error page, not on `null`. It returns a reason instead:
 | `UnknownKey` | no trusted key for that `kid`+`alg` — rotated out, or an attacker repointed the key | keep the cached script; check your rotation |
 | `BadSignature` | altered in transit, or signed by someone else | keep the cached script; this one is worth an alert |
 | `Expired` | genuinely signed, but past `expiresAt` | keep the cached script; your publish job is late |
+| `IssuedInFuture` | genuinely signed, but `issuedAt` is more than five minutes ahead of the `now` you passed | keep the cached script; a clock is wrong — the signer's, or this device's |
 
 On failure the result carries **nothing else** — no payload, no
 `scriptId`. Unverified data is unreachable by construction.

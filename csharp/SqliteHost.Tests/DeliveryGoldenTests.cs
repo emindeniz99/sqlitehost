@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using SqliteHost.Delivery;
 using SqliteHost.Tests.Fixtures;
@@ -92,10 +93,32 @@ namespace SqliteHost.Tests
             // Proves expired.envelope fails on freshness alone: the same
             // bytes verify at an earlier clock, so its signature is genuine
             // and `expired` was not a signature failure in disguise.
-            DeliveryCase testCase = LoadCase("expired.envelope");
+            //
+            // The clock is the envelope's own issuedAt, which is inside its
+            // TTL by construction. Reading it from the header rather than
+            // from `expect` matters: a rejected case carries no `expect`
+            // block, so the field defaulted to 0 here and this test used to
+            // "verify at an earlier clock" of the Unix epoch — 56 years
+            // before the envelope was issued, which the issuedAt ceiling
+            // now (correctly) rejects.
             byte[] envelope = File.ReadAllBytes(FixturePaths.Delivery("expired.envelope"));
             Assert.True(
-                ScriptEnvelopeVerifier.Verify(envelope, TrustedKeys(), testCase.IssuedAt).IsValid);
+                ScriptEnvelopeVerifier.Verify(envelope, TrustedKeys(), IssuedAtFromHeader(envelope)).IsValid);
+        }
+
+        /// <summary>
+        /// The <c>issuedAt</c> header of an envelope, read from the bytes.
+        /// </summary>
+        private static long IssuedAtFromHeader(byte[] envelope)
+        {
+            foreach (string line in Encoding.ASCII.GetString(envelope).Split('\n'))
+            {
+                if (line.StartsWith("issuedAt=", StringComparison.Ordinal))
+                {
+                    return long.Parse(line.Substring("issuedAt=".Length));
+                }
+            }
+            throw new InvalidOperationException("envelope has no issuedAt header");
         }
 
         [Fact]

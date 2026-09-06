@@ -26,6 +26,13 @@ namespace SqliteHost.Delivery
         private const int MaxIdLength = 128;
         private const byte Newline = 0x0a;
 
+        /// <summary>
+        /// What the three-argument <see cref="Verify(byte[], IList{DeliveryKey}, long)"/>
+        /// applies. Shared and never mutated after construction.
+        /// </summary>
+        private static readonly ScriptEnvelopeVerificationOptions WirePolicy =
+            new ScriptEnvelopeVerificationOptions();
+
         // Fixed order is the reason no canonicalization is needed: there
         // is no map to sort and no optional field to omit. A reordered or
         // missing key is Malformed, never a default.
@@ -55,13 +62,36 @@ namespace SqliteHost.Delivery
         /// No wall clock is read: <paramref name="nowUnixMs"/> comes from
         /// the caller, which keeps the library deterministic, makes replay
         /// harnesses possible, and leaves clock-trust policy with the app.
+        ///
+        /// Applies the <c>deliveryVersion</c> 1 wire policy: the
+        /// <c>issuedAt</c> ceiling with its default skew, and no expiry
+        /// requirement, because the format defines an empty <c>expiresAt</c>
+        /// as "never expires". Take the four-argument overload to choose
+        /// app policy instead.
         /// </summary>
         /// <param name="envelope">The envelope bytes exactly as received.</param>
         /// <param name="trustedKeys">Keys this build trusts; selection is by (kid, alg).</param>
-        /// <param name="nowUnixMs">Unix milliseconds used only for the <c>expiresAt</c> check.</param>
+        /// <param name="nowUnixMs">Unix milliseconds; the freshness checks compare against it.</param>
         public static ScriptEnvelopeVerificationResult Verify(
             byte[] envelope, IList<DeliveryKey> trustedKeys, long nowUnixMs)
         {
+            return Verify(envelope, trustedKeys, nowUnixMs, WirePolicy);
+        }
+
+        /// <summary>
+        /// <see cref="Verify(byte[], IList{DeliveryKey}, long)"/> with an
+        /// explicit policy for the checks the wire format leaves to the app.
+        /// Never throws, and a null <paramref name="options"/> is read as
+        /// the wire policy rather than as an error.
+        /// </summary>
+        public static ScriptEnvelopeVerificationResult Verify(
+            byte[] envelope, IList<DeliveryKey> trustedKeys, long nowUnixMs,
+            ScriptEnvelopeVerificationOptions options)
+        {
+            if (options == null)
+            {
+                options = WirePolicy;
+            }
             if (envelope == null || envelope.Length == 0)
             {
                 return Fail(ScriptEnvelopeFailureReason.Malformed);
@@ -184,6 +214,16 @@ namespace SqliteHost.Delivery
                 return Fail(ScriptEnvelopeFailureReason.Expired);
             }
 
+            // Ceiling on issuedAt, checked after the signature for the same
+            // reason expiry is. Without it a single envelope carrying a
+            // maximal issuedAt permanently freezes a scriptId: the app's
+            // MUST rule accepts only a strictly greater value, so nothing
+            // legitimate can follow it. Inclusive, like expiresAt.
+            if (IsIssuedTooFarAhead(issuedAt, nowUnixMs, options.MaxIssuedAtSkewMs))
+            {
+                return Fail(ScriptEnvelopeFailureReason.IssuedInFuture);
+            }
+
             var payload = new byte[payloadLength];
             Buffer.BlockCopy(envelope, payloadStart, payload, 0, payloadLength);
             return ScriptEnvelopeVerificationResult.Ok(
@@ -192,6 +232,21 @@ namespace SqliteHost.Delivery
                 issuedAt,
                 hasExpiresAt ? (long?)expiresAt : null,
                 hasMinApiLevel ? (int?)minApiLevel : null);
+        }
+
+        /// <summary>
+        /// <c>issuedAt &gt; nowUnixMs + skew</c>, computed so that a skew
+        /// large enough to overflow (long.MaxValue disables the check) does
+        /// not wrap into a ceiling below <c>now</c>.
+        /// </summary>
+        private static bool IsIssuedTooFarAhead(long issuedAt, long nowUnixMs, long maxSkewMs)
+        {
+            long ceiling = unchecked(nowUnixMs + maxSkewMs);
+            if (maxSkewMs > 0 && ceiling < nowUnixMs)
+            {
+                return false; // the ceiling is past long.MaxValue: nothing exceeds it
+            }
+            return issuedAt > ceiling;
         }
 
         private static ScriptEnvelopeVerificationResult Fail(ScriptEnvelopeFailureReason reason)
