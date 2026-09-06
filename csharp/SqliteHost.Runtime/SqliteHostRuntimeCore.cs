@@ -463,6 +463,15 @@ namespace SqliteHost
             return false;
         }
 
+        /// <summary>
+        /// Structural checks that run before a workspace is opened. Required
+        /// strings are tested for BLANKNESS, not emptiness
+        /// (docs/script-envelope.md): "   " is rejected wherever "" is, on
+        /// the one pinned character set <see cref="SqlText"/> holds — so a
+        /// step id of two spaces cannot run to Completed and then report an
+        /// invisible StepId. In every build: the envelope's own rule, not an
+        /// optional strict check.
+        /// </summary>
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
         {
             if (script == null)
@@ -515,10 +524,10 @@ namespace SqliteHost
                 var inputNames = new HashSet<string>(StringComparer.Ordinal);
                 foreach (SqliteHostRuntimeInput input in script.Inputs)
                 {
-                    if (input == null || string.IsNullOrEmpty(input.Name))
+                    if (input == null || SqlText.IsBlank(input.Name))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                            "A runtime input is null or has an empty name.", null, null);
+                            "A runtime input is null or has a blank name.", null, null);
                     }
                     if (!inputNames.Add(input.Name))
                     {
@@ -537,10 +546,10 @@ namespace SqliteHost
             int statementCount = 0;
             foreach (SqliteHostStep step in script.Steps)
             {
-                if (step == null || string.IsNullOrEmpty(step.Id))
+                if (step == null || SqlText.IsBlank(step.Id))
                 {
                     return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                        "A step is null or has an empty id.", null, null);
+                        "A step is null or has a blank id.", null, null);
                 }
                 if (step.Statements == null || step.Statements.Count == 0)
                 {
@@ -554,10 +563,10 @@ namespace SqliteHost
                 }
                 foreach (SqliteHostStatement statement in step.Statements)
                 {
-                    if (statement == null || string.IsNullOrEmpty(statement.Sql))
+                    if (statement == null || SqlText.IsBlank(statement.Sql))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                            "A statement in step '" + step.Id + "' is null or has null or empty sql.", step.Id, null);
+                            "A statement in step '" + step.Id + "' is null or has blank sql.", step.Id, null);
                     }
                     statementCount++;
                 }
