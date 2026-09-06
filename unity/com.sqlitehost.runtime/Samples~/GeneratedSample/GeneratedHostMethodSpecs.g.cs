@@ -24,10 +24,13 @@ namespace Example.Game.Generated
             return HostMethod
                 .For<IGeneratedHostHandlers, GetValueInput, GetValueResult>("getValue")
                 .ApiLevel(1)
+                .Tables("call_get_value", "result_get_value", "trg_call_get_value_queue")
                 .Inputs(i => i
-                    .Text("key", (x, v) => x.Key = v))
+                    .Text("key", (x, v) => x.Key = v)
+                    .Column("input_key"))
                 .Results(r => r
-                    .Long("value", x => x.Value))
+                    .Long("value", x => x.Value)
+                    .Column("result_value"))
                 .Inline("fn_get_value", 1, 1)
                 .Handler((handlers, input) => handlers.GetValue(input))
                 .Build();
@@ -38,11 +41,15 @@ namespace Example.Game.Generated
             return HostMethod
                 .For<IGeneratedHostHandlers, SetValueInput, SetValueResult>("setValue")
                 .ApiLevel(1)
+                .Tables("call_set_value", "result_set_value", "trg_call_set_value_queue")
                 .Inputs(i => i
                     .Text("key", (x, v) => x.Key = v)
-                    .Long("value", (x, v) => x.Value = v))
+                    .Column("input_key")
+                    .Long("value", (x, v) => x.Value = v)
+                    .Column("input_value"))
                 .Results(r => r
-                    .Bool("success", x => x.Success))
+                    .Bool("success", x => x.Success)
+                    .Column("result_success"))
                 .Handler((handlers, input) => handlers.SetValue(input))
                 .Build();
         }
@@ -52,15 +59,23 @@ namespace Example.Game.Generated
             return HostMethod
                 .For<IGeneratedHostHandlers, GetValuesInput, GetValuesResult>("getValues")
                 .ApiLevel(1)
+                .Tables("call_get_values", "result_get_values", "trg_call_get_values_queue")
                 .Inputs(i => i
                     .OptionalLong("default_value", (x, v) => x.DefaultValue = v)
+                    .Column("input_default_value")
                     .List<KeyQueryItem>("keys", (x, v) => x.Keys = v, item => item
-                        .Text("key", (x, v) => x.Key = v)))
+                        .Text("key", (x, v) => x.Key = v)
+                        .Column("input_key"))
+                    .ChildTable("call_get_values__input_keys"))
                 .Results(r => r
                     .List<ValueEntryItem>("entries", x => x.Entries, item => item
                         .Text("key", x => x.Key)
+                        .Column("result_key")
                         .Long("value", x => x.Value)
-                        .Bool("found", x => x.Found)))
+                        .Column("result_value")
+                        .Bool("found", x => x.Found)
+                        .Column("result_found"))
+                    .ChildTable("result_get_values__result_entries"))
                 .Handler((handlers, input) => handlers.GetValues(input))
                 .Build();
         }
@@ -70,12 +85,17 @@ namespace Example.Game.Generated
             return HostMethod
                 .For<IGeneratedHostHandlers, PutBlobInput, PutBlobResult>("putBlob")
                 .ApiLevel(1)
+                .Tables("call_put_blob", "result_put_blob", "trg_call_put_blob_queue")
                 .Inputs(i => i
                     .Text("key", (x, v) => x.Key = v)
+                    .Column("input_key")
                     .Blob("data", (x, v) => x.Data = v)
-                    .OptionalText("note", (x, v) => x.Note = v))
+                    .Column("input_data")
+                    .OptionalText("note", (x, v) => x.Note = v)
+                    .Column("input_note"))
                 .Results(r => r
-                    .Bool("stored", x => x.Stored))
+                    .Bool("stored", x => x.Stored)
+                    .Column("result_stored"))
                 .Handler((handlers, input) => handlers.PutBlob(input))
                 .Build();
         }
@@ -85,12 +105,17 @@ namespace Example.Game.Generated
             return HostMethod
                 .For<IGeneratedHostHandlers, RecordScoreInput, RecordScoreResult>("recordScore")
                 .ApiLevel(1)
+                .Tables("call_record_score", "result_record_score", "trg_call_record_score_queue")
                 .Inputs(i => i
                     .Text("key", (x, v) => x.Key = v)
+                    .Column("input_key")
                     .Double("score", (x, v) => x.Score = v)
-                    .OptionalFloat("weight", (x, v) => x.Weight = v))
+                    .Column("input_score")
+                    .OptionalFloat("weight", (x, v) => x.Weight = v)
+                    .Column("input_weight"))
                 .Results(r => r
-                    .Double("average", x => x.Average))
+                    .Double("average", x => x.Average)
+                    .Column("result_average"))
                 .Handler((handlers, input) => handlers.RecordScore(input))
                 .Build();
         }

@@ -264,10 +264,33 @@ export function emitUltraHandlerInterface(
 // GeneratedHostMethodSpecs.g.cs
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolved-name side channels (docs/csharp-api.md "Resolved names").
+ * Every physical name in a generated host comes from the IR, so the
+ * schema SQL this emitter writes and the spec the runtime executes can
+ * never name two different tables.
+ */
+function columnCall(field: ScalarFieldIr): string {
+  return `.Column(${csharpString(field.column)})`;
+}
+
+function childTableCall(listField: ListFieldIr): string {
+  return `.ChildTable(${csharpString(listField.childTable)})`;
+}
+
+function tablesCall(method: HostMethodIr): string {
+  return (
+    `.Tables(${csharpString(method.callTable)}, ` +
+    `${csharpString(method.resultTable)}, ${csharpString(method.queueTrigger)})`
+  );
+}
+
 /** One fluent field call, possibly spanning extra lines for a list. */
 interface FieldCall {
   first: string;
   itemLines: string[];
+  /** Group-level lines after the field (its resolved-name side channel). */
+  after: string[];
 }
 
 function inputScalarCall(field: ScalarFieldIr): string {
@@ -282,17 +305,25 @@ function shapeCalls(shape: ObjectShapeIr, isInput: boolean): FieldCall[] {
   const calls: FieldCall[] = [];
   const scalarCall = isInput ? inputScalarCall : resultScalarCall;
   for (const field of shape.fields) {
-    calls.push({ first: scalarCall(field), itemLines: [] });
+    calls.push({
+      first: scalarCall(field),
+      itemLines: [],
+      after: [columnCall(field)],
+    });
   }
   for (const listField of shape.listFields) {
     const pascal = pascalCase(listField.propertyName);
     const accessor = isInput ? `(x, v) => x.${pascal} = v` : `x => x.${pascal}`;
-    const itemLines = listField.itemFields.map((field) => scalarCall(field));
-    // Close the item lambda on its last field call.
+    const itemLines = listField.itemFields.flatMap((field) => [
+      scalarCall(field),
+      columnCall(field),
+    ]);
+    // Close the item lambda on its last line.
     itemLines[itemLines.length - 1] += ")";
     calls.push({
       first: `.List<${listField.itemModelName}>(${csharpString(listField.sqlName)}, ${accessor}, item => item`,
       itemLines,
+      after: [childTableCall(listField)],
     });
   }
   return calls;
@@ -318,6 +349,9 @@ function fieldBlock(
     lines.push(`                    ${call.first}`);
     for (const itemLine of call.itemLines) {
       lines.push(`                        ${itemLine}`);
+    }
+    for (const afterLine of call.after) {
+      lines.push(`                    ${afterLine}`);
     }
   }
   // Close the group lambda on its last line.
@@ -354,6 +388,7 @@ function specMethod(method: HostMethodIr): string {
     "            return HostMethod",
     `                .For<IGeneratedHostHandlers, ${method.input.modelName}, ${method.result.modelName}>(${csharpString(method.methodName)})`,
     `                .ApiLevel(${method.apiLevel})`,
+    `                ${tablesCall(method)}`,
     ...fieldBlock("Inputs", method.input, true),
     ...fieldBlock("Results", method.result, false),
     ...inline,
@@ -492,22 +527,29 @@ function compactSpecMembers(
       "            return CompactHostMethod",
       `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
       `                .ApiLevel(${method.apiLevel})`,
+      `                ${tablesCall(method)}`,
       `                .CreateInput(Create${op}Input)`,
-      ...method.input.fields.map(
-        (field) =>
-          `                .Input${builderMethod(field)}(${csharpString(field.sqlName)}, Set${op}${pascalCase(field.propertyName)})`,
-      ),
-      ...method.input.listFields.map((listField) => {
+      ...method.input.fields.flatMap((field) => [
+        `                .Input${builderMethod(field)}(${csharpString(field.sqlName)}, Set${op}${pascalCase(field.propertyName)})`,
+        `                ${columnCall(field)}`,
+      ]),
+      ...method.input.listFields.flatMap((listField) => {
         const list = pascalCase(listField.propertyName);
-        return `                .InputList(${csharpString(listField.sqlName)}, Create${op}${list}Item, Assign${op}${list}, Configure${op}${list}Item)`;
+        return [
+          `                .InputList(${csharpString(listField.sqlName)}, Create${op}${list}Item, Assign${op}${list}, Configure${op}${list}Item)`,
+          `                ${childTableCall(listField)}`,
+        ];
       }),
-      ...method.result.fields.map(
-        (field) =>
-          `                .Result${builderMethod(field)}(${csharpString(field.sqlName)}, Read${op}${pascalCase(field.propertyName)})`,
-      ),
-      ...method.result.listFields.map((listField) => {
+      ...method.result.fields.flatMap((field) => [
+        `                .Result${builderMethod(field)}(${csharpString(field.sqlName)}, Read${op}${pascalCase(field.propertyName)})`,
+        `                ${columnCall(field)}`,
+      ]),
+      ...method.result.listFields.flatMap((listField) => {
         const list = pascalCase(listField.propertyName);
-        return `                .ResultList(${csharpString(listField.sqlName)}, Read${op}${list}, Configure${op}${list}Item)`;
+        return [
+          `                .ResultList(${csharpString(listField.sqlName)}, Read${op}${list}, Configure${op}${list}Item)`,
+          `                ${childTableCall(listField)}`,
+        ];
       }),
       ...inline,
       `                .Handler(Invoke${op})`,
@@ -551,10 +593,10 @@ function compactSpecMembers(
       configureItemMember(
         `Configure${op}${list}Item`,
         "ICompactListItemFieldsBuilder",
-        listField.itemFields.map(
-          (field) =>
-            `.${builderMethod(field)}(${csharpString(field.sqlName)}, Set${item}${pascalCase(field.propertyName)})`,
-        ),
+        listField.itemFields.flatMap((field) => [
+          `.${builderMethod(field)}(${csharpString(field.sqlName)}, Set${item}${pascalCase(field.propertyName)})`,
+          columnCall(field),
+        ]),
       ),
     );
     if (!seenItemAccessors.has(`Set${item}`)) {
@@ -621,10 +663,10 @@ function compactSpecMembers(
       configureItemMember(
         `Configure${op}${list}Item`,
         "ICompactListItemResultFieldsBuilder",
-        listField.itemFields.map(
-          (field) =>
-            `.${builderMethod(field)}(${csharpString(field.sqlName)}, Read${item}${pascalCase(field.propertyName)})`,
-        ),
+        listField.itemFields.flatMap((field) => [
+          `.${builderMethod(field)}(${csharpString(field.sqlName)}, Read${item}${pascalCase(field.propertyName)})`,
+          columnCall(field),
+        ]),
       ),
     );
     if (!seenItemAccessors.has(`Read${item}`)) {
@@ -689,22 +731,23 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
       "            return UltraHostMethod",
       `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
       `                .ApiLevel(${method.apiLevel})`,
-      ...method.input.fields.map(
-        (field) =>
-          `                .Input${builderMethod(field)}(${csharpString(field.sqlName)})`,
-      ),
-      ...method.input.listFields.map(
-        (listField) =>
-          `                .InputList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
-      ),
-      ...method.result.fields.map(
-        (field) =>
-          `                .Result${builderMethod(field)}(${csharpString(field.sqlName)})`,
-      ),
-      ...method.result.listFields.map(
-        (listField) =>
-          `                .ResultList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
-      ),
+      `                ${tablesCall(method)}`,
+      ...method.input.fields.flatMap((field) => [
+        `                .Input${builderMethod(field)}(${csharpString(field.sqlName)})`,
+        `                ${columnCall(field)}`,
+      ]),
+      ...method.input.listFields.flatMap((listField) => [
+        `                .InputList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
+        `                ${childTableCall(listField)}`,
+      ]),
+      ...method.result.fields.flatMap((field) => [
+        `                .Result${builderMethod(field)}(${csharpString(field.sqlName)})`,
+        `                ${columnCall(field)}`,
+      ]),
+      ...method.result.listFields.flatMap((listField) => [
+        `                .ResultList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
+        `                ${childTableCall(listField)}`,
+      ]),
       ...inline,
       `                .Handler(Invoke${op})`,
       "                .Build();",
@@ -720,9 +763,10 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
       configureItemMember(
         `Configure${op}${pascalCase(listField.propertyName)}Item`,
         "IUltraListItemFieldsBuilder",
-        listField.itemFields.map(
-          (field) => `.${builderMethod(field)}(${csharpString(field.sqlName)})`,
-        ),
+        listField.itemFields.flatMap((field) => [
+          `.${builderMethod(field)}(${csharpString(field.sqlName)})`,
+          columnCall(field),
+        ]),
       ),
     );
   }

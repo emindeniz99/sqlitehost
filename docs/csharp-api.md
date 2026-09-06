@@ -773,7 +773,7 @@ where the accessors cost real bytes; measured in
 |---|---|
 | `HostMethodDtos.g.cs` | input/result/item DTO classes — plain classes, public auto-properties, `List<T>` properties initialized to `new List<T>()` |
 | `IGeneratedHostHandlers.g.cs` | handler interface, one method per op: `GetValueResult GetValue(GetValueInput input);` |
-| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API |
+| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API — every physical name the manifest resolved is emitted with it (`.Tables(...)` after `.ApiLevel`, `.Column(...)` after each scalar field, `.ChildTable(...)` after each list field), so the spec and `GeneratedSchemaSql.g.cs` cannot name different tables |
 | `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all eleven naming values explicitly (six prefixes, the queue/inputs/vars/control table names, the function prefix), followed by a `.Columns(...)` block emitting all fourteen column identifiers |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
 

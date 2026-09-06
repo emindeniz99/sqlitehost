@@ -39,7 +39,7 @@ player's device,"* you review the engine — and it is concentrated:
 | `SqliteHostRuntimeCore.cs` | 1,018 | the run loop: execute SQL via the adapter, read the control row, drain the queue, dispatch `call_*` rows to your handler, write results back |
 | `ErasedHostMethodSpec.cs` | 355 | per-call marshaling: call row → input object → handler → result rows |
 | `ErasedScalarFields.cs` / `ErasedFieldModels.cs` | 377 | scalar column read/write |
-| `SchemaGenerator.cs` / `NamingDerivation.cs` | 289 | workspace DDL + physical name derivation |
+| `SchemaGenerator.cs` / `NamingDerivation.cs` / `ResolvedNames.cs` | 351 | workspace DDL + physical names (read from the definition, derived when it declares none) |
 
 So the real "what runs untrusted input" review is **~2k lines, half of it
 one file** (the 1,018-line run loop) — not the whole package. It is

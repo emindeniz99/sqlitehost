@@ -24,8 +24,11 @@ namespace Example.Game.Generated.Ultra
             return UltraHostMethod
                 .For<IGeneratedHostHandlers>("getValue")
                 .ApiLevel(1)
+                .Tables("call_get_value", "result_get_value", "trg_call_get_value_queue")
                 .InputText("key")
+                .Column("input_key")
                 .ResultLong("value")
+                .Column("result_value")
                 .Inline("fn_get_value", 1, 1)
                 .Handler(InvokeGetValue)
                 .Build();
@@ -41,9 +44,13 @@ namespace Example.Game.Generated.Ultra
             return UltraHostMethod
                 .For<IGeneratedHostHandlers>("setValue")
                 .ApiLevel(1)
+                .Tables("call_set_value", "result_set_value", "trg_call_set_value_queue")
                 .InputText("key")
+                .Column("input_key")
                 .InputLong("value")
+                .Column("input_value")
                 .ResultBool("success")
+                .Column("result_success")
                 .Handler(InvokeSetValue)
                 .Build();
         }
@@ -58,9 +65,13 @@ namespace Example.Game.Generated.Ultra
             return UltraHostMethod
                 .For<IGeneratedHostHandlers>("getValues")
                 .ApiLevel(1)
+                .Tables("call_get_values", "result_get_values", "trg_call_get_values_queue")
                 .InputOptionalLong("default_value")
+                .Column("input_default_value")
                 .InputList("keys", ConfigureGetValuesKeysItem)
+                .ChildTable("call_get_values__input_keys")
                 .ResultList("entries", ConfigureGetValuesEntriesItem)
+                .ChildTable("result_get_values__result_entries")
                 .Handler(InvokeGetValues)
                 .Build();
         }
@@ -68,15 +79,19 @@ namespace Example.Game.Generated.Ultra
         private static void ConfigureGetValuesKeysItem(IUltraListItemFieldsBuilder item)
         {
             item
-                .Text("key");
+                .Text("key")
+                .Column("input_key");
         }
 
         private static void ConfigureGetValuesEntriesItem(IUltraListItemFieldsBuilder item)
         {
             item
                 .Text("key")
+                .Column("result_key")
                 .Long("value")
-                .Bool("found");
+                .Column("result_value")
+                .Bool("found")
+                .Column("result_found");
         }
 
         private static SqliteHostUltraResult InvokeGetValues(object handlers, SqliteHostUltraCall call)
@@ -89,10 +104,15 @@ namespace Example.Game.Generated.Ultra
             return UltraHostMethod
                 .For<IGeneratedHostHandlers>("putBlob")
                 .ApiLevel(1)
+                .Tables("call_put_blob", "result_put_blob", "trg_call_put_blob_queue")
                 .InputText("key")
+                .Column("input_key")
                 .InputBlob("data")
+                .Column("input_data")
                 .InputOptionalText("note")
+                .Column("input_note")
                 .ResultBool("stored")
+                .Column("result_stored")
                 .Handler(InvokePutBlob)
                 .Build();
         }
@@ -107,10 +127,15 @@ namespace Example.Game.Generated.Ultra
             return UltraHostMethod
                 .For<IGeneratedHostHandlers>("recordScore")
                 .ApiLevel(1)
+                .Tables("call_record_score", "result_record_score", "trg_call_record_score_queue")
                 .InputText("key")
+                .Column("input_key")
                 .InputDouble("score")
+                .Column("input_score")
                 .InputOptionalFloat("weight")
+                .Column("input_weight")
                 .ResultDouble("average")
+                .Column("result_average")
                 .Handler(InvokeRecordScore)
                 .Build();
         }
