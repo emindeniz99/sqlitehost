@@ -43,6 +43,17 @@ the app precisely so the app can check signatures offline.
 
 A date-stamped `keyId` (`prod-2026-07`) makes rotation self-documenting.
 
+**One signing key per app.** Do not share a key across two titles, even
+in the same studio. Nothing in the envelope names the application it is
+for — the signed region carries `alg`, `kid`, `scriptId`, `issuedAt`,
+`expiresAt`, `minApiLevel` and the payload, and no audience or bundle
+id (this is where a JWT would have `aud`). So an envelope signed for
+title A verifies in title B whenever both trust that key, and
+`scriptId` is no defence: studios reuse names like
+`daily-quest-rules` across titles precisely because they mean the same
+thing. Adding an audience field is a `deliveryVersion` 2 change and is
+not on the table today, so the separation has to be operational.
+
 ## 1. Sign, on the backend
 
 ```ts

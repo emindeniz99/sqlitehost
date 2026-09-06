@@ -212,6 +212,17 @@ of keys; the verifier selects by `kid` **and** `alg`.
 - **`keyId` is opaque** to the library — any `[A-Za-z0-9._:-]{1,128}`
   string. A date-stamped convention (`prod-2026-07`) makes rotation
   self-documenting.
+- **One key per app, as an operational rule.** There is no audience
+  binding in v1: nothing in the signed region names an application, a
+  bundle id or a tenant, so an envelope signed for one title verifies
+  in any other title that trusts the same key, and `scriptId` does not
+  separate them — the natural names (`daily-quest-rules`) are exactly
+  the ones a studio reuses. The alternative is an eighth header line
+  (`audience=<id|empty>`) inside the signed region, which the format
+  can take as a `deliveryVersion` 2 addition rather than a break,
+  since `alg` is already signed. Out of scope for v1: the operational
+  rule costs nothing, and adding a field to a signed format is not
+  something to do speculatively.
 - **RSA public keys are supplied as raw modulus + exponent**
   (`RSAParameters`, or base64 strings the library converts). Not
   SPKI/PEM: `netstandard2.0` has no `ImportSubjectPublicKeyInfo`
