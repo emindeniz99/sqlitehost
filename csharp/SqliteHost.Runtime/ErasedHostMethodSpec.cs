@@ -119,6 +119,18 @@ namespace SqliteHost
             try
             {
                 result = _handler(handlers, input);
+                if (result == null)
+                {
+                    // A null result is the handler's bug, not the result
+                    // writer's. Without this the getters below dereference it
+                    // and the NullReferenceException surfaces as
+                    // FailedSql/result-write-error with an NRE message. The
+                    // ultra surface already throws here (UltraHostMethod), so
+                    // this keeps the three profiles reporting the same thing.
+                    throw new InvalidOperationException(
+                        "Method '" + MethodName
+                        + "': the handler returned null instead of a result object.");
+                }
             }
             catch (Exception ex)
             {

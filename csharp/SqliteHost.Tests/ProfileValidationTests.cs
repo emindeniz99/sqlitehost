@@ -136,6 +136,73 @@ namespace SqliteHost.Tests
             Assert.Contains("scalar fields only (no lists)", ex.Message);
         }
 
+        // --- null handler result: same verdict on all three surfaces ---
+
+        private sealed class NullResultProbeHandlers : ITestHandlers
+        {
+        }
+
+        private static SqliteHostRunResult RunProbeSpec(IHostMethodSpec<ITestHandlers> spec)
+        {
+            SqliteHostDefinition<ITestHandlers> definition = SqliteHostDefinition
+                .ForHandlers<ITestHandlers>()
+                .Methods(new List<IHostMethodSpec<ITestHandlers>> { spec });
+            using var factory = new TestWorkspaceFactory();
+            var runtime = new SqliteHostRuntime<ITestHandlers>(
+                factory, definition, new NullResultProbeHandlers(), null);
+            return runtime.Run(Scripts.New(Scripts.Step(
+                "s",
+                Scripts.Statement(
+                    "INSERT INTO call_probe (call_id, input_key) VALUES (:c, 'k')",
+                    ("c", SqliteHostBindingValue.Text("call-1"))))));
+        }
+
+        [SkippableFact]
+        public void Classic_NullHandlerResult_IsAHandlerError()
+        {
+            // A handler that returns null is a handler bug. The erased path
+            // used to carry the null into the result getters, so it surfaced
+            // as FailedSql / result-write-error carrying an NRE message —
+            // the wrong layer, the wrong code, and a message naming nothing.
+            // Ultra already reported FailedHandler here; classic now agrees.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunProbeSpec(HostMethod
+                .For<ITestHandlers, ProbeInput, DummyResult>("probe")
+                .Inputs(i => i.Text("key", (x, v) => x.Key = v))
+                .Results(r => r.Bool("ok", x => x.Ok))
+                .Handler((h, input) => null)
+                .Build());
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("returned null", result.ErrorMessage);
+        }
+
+        [SkippableFact]
+        public void Compact_NullHandlerResult_IsAHandlerError()
+        {
+            // Same erased core, so the compact surface must agree too.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunProbeSpec(CompactHostMethod
+                .For<ITestHandlers>("probe")
+                .CreateInput(() => new ProbeInput())
+                .InputText("key", (x, v) => ((ProbeInput)x).Key = v)
+                .ResultBool("ok", x => ((DummyResult)x).Ok)
+                .Handler((h, input) => null)
+                .Build());
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("returned null", result.ErrorMessage);
+        }
+
+        private sealed class ProbeInput
+        {
+            public string Key { get; set; }
+        }
+
         // --- ultra result-shape enforcement at runtime ---
 
         private SqliteHostRunResult RunUltraMethod(
