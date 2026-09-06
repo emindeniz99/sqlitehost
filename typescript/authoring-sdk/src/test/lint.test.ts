@@ -1176,3 +1176,98 @@ test("quoting an inline function name does not bypass method-api-level-too-high"
   );
   assert.equal(found.length, 1, JSON.stringify(found));
 });
+
+// -- protocol columns in the binding-type map --------------------------------
+// call_id and item_index are host-configurable names (docs/naming.md) but
+// their types are pinned by the protocol: call_id is text, item_index is an
+// integer (docs/validation.md). The Java engine seeds both into its
+// binding-type map; the TypeScript map was built from manifest input/item
+// fields alone, and unknown columns are skipped, so a wrongly-typed binding
+// into either column produced no finding at all.
+
+test("binding-type-mismatch: call_id is pinned to text on a call table", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_value (call_id, input_key) VALUES (:cid, 'k')",
+            bindings: { cid: { type: "int32", value: 7 } },
+          },
+        ],
+      },
+    ],
+  };
+  const mismatch = lintScript(payload, manifest).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
+  assert.ok(mismatch[0].message.includes("call_id"), mismatch[0].message);
+});
+
+test("binding-type-mismatch: call_id and item_index are pinned on child tables", () => {
+  const child = (bindings: Record<string, BindingValue>) => ({
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES ('q-1', 0)" },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:c, :i, 'k')",
+            bindings,
+          },
+        ],
+      },
+    ],
+  });
+  const badCallId = lintScript(
+    child({ c: { type: "int64", value: 1 }, i: { type: "int64", value: 0 } }),
+    manifest,
+  ).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(badCallId.length, 1, JSON.stringify(badCallId));
+
+  const badItemIndex = lintScript(
+    child({ c: { type: "text", value: "q-1" }, i: { type: "text", value: "0" } }),
+    manifest,
+  ).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(badItemIndex.length, 1, JSON.stringify(badItemIndex));
+});
+
+test("binding-type-mismatch: correctly typed protocol columns stay silent", () => {
+  // WHY: the pinned types must not fire on the shapes every real script
+  // writes — text call_id, int64 item_index — or the lint is unusable.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES (:c, 0)",
+            bindings: { c: { type: "text", value: "q-1" } },
+          },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:c2, :i, 'k')",
+            bindings: {
+              c2: { type: "text", value: "q-1" },
+              i: { type: "int32", value: 0 },
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.deepStrictEqual(
+    findings.filter((f) => f.code === "binding-type-mismatch"),
+    [],
+    JSON.stringify(findings),
+  );
+});
