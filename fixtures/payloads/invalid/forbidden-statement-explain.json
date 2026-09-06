@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-statement-explain",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "prefix-the-write-with-explain",
+      "statements": [
+        {
+          "sql": "EXPLAIN DELETE FROM pending_host_calls",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

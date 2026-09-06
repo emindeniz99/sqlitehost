@@ -44,8 +44,17 @@ namespace SqliteHost.Tests.Adapter
                 using var reader = command.ExecuteReader();
                 do
                 {
-                    while (reader.Read())
+                    // Comment-only / whitespace-only SQL compiles to no
+                    // statement: System.Data.SQLite hands back a reader with
+                    // no active statement, and Read() dereferences it. A
+                    // statement with no columns has nothing to drain (the
+                    // reader already stepped it inside NextResult), so the
+                    // guard costs nothing on that path either.
+                    if (reader.FieldCount > 0)
                     {
+                        while (reader.Read())
+                        {
+                        }
                     }
                 }
                 while (reader.NextResult());
@@ -67,9 +76,12 @@ namespace SqliteHost.Tests.Adapter
                 using var reader = command.ExecuteReader();
                 var row = new SystemDataSqliteRow(reader);
                 var results = new List<object>();
-                while (reader.Read())
+                if (reader.FieldCount > 0)   // see Execute: no statement, no Read()
                 {
-                    results.Add(mapper(row));
+                    while (reader.Read())
+                    {
+                        results.Add(mapper(row));
+                    }
                 }
                 return results;
             }
@@ -267,7 +279,35 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => _reader.IsDBNull(index);
-        public int GetInt32(int index) { RequireNotNull(index); return _reader.GetInt32(index); }
+
+        /// <summary>
+        /// System.Data.SQLite's GetFieldType consults the DECLARED column
+        /// type, so it cannot answer this. GetFieldAffinity reports the
+        /// affinity of the value in the current row (it forwards to
+        /// sqlite3_column_type), which is the question.
+        /// </summary>
+        public SqliteHostStorageClass GetStorageClass(int index)
+        {
+            switch (_reader.GetFieldAffinity(index))
+            {
+                case TypeAffinity.Int64:
+                    return SqliteHostStorageClass.Integer;
+                case TypeAffinity.Double:
+                    return SqliteHostStorageClass.Real;
+                case TypeAffinity.Text:
+                    return SqliteHostStorageClass.Text;
+                case TypeAffinity.Blob:
+                    return SqliteHostStorageClass.Blob;
+                default:
+                    return SqliteHostStorageClass.Null;
+            }
+        }
+        /// <summary>
+        /// System.Data.SQLite's GetInt32 narrows the stored 64-bit value
+        /// unchecked (4294967303 reads as 7), so the range check has to be
+        /// here (docs/adapter-contract.md, "Value fidelity").
+        /// </summary>
+        public int GetInt32(int index) { RequireNotNull(index); return checked((int)_reader.GetInt64(index)); }
         public long GetInt64(int index) { RequireNotNull(index); return _reader.GetInt64(index); }
         public bool GetBool(int index) { RequireNotNull(index); return _reader.GetInt64(index) != 0; }
         public string GetText(int index) { RequireNotNull(index); return _reader.GetString(index); }

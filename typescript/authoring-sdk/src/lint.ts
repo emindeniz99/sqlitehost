@@ -16,12 +16,15 @@ import {
 import {
   BINDING_TYPE_COMPAT,
   FEATURE_INLINE_FUNCTIONS,
+  FORBIDDEN_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
   FUNCTION_MIN_VERSION,
   FUNCTION_PREFIX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
+  SYSTEM_TABLES,
 } from "./generated/protocol.js";
 import type {
   HostManifest,
@@ -30,6 +33,7 @@ import type {
 } from "./manifest.js";
 import {
   analyzeInsert,
+  bareIdentifiers,
   callIdFilters,
   functionCalls,
   hasTrailingStatement,
@@ -62,12 +66,14 @@ export type LintCode =
   | "list-child-without-parent"
   | "undeclared-feature-use"
   | "unknown-function"
+  | "forbidden-function"
   | "function-arity-mismatch"
   | "nondeterministic-function"
   | "sqlite-version-too-low-for-function"
   | "nonportable-function"
   | "embedded-nul"
   | "multiple-statements"
+  | "unrecognized-statement"
   | "forbidden-statement"
   | "protocol-table-write"
   | "result-read-unknown-call"
@@ -154,10 +160,34 @@ function nonportableReason(nameLc: string): string {
       " surface, so the host must register what it needs"
     );
   }
+  if (nameLc === "soundex") {
+    return (
+      "is only present when the device's SQLite was compiled with -DSQLITE_SOUNDEX," +
+      " which stock builds do not set; compute the value in the host and bind it instead"
+    );
+  }
+  if (nameLc === "sqlite_offset") {
+    return (
+      "is only present when the device's SQLite was compiled with" +
+      " -DSQLITE_ENABLE_OFFSET_SQL_FUNC, which stock builds do not set"
+    );
+  }
   return (
     "is only present when the device's SQLite was compiled with" +
     " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host and bind it instead"
   );
+}
+
+/** What this built-in does that makes calling it forbidden outright. */
+function forbiddenFunctionReason(nameLc: string): string {
+  if (nameLc === "pragma_optimize") {
+    return (
+      "is not a read: it executes ANALYZE, creating and populating sqlite_stat1" +
+      " in the workspace — the statement kind the forbidden-statement denylist" +
+      " exists to block, reached from inside a SELECT"
+    );
+  }
+  return "may not be called from a script";
 }
 
 /** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
@@ -284,7 +314,15 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   // tables and their child tables (writing them is how a script makes a host
   // call), plus script_vars and script_control (the script's own scratch and
   // control surfaces).
+  // Alongside them, the tables SQLite itself owns. These are NOT
+  // manifest-derived — nothing in a manifest can rename `sqlite_master` —
+  // which is exactly why a manifest-only resolution missed every one of
+  // them and left `UPDATE sqlite_master SET sql = …` (the queue-trigger
+  // rewrite) outside the lint entirely. Fixed list, single-sourced in ir.ts.
   const protocolTables = new Map<string, string>();
+  for (const table of SYSTEM_TABLES) {
+    protocolTables.set(table, "a SQLite-owned system table");
+  }
   protocolTables.set(manifest.queueTable.name.toLowerCase(), "the host-call queue table");
   protocolTables.set(manifest.inputsTable.name.toLowerCase(), "the runtime inputs table");
   for (const method of manifest.methods) {
@@ -468,6 +506,26 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // `pragma_table_info(...)` in a SELECT, a `WITH … INSERT`, and the
       // literal 'PRAGMA' legal.
       const leading = leadingKeyword(tokens);
+
+      // unrecognized-statement: token 0 is not an identifier, so neither
+      // forbidden-statement nor protocol-table-write can anchor and BOTH
+      // silently skip the statement. That fail-open path is what a leading
+      // U+FEFF walked through — every legal script statement begins with an
+      // identifier (SELECT/INSERT/UPDATE/DELETE/REPLACE/WITH/VALUES), so a
+      // statement that does not is either unrunnable or a tokenizer/engine
+      // divergence the denylists must not be asked to guess about. The one
+      // shape worth checking, a parenthesised `(SELECT 1)`, is not even
+      // legal: sqlite3 3.51.0 answers `near "(": syntax error`. An empty
+      // token stream is blank sql, already invalid-envelope.
+      if (leading === null && tokens.length > 0) {
+        findings.push({
+          code: "unrecognized-statement",
+          severity: "error",
+          message: `statement does not start with an identifier (first token: "${tokens[0].value}") — the forbidden-statement and protocol-table-write rules both anchor on that token, so a statement they cannot read is rejected rather than skipped (docs/validation.md)`,
+          ...at,
+        });
+      }
+
       if (leading !== null && FORBIDDEN_LEADING_KEYWORDS.includes(leading)) {
         findings.push({
           code: "forbidden-statement",
@@ -540,39 +598,66 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // The same pass raises the determinism warning
       // (nondeterministic-function), which is about built-ins rather than
       // inline functions but reads the identical call list.
+      // forbidden-function: a built-in whose *call* is the hazard, whatever
+      // the engine version. `pragma_optimize` is the list: it executes
+      // ANALYZE — creating and populating sqlite_stat1 — from inside a
+      // SELECT the docs otherwise bless as an ordinary read. Both legal
+      // spellings count, `pragma_optimize` bare in table position and
+      // `pragma_optimize(0xfffe)` as a call, so the scan covers the call
+      // list and the bare identifiers. One finding per name per statement.
+      const forbiddenSeen = new Set<string>();
+      for (const name of [
+        ...functionCalls(tokens).map((call) => call.name),
+        ...bareIdentifiers(tokens),
+      ]) {
+        const nameLc = name.toLowerCase();
+        if (!FORBIDDEN_FUNCTIONS.includes(nameLc) || forbiddenSeen.has(nameLc)) continue;
+        forbiddenSeen.add(nameLc);
+        findings.push({
+          code: "forbidden-function",
+          severity: "error",
+          message: `"${name}" ${forbiddenFunctionReason(nameLc)} (docs/validation.md)`,
+          ...at,
+        });
+      }
+
       const reportedFunctions = new Set<string>();
       const reportedPortability = new Set<string>();
+      // Engine portability is only meaningful for SQLite's own built-ins: a
+      // manifest inline function is supplied by the host adapter through
+      // sqlite3_create_function, so neither the engine version nor its
+      // compile options decide whether it exists. One finding per distinct
+      // name per statement (mirrors the Java engine).
+      const checkPortability = (name: string): void => {
+        const nameLc = name.toLowerCase();
+        if (inlineFunctions.has(nameLc) || reportedPortability.has(nameLc)) return;
+        // nonportable-function is checked FIRST: a compile-gated built-in
+        // must not be reported as a mere version problem, because raising
+        // the floor would not fix it.
+        if (NONPORTABLE_FUNCTIONS.includes(nameLc)) {
+          reportedPortability.add(nameLc);
+          findings.push({
+            code: "nonportable-function",
+            severity: "error",
+            message: `"${name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
+            ...at,
+          });
+          return;
+        }
+        const minVersion = minVersionFor(nameLc);
+        if (minVersion > minSqliteVersionNumber) {
+          reportedPortability.add(nameLc);
+          findings.push({
+            code: "sqlite-version-too-low-for-function",
+            severity: "error",
+            message: `built-in "${name}" requires SQLite ${formatVersion(minVersion)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the function`,
+            ...at,
+          });
+        }
+      };
       for (const call of functionCalls(tokens)) {
         const nameLc = call.name.toLowerCase();
-        // Engine portability is only meaningful for SQLite's own built-ins:
-        // a manifest inline function is supplied by the host adapter through
-        // sqlite3_create_function, so neither the engine version nor its
-        // compile options decide whether it exists.
-        if (!inlineFunctions.has(nameLc) && !reportedPortability.has(nameLc)) {
-          // nonportable-function is checked FIRST: a compile-gated built-in
-          // must not be reported as a mere version problem, because raising
-          // the floor would not fix it.
-          if (NONPORTABLE_FUNCTIONS.includes(nameLc)) {
-            reportedPortability.add(nameLc);
-            findings.push({
-              code: "nonportable-function",
-              severity: "error",
-              message: `"${call.name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
-              ...at,
-            });
-          } else {
-            const minVersion = minVersionFor(nameLc);
-            if (minVersion > minSqliteVersionNumber) {
-              reportedPortability.add(nameLc);
-              findings.push({
-                code: "sqlite-version-too-low-for-function",
-                severity: "error",
-                message: `built-in "${call.name}" requires SQLite ${formatVersion(minVersion)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the function`,
-                ...at,
-              });
-            }
-          }
-        }
+        checkPortability(call.name);
         if (isNondeterministic(call)) {
           findings.push({
             code: "nondeterministic-function",
@@ -638,11 +723,56 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         }
       }
 
+      // The pragma_* table-valued functions are version-gated exactly like
+      // the pragmas they wrap (pragma_table_list 3.37, pragma_function_list
+      // and pragma_module_list 3.30, pragma_table_xinfo 3.26), and they are
+      // routinely written WITHOUT an argument list — `FROM pragma_table_list`
+      // — which functionCalls never saw. Restricted to the prefix on
+      // purpose: an ordinary column named `iif` must not be read as the
+      // built-in, and only these names carry a version in the table.
+      for (const name of bareIdentifiers(tokens)) {
+        if (name.toLowerCase().startsWith("pragma_")) checkPortability(name);
+      }
+
+      // The wall-clock KEYWORDS. SQLite spells CURRENT_TIMESTAMP /
+      // CURRENT_DATE / CURRENT_TIME with no argument list —
+      // `current_timestamp()` is a syntax error — so the call scan above
+      // cannot see them, yet `VALUES (CURRENT_TIMESTAMP)` is exactly as
+      // unreplayable as the `datetime('now')` it does flag. Undelimited
+      // identifier tokens only: a keyword cannot be quoted, so
+      // `"current_date"` is a column reference (or, under SQLite's
+      // double-quote fallback, a string) and flagging it would make a table
+      // with such a column unlintable. One finding per occurrence, matching
+      // how a repeated `random()` reports.
+      for (const token of tokens) {
+        if (
+          token.kind === "identifier" &&
+          NONDETERMINISTIC_TIME_KEYWORDS.includes(token.value.toLowerCase())
+        ) {
+          findings.push({
+            code: "nondeterministic-function",
+            severity: "warning",
+            message: `SQL reads the wall clock through the keyword "${token.value}" — replaying this script would diverge from the original run; compute the value in the host and bind it instead`,
+            ...at,
+          });
+        }
+      }
+
       // Result-read lineage collection: result tables referenced +
       // statically resolvable call-id filters (mirrors the Java engine).
       const readMethods: string[] = [];
       for (const token of tokens) {
-        if (token.kind !== "identifier" && token.kind !== "quoted-identifier") continue;
+        // Single-quoted names count: SQLite resolves `FROM 'result_get_value'`
+        // as the table, so a lineage scan that only looked at identifier
+        // tokens went silent on the quoted spelling of the same read
+        // (docs/validation.md — the four quoting forms).
+        if (
+          token.kind !== "identifier" &&
+          token.kind !== "quoted-identifier" &&
+          token.kind !== "string"
+        ) {
+          continue;
+        }
         const table = token.value.toLowerCase();
         const method = resultTables.get(table) ?? resultChildTables.get(table);
         if (method !== undefined && !readMethods.includes(method)) {

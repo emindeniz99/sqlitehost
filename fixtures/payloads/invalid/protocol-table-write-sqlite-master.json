@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-protocol-table-write-sqlite-master",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "rewrite-the-schema",
+      "statements": [
+        {
+          "sql": "UPDATE sqlite_master SET sql = 'CREATE TRIGGER trg_call_get_value_queue AFTER INSERT ON call_get_value BEGIN SELECT 1; END' WHERE name = 'trg_call_get_value_queue'",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-protocol-table-write-single-quoted-qualified",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "drop-the-queue-by-schema",
+      "statements": [
+        {
+          "sql": "DELETE FROM main.'pending_host_calls'",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

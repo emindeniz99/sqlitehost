@@ -165,9 +165,6 @@ namespace SqliteHost.Adapters.Native
         internal static extern int sqlite3_column_type(IntPtr statement, int index);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int sqlite3_column_int(IntPtr statement, int index);
-
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern long sqlite3_column_int64(IntPtr statement, int index);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

@@ -153,6 +153,44 @@ namespace SqliteHost.Tests
             Assert.Equal("invalid-script", result.ErrorCode);
         }
 
+        /// <summary>
+        /// docs/script-envelope.md: "A required string must be non-blank,
+        /// not merely non-empty: '   ' is rejected wherever '' is (step id,
+        /// statement sql, input name)", over one pinned character set — the
+        /// one the SQL scanners share. The runtime tested IsNullOrEmpty at
+        /// all three sites, so a script with an invisible step id ran to
+        /// Completed and reported that blank as its StepId. The Java and
+        /// TypeScript validators catch it, which is what makes this the
+        /// missing backstop rather than the only line of defence.
+        /// </summary>
+        [Fact]
+        public void BlankStepIdStatementSqlOrInputName_FailValidation()
+        {
+            var (runtime, factory, _) = CreateRuntime();
+
+            SqliteHostScript blankStepId = ValidSingleCallScript();
+            blankStepId.Steps[0].Id = "  ";
+            Assert.Equal("invalid-script", runtime.Run(blankStepId).ErrorCode);
+
+            foreach (string blank in new[] { "   ", "\t", "\n", "\u000b\f\r" })
+            {
+                SqliteHostScript blankSql = ValidSingleCallScript();
+                blankSql.Steps[0].Statements[0] = Scripts.Statement(blank);
+                SqliteHostRunResult result = runtime.Run(blankSql);
+                Assert.Equal(SqliteHostRunStatus.FailedValidation, result.Status);
+                Assert.Equal("invalid-script", result.ErrorCode);
+            }
+
+            SqliteHostScript blankInputName = ValidSingleCallScript();
+            blankInputName.Inputs = new List<SqliteHostRuntimeInput>
+            {
+                new SqliteHostRuntimeInput { Name = " ", Value = SqliteHostBindingValue.Int64(1) }
+            };
+            Assert.Equal("invalid-script", runtime.Run(blankInputName).ErrorCode);
+
+            Assert.Equal(0, factory.OpenCount);
+        }
+
         [Fact]
         public void EmptyStatementsList_FailsValidation_WorkspaceNeverOpened()
         {

@@ -87,6 +87,26 @@ namespace SqliteHost.Conformance
             Assert.Empty(rows);   // and nothing was silently inserted
         }
 
+        [SkippableFact]
+        public void ConstraintViolation_SurfacesAConstraintResultCode()
+        {
+            // SqliteErrorCode is the EXTENDED result code where the wrapper
+            // exposes one, and reduces to the primary code where it does
+            // not — this same violation reports 1555
+            // (SQLITE_CONSTRAINT_PRIMARYKEY) through the native adapter and
+            // 19 (SQLITE_CONSTRAINT) through Microsoft.Data.Sqlite. So the
+            // portable assertion is on the low byte, which is the rule a
+            // host can actually branch on (docs/errors.md).
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (a INTEGER PRIMARY KEY)", null);
+            connection.Execute("INSERT INTO scratch (a) VALUES (1)", null);
+
+            var ex = Assert.ThrowsAny<SqliteHostAdapterException>(
+                () => connection.Execute("INSERT INTO scratch (a) VALUES (1)", null));
+
+            Assert.Equal(19, ex.SqliteErrorCode & 0xFF);   // SQLITE_CONSTRAINT
+        }
+
         // ---- lifecycle and result shape ---------------------------------
 
         [SkippableFact]
@@ -424,6 +444,59 @@ namespace SqliteHost.Conformance
         }
 
         [SkippableFact]
+        public void Int32Getter_OnAValueOutsideInt32Range_FailsLoud()
+        {
+            // An INTEGER column holds any int64, so GetInt32 can be pointed
+            // at a value that does not fit. sqlite3_column_int is documented
+            // to return the low 32 bits: 2^32+7 becomes 7 and -2^31-1 wraps
+            // to int.MaxValue, and neither is distinguishable from a stored
+            // value of the same number. That is the substitution the NULL
+            // rule forbids, so the getter refuses instead of truncating
+            // (docs/adapter-contract.md, "Value fidelity"). Both boundaries,
+            // because a check written against only one of them passes half
+            // the time.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, a INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, a) VALUES"
+                + " (1, 4294967303), (2, -2147483649), (3, 2147483647), (4, -2147483648)",
+                null);
+
+            var rows = connection.Query(
+                "SELECT a FROM scratch ORDER BY id", null, row => Rejected(() => row.GetInt32(0)));
+
+            Assert.Equal(
+                new[] { "rejected", "rejected", "returned 2147483647", "returned -2147483648" },
+                rows);
+        }
+
+        [SkippableFact]
+        public void StorageClass_ReportsTheStoredValue_NotTheDeclaredType()
+        {
+            // Column affinity is a hint: SQLite converts a value only when
+            // the conversion is lossless, so an INTEGER-declared column
+            // keeps 'abc' as TEXT and a REAL as REAL. GetStorageClass must
+            // report what is THERE — the runtime's read path uses it to
+            // refuse a value the declared type cannot hold, and an adapter
+            // that answers from the declared type instead re-opens exactly
+            // the silent coercion it exists to stop.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, a INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, a) VALUES (1, 7), (2, 1.5), (3, 'abc'),"
+                + " (4, x'414243'), (5, NULL)",
+                null);
+
+            var rows = connection.Query(
+                "SELECT a, typeof(a) FROM scratch ORDER BY id", null,
+                row => row.GetStorageClass(0) + "/" + (row.IsNull(1) ? "?" : row.GetText(1)));
+
+            Assert.Equal(
+                new[] { "Integer/integer", "Real/real", "Text/text", "Blob/blob", "Null/null" },
+                rows);
+        }
+
+        [SkippableFact]
         public void EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray()
         {
             // The distinction the write side already makes — Blob(new byte[0])
@@ -448,6 +521,27 @@ namespace SqliteHost.Conformance
             });
 
             Assert.Equal(new[] { "blob:0", "null:refused" }, rows);
+        }
+
+        /// <summary>
+        /// "rejected" when the read threw at all. The int32 range rule only
+        /// requires that no truncated value comes back, and wrappers differ
+        /// on the exception: the shipped adapters throw
+        /// SqliteHostAdapterException naming the column, ADO.NET readers
+        /// throw OverflowException from their own conversion. Either is
+        /// conformant; returning 7 for 2^32+7 is not.
+        /// </summary>
+        private static string Rejected(Func<object> read)
+        {
+            try
+            {
+                object value = read();
+                return "returned " + (value == null ? "<null>" : value.ToString());
+            }
+            catch (Exception)
+            {
+                return "rejected";
+            }
         }
 
         /// <summary>
@@ -627,6 +721,29 @@ namespace SqliteHost.Conformance
             Assert.NotNull(thrown);
             var rows = connection.Query("SELECT k FROM t ORDER BY k", null, row => row.GetText(0));
             Assert.Equal(new[] { "drop", "keep" }, rows);
+        }
+
+        [SkippableFact]
+        public void CommentOnlySql_IsANoOp()
+        {
+            // SQL that compiles to no VDBE program — a commented-out
+            // statement, whitespace — is a no-op, not an error. It is the
+            // same reading as "a trailing comment is not a second
+            // statement" below, and commenting a statement out is the most
+            // ordinary thing a script author does; a script that ran on one
+            // host and hard-failed on another was the alternative
+            // (docs/adapter-contract.md). Nothing may be swallowed on
+            // either side of it, so the connection keeps working.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (a INTEGER)", null);
+
+            connection.Execute("-- nothing at all", null);
+            connection.Execute("   ", null);
+            connection.Execute("/* nothing */", null);
+            Assert.Empty(connection.Query("-- nothing at all", null, row => row.GetInt64(0)));
+
+            connection.Execute("INSERT INTO scratch (a) VALUES (1)", null);
+            AssertSingleRow(connection, "SELECT a FROM scratch", row => row.GetInt64(0).ToString(), "1");
         }
 
         [SkippableFact]

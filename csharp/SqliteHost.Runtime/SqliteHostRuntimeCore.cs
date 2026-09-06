@@ -265,6 +265,11 @@ namespace SqliteHost
 
                 if (halted)
                 {
+                    SqliteHostRunResult haltUndrained = CheckNoPendingCalls(connection, step.Id, state);
+                    if (haltUndrained != null)
+                    {
+                        return haltUndrained;
+                    }
                     return new SqliteHostRunResult
                     {
                         Status = SqliteHostRunStatus.Completed,
@@ -280,6 +285,12 @@ namespace SqliteHost
                         Calls = state.Calls
                     };
                 }
+            }
+
+            SqliteHostRunResult undrained = CheckNoPendingCalls(connection, null, state);
+            if (undrained != null)
+            {
+                return undrained;
             }
 
             var completed = new SqliteHostRunResult
@@ -316,6 +327,23 @@ namespace SqliteHost
                         row.IsNull(1) ? null : row.GetText(1));
                 });
             return rows.Count > 0 ? (ControlRow)rows[0] : null;
+        }
+
+        /// <summary>
+        /// Row count and highest rowid of the control table — enough to see
+        /// any write a handler makes, including a delete-and-reinsert that
+        /// leaves the count alone.
+        /// </summary>
+        private ControlTableShape ReadControlTableShape(ISqliteHostConnection connection)
+        {
+            IReadOnlyList<object> rows = connection.QueryRows(
+                "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM " + _hostDefinition.Naming.ControlTable,
+                RuntimeSql.NoBindings,
+                delegate(ISqliteHostRow row)
+                {
+                    return new ControlTableShape(row.GetInt64(0), row.GetInt64(1));
+                });
+            return (ControlTableShape)rows[0];
         }
 
         /// <summary>
@@ -463,6 +491,15 @@ namespace SqliteHost
             return false;
         }
 
+        /// <summary>
+        /// Structural checks that run before a workspace is opened. Required
+        /// strings are tested for BLANKNESS, not emptiness
+        /// (docs/script-envelope.md): "   " is rejected wherever "" is, on
+        /// the one pinned character set <see cref="SqlText"/> holds — so a
+        /// step id of two spaces cannot run to Completed and then report an
+        /// invisible StepId. In every build: the envelope's own rule, not an
+        /// optional strict check.
+        /// </summary>
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
         {
             if (script == null)
@@ -515,10 +552,10 @@ namespace SqliteHost
                 var inputNames = new HashSet<string>(StringComparer.Ordinal);
                 foreach (SqliteHostRuntimeInput input in script.Inputs)
                 {
-                    if (input == null || string.IsNullOrEmpty(input.Name))
+                    if (input == null || SqlText.IsBlank(input.Name))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                            "A runtime input is null or has an empty name.", null, null);
+                            "A runtime input is null or has a blank name.", null, null);
                     }
                     if (!inputNames.Add(input.Name))
                     {
@@ -537,10 +574,10 @@ namespace SqliteHost
             int statementCount = 0;
             foreach (SqliteHostStep step in script.Steps)
             {
-                if (step == null || string.IsNullOrEmpty(step.Id))
+                if (step == null || SqlText.IsBlank(step.Id))
                 {
                     return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                        "A step is null or has an empty id.", null, null);
+                        "A step is null or has a blank id.", null, null);
                 }
                 if (step.Statements == null || step.Statements.Count == 0)
                 {
@@ -554,10 +591,10 @@ namespace SqliteHost
                 }
                 foreach (SqliteHostStatement statement in step.Statements)
                 {
-                    if (statement == null || string.IsNullOrEmpty(statement.Sql))
+                    if (statement == null || SqlText.IsBlank(statement.Sql))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
-                            "A statement in step '" + step.Id + "' is null or has null or empty sql.", step.Id, null);
+                            "A statement in step '" + step.Id + "' is null or has blank sql.", step.Id, null);
                     }
                     statementCount++;
                 }
@@ -671,100 +708,225 @@ namespace SqliteHost
 #endif
 
             SqliteHostColumns columns = _hostDefinition.Columns;
-            IReadOnlyList<object> pending;
+
+            // Re-read the pending set until it comes back empty rather than
+            // trusting one snapshot: writing a result row can itself enqueue
+            // a call (a trigger on the result table), and a snapshot taken
+            // before that write leaves the call pending while the run
+            // reports Completed — "all calls drained" is unconditional
+            // (docs/errors.md). The loop is bounded by the calls drained in
+            // this step, so a trigger that enqueues one call per drained
+            // call hits max-pending-calls-exceeded instead of spinning.
+            int drainedInStep = 0;
+            while (true)
+            {
+                IReadOnlyList<object> pending;
+                try
+                {
+                    pending = connection.QueryRows(
+                        "SELECT " + columns.QueueId + ", " + columns.CallId + ", " + columns.Method
+                        + " FROM " + _hostDefinition.Naming.QueueTable
+                        + " WHERE " + columns.Status + " = '" + ProtocolConstants.PendingStatus + "' ORDER BY " + columns.QueueId,
+                        RuntimeSql.NoBindings,
+                        delegate(ISqliteHostRow row)
+                        {
+                            return new PendingCall(row.GetInt64(0), row.GetText(1), row.GetText(2));
+                        });
+                }
+                catch (Exception ex)
+                {
+                    return WithSqliteErrorCode(
+                        Failure(state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, stepId, null), ex);
+                }
+
+                if (pending.Count == 0)
+                {
+                    return null;
+                }
+
+                if (drainedInStep + pending.Count > _options.MaxPendingCallsPerStep)
+                {
+                    return Failure(state, SqliteHostRunStatus.FailedSql, "max-pending-calls-exceeded",
+                        "Step '" + stepId + "' produced " + (drainedInStep + pending.Count)
+                        + " pending calls; MaxPendingCallsPerStep is " + _options.MaxPendingCallsPerStep + ".",
+                        stepId, null);
+                }
+                drainedInStep += pending.Count;
+
+                foreach (PendingCall call in pending)
+                {
+                    ErasedHostMethodSpec spec = _hostDefinition.ResolveSpec(call.Method);
+                    if (spec == null)
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "unknown-queued-method",
+                            "Queue row references method '" + call.Method + "' but no spec is registered.",
+                            stepId, call.Method);
+                    }
+
+                    // The queue row's status is ordinary data, so it is not
+                    // an at-most-once guarantee: a script that clears the
+                    // result row and re-marks the row pending gets the
+                    // handler invoked again. The run's own record of what it
+                    // has drained is the half a script cannot write
+                    // (docs/errors.md call-already-drained).
+                    if (!state.DrainedQueueIds.Add(call.QueueId))
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "call-already-drained",
+                            "Queue row " + call.QueueId + " (call '" + call.CallId
+                            + "', method '" + call.Method
+                            + "') was drained earlier in this run and is pending again.",
+                            stepId, call.Method);
+                    }
+
+                    // The control table is the script's channel, and the runtime
+                    // only ever reads it — so a row that appears while a handler
+                    // runs is the HOST's, not the script's. Without this
+                    // snapshot the next statement's control check reports
+                    // script-abort against a step that never touched the table,
+                    // and presents the handler's text as "the script's message"
+                    // (docs/errors.md handler-wrote-control). Same
+                    // misattribution class as the forged handler-error marker,
+                    // arriving through the control table instead.
+                    ControlTableShape controlBefore;
+                    try
+                    {
+                        controlBefore = ReadControlTableShape(connection);
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                            ex.Message, stepId, call.Method), ex);
+                    }
+
+                    try
+                    {
+                        spec.ExecuteCall(connection, _hostDefinition.Naming, columns, _handlers, call.CallId);
+                    }
+                    catch (SqliteHostCallRowMissingException ex)
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "call-row-missing",
+                            ex.Message, stepId, call.Method);
+                    }
+                    catch (SqliteHostInputTypeMismatchException ex)
+                    {
+                        // The call row carries a value the declared type cannot
+                        // hold. Reading it anyway would hand the handler a
+                        // silently coerced argument, so the call fails instead
+                        // (docs/errors.md input-type-mismatch).
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "input-type-mismatch",
+                            ex.Message, stepId, call.Method);
+                    }
+                    catch (SqliteHostHandlerException ex)
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-error",
+                            ex.Message, stepId, call.Method);
+                    }
+                    catch (SqliteHostResultWriteException ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "result-write-error",
+                            ex.Message, stepId, call.Method), ex);
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                            ex.Message, stepId, call.Method), ex);
+                    }
+
+                    // Counted here, not after the queue UPDATE below: the
+                    // handler has run and its result row is committed by now,
+                    // and there is no transaction around the pair
+                    // (docs/sqlite-surface.md). A failing UPDATE must not erase
+                    // the fact that the handler fired — that is the one question
+                    // ExecutedCallCount exists to answer (docs/errors.md).
+                    state.ExecutedCallCount++;
+                    if (state.Calls != null)
+                    {
+                        state.Calls.Add(new SqliteHostCallDiagnostic
+                        {
+                            CallId = call.CallId,
+                            Method = call.Method,
+                            StepId = stepId
+                        });
+                    }
+
+                    ControlTableShape controlAfter;
+                    try
+                    {
+                        controlAfter = ReadControlTableShape(connection);
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                            ex.Message, stepId, call.Method), ex);
+                    }
+                    if (!controlAfter.Matches(controlBefore))
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-wrote-control",
+                            "Method '" + call.Method + "' wrote the control table "
+                            + _hostDefinition.Naming.ControlTable
+                            + " while handling call '" + call.CallId
+                            + "'. That table is the script's channel; the runtime only reads it.",
+                            stepId, call.Method);
+                    }
+
+                    try
+                    {
+                        connection.Execute(
+                            "UPDATE " + _hostDefinition.Naming.QueueTable
+                            + " SET " + columns.Status + " = :done WHERE " + columns.QueueId + " = :queueId",
+                            new List<SqliteHostBinding>
+                            {
+                                new SqliteHostBinding("done", SqliteHostBindingValue.Text(columns.DoneValue)),
+                                new SqliteHostBinding("queueId", SqliteHostBindingValue.Int64(call.QueueId))
+                            });
+#if !SQLITEHOST_SLIM
+                        RecordDrainedListCall(connection, spec, call, state);
+#endif
+                    }
+                    catch (Exception ex)
+                    {
+                        return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                            ex.Message, stepId, call.Method), ex);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Last word on "all calls drained" (docs/errors.md): the drain is
+        /// only as good as the query it is built on, so before reporting a
+        /// run finished — completed or halted — the queue is asked directly
+        /// whether anything is still pending. One COUNT(*) per run.
+        /// </summary>
+        private SqliteHostRunResult CheckNoPendingCalls(
+            ISqliteHostConnection connection,
+            string stepId,
+            RunState state)
+        {
+            SqliteHostColumns columns = _hostDefinition.Columns;
+            long pendingCount;
             try
             {
-                pending = connection.QueryRows(
-                    "SELECT " + columns.QueueId + ", " + columns.CallId + ", " + columns.Method
-                    + " FROM " + _hostDefinition.Naming.QueueTable
-                    + " WHERE " + columns.Status + " = '" + ProtocolConstants.PendingStatus + "' ORDER BY " + columns.QueueId,
+                IReadOnlyList<object> counts = connection.QueryRows(
+                    "SELECT COUNT(*) FROM " + _hostDefinition.Naming.QueueTable
+                    + " WHERE " + columns.Status + " = '" + ProtocolConstants.PendingStatus + "'",
                     RuntimeSql.NoBindings,
-                    delegate(ISqliteHostRow row)
-                    {
-                        return new PendingCall(row.GetInt64(0), row.GetText(1), row.GetText(2));
-                    });
+                    delegate(ISqliteHostRow row) { return (object)row.GetInt64(0); });
+                pendingCount = (long)counts[0];
             }
             catch (Exception ex)
             {
                 return WithSqliteErrorCode(
                     Failure(state, SqliteHostRunStatus.FailedSql, "sql-error", ex.Message, stepId, null), ex);
             }
-
-            if (pending.Count > _options.MaxPendingCallsPerStep)
+            if (pendingCount == 0)
             {
-                return Failure(state, SqliteHostRunStatus.FailedSql, "max-pending-calls-exceeded",
-                    "Step '" + stepId + "' produced " + pending.Count
-                    + " pending calls; MaxPendingCallsPerStep is " + _options.MaxPendingCallsPerStep + ".",
-                    stepId, null);
+                return null;
             }
-
-            foreach (PendingCall call in pending)
-            {
-                ErasedHostMethodSpec spec = _hostDefinition.ResolveSpec(call.Method);
-                if (spec == null)
-                {
-                    return Failure(state, SqliteHostRunStatus.FailedSql, "unknown-queued-method",
-                        "Queue row references method '" + call.Method + "' but no spec is registered.",
-                        stepId, call.Method);
-                }
-
-                try
-                {
-                    spec.ExecuteCall(connection, _hostDefinition.Naming, columns, _handlers, call.CallId);
-                }
-                catch (SqliteHostCallRowMissingException ex)
-                {
-                    return Failure(state, SqliteHostRunStatus.FailedSql, "call-row-missing",
-                        ex.Message, stepId, call.Method);
-                }
-                catch (SqliteHostHandlerException ex)
-                {
-                    return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-error",
-                        ex.Message, stepId, call.Method);
-                }
-                catch (SqliteHostResultWriteException ex)
-                {
-                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "result-write-error",
-                        ex.Message, stepId, call.Method), ex);
-                }
-                catch (Exception ex)
-                {
-                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
-                        ex.Message, stepId, call.Method), ex);
-                }
-
-                try
-                {
-                    connection.Execute(
-                        "UPDATE " + _hostDefinition.Naming.QueueTable
-                        + " SET " + columns.Status + " = :done WHERE " + columns.QueueId + " = :queueId",
-                        new List<SqliteHostBinding>
-                        {
-                            new SqliteHostBinding("done", SqliteHostBindingValue.Text(columns.DoneValue)),
-                            new SqliteHostBinding("queueId", SqliteHostBindingValue.Int64(call.QueueId))
-                        });
-#if !SQLITEHOST_SLIM
-                    RecordDrainedListCall(connection, spec, call, state);
-#endif
-                }
-                catch (Exception ex)
-                {
-                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
-                        ex.Message, stepId, call.Method), ex);
-                }
-
-                state.ExecutedCallCount++;
-                if (state.Calls != null)
-                {
-                    state.Calls.Add(new SqliteHostCallDiagnostic
-                    {
-                        CallId = call.CallId,
-                        Method = call.Method,
-                        StepId = stepId
-                    });
-                }
-            }
-            return null;
+            return Failure(state, SqliteHostRunStatus.FailedSql, "undrained-calls",
+                "The run finished with " + pendingCount
+                + " call(s) still pending in " + _hostDefinition.Naming.QueueTable + ".",
+                stepId, null);
         }
 
         /// <summary>
@@ -1000,6 +1162,7 @@ namespace SqliteHost
                 ExecutedCallCount = 0;
                 InlineCallCount = 0;
                 Calls = enableDiagnostics ? new List<SqliteHostCallDiagnostic>() : null;
+                DrainedQueueIds = new HashSet<long>();
 #if !SQLITEHOST_SLIM
                 DrainedListCalls = new List<DrainedListCall>();
 #endif
@@ -1035,6 +1198,9 @@ namespace SqliteHost
 
             public List<SqliteHostCallDiagnostic> Calls { get; }
 
+            /// <summary>Queue ids this run has already drained; a repeat is refused.</summary>
+            public HashSet<long> DrainedQueueIds { get; }
+
 #if !SQLITEHOST_SLIM
             /// <summary>Drained calls with input list fields, for list-child-after-drain detection.</summary>
             public List<DrainedListCall> DrainedListCalls { get; }
@@ -1059,6 +1225,25 @@ namespace SqliteHost
             public List<long> RowCounts { get; }
         }
 #endif
+
+        /// <summary>Control-table snapshot taken around a handler invocation.</summary>
+        private sealed class ControlTableShape
+        {
+            private readonly long _rowCount;
+            private readonly long _maxRowId;
+
+            public ControlTableShape(long rowCount, long maxRowId)
+            {
+                _rowCount = rowCount;
+                _maxRowId = maxRowId;
+            }
+
+            /// <summary>Not Equals: this is an identity probe, not a value contract.</summary>
+            public bool Matches(ControlTableShape other)
+            {
+                return other != null && other._rowCount == _rowCount && other._maxRowId == _maxRowId;
+            }
+        }
 
         private sealed class PendingCall
         {

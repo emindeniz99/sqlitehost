@@ -1,0 +1,21 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-020",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "stamp-from-the-clock-without-a-call",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, text_value) VALUES ('started_at', 'text', CURRENT_TIMESTAMP)",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

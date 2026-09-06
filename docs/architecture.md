@@ -90,8 +90,10 @@ write is an explicit script step.
 9. Schema DDL is generated at build time (snapshot fixture + generated
    constants) **and** at runtime (`GenerateSchemaStatements()`), golden-
    tested to be identical.
-10. Java CLI validator ships as a library API + test-driven CLI main in
-    `sqlite-host-validator` (thin `Main` over the engine).
+10. Java CLI validator ships as a library API + test-driven CLI main.
+    The lint engine is `sqlite-host-validator`; the CLI itself lives in
+    `sqlite-host-jdbc` (thin `Main` over both engines) so that it runs
+    all four validation layers, prepare-only included.
 11. License: **MIT** (`LICENSE` at the repository root; the same SPDX id
     in every `package.json`, the parent POM's `<licenses>` block, and
     `<PackageLicenseExpression>` in the five packable csproj files).

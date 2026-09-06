@@ -9,11 +9,28 @@ package io.sqlitehost.validator.sql;
  * is the parameter
  * prefix character ({@code ':'}, {@code '@'}, or {@code '$'}) for
  * {@link Kind#PARAM} and {@code '\0'} for every other kind.
+ *
+ * <p>{@code delimited} distinguishes {@code "x"} / {@code [x]} / {@code `x`}
+ * from a bare {@code x}. Both are {@link Kind#IDENT} because SQLite resolves
+ * them to the same name, so almost every rule wants them treated alike — but
+ * a KEYWORD cannot be written delimited: {@code CURRENT_DATE} reads the
+ * clock while {@code "current_date"} is a column reference (or, under
+ * SQLite's double-quote fallback, a string literal). The determinism lint is
+ * the one place that has to tell them apart.</p>
  */
-public record SqlToken(Kind kind, String text, char prefix) {
+public record SqlToken(Kind kind, String text, char prefix, boolean delimited) {
 
     public SqlToken(Kind kind, String text) {
-        this(kind, text, '\0');
+        this(kind, text, '\0', false);
+    }
+
+    public SqlToken(Kind kind, String text, char prefix) {
+        this(kind, text, prefix, false);
+    }
+
+    /** A delimited identifier: double-quoted, bracketed or backtick-quoted. */
+    public static SqlToken delimitedIdent(String text) {
+        return new SqlToken(Kind.IDENT, text, '\0', true);
     }
 
     public enum Kind {

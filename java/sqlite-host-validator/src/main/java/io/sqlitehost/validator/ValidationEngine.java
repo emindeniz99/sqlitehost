@@ -317,6 +317,28 @@ public final class ValidationEngine {
         // `pragma_table_info(...)` in a SELECT, a `WITH … INSERT`, and the
         // literal 'PRAGMA' legal.
         String leading = SqlAnalyzer.leadingKeyword(tokens);
+
+        // unrecognized-statement: token 0 is not an identifier, so neither
+        // forbidden-statement nor protocol-table-write can anchor and BOTH
+        // silently skip the statement. That fail-open path is what a leading
+        // U+FEFF walked through — every legal script statement begins with
+        // an identifier (SELECT/INSERT/UPDATE/DELETE/REPLACE/WITH/VALUES),
+        // so a statement that does not is either unrunnable or a
+        // tokenizer/engine divergence the denylists must not be asked to
+        // guess about. The one shape worth checking, a parenthesised
+        // `(SELECT 1)`, is not even legal: sqlite3 3.51.0 answers
+        // `near "(": syntax error`. An empty token stream is blank sql,
+        // already invalid-envelope.
+        if (leading == null && !tokens.isEmpty()) {
+            findings.add(ValidationFinding.error(ValidationCodes.UNRECOGNIZED_STATEMENT,
+                    stepId, statementIndex,
+                    "statement does not start with an identifier (first token: '"
+                            + tokens.get(0).text() + "') — the forbidden-statement and"
+                            + " protocol-table-write rules both anchor on that token, so a"
+                            + " statement they cannot read is rejected rather than skipped"
+                            + " (docs/validation.md)"));
+        }
+
         if (leading != null && Protocol.FORBIDDEN_LEADING_KEYWORDS.contains(leading)) {
             findings.add(ValidationFinding.error(ValidationCodes.FORBIDDEN_STATEMENT,
                     stepId, statementIndex,
@@ -355,7 +377,11 @@ public final class ValidationEngine {
         // statically resolvable call-id filters (manifest columns.callId).
         Set<String> readMethods = new LinkedHashSet<>();
         for (SqlToken token : tokens) {
-            if (token.kind() != SqlToken.Kind.IDENT) {
+            // Single-quoted names count: SQLite resolves
+            // `FROM 'result_get_value'` as the table, so a lineage scan that
+            // only looked at IDENT tokens went silent on the quoted spelling
+            // of the same read (docs/validation.md — the four quoting forms).
+            if (!SqlAnalyzer.isName(token)) {
                 continue;
             }
             MethodDescriptor method = schema.resultTables.get(lower(token.text()));
@@ -465,6 +491,31 @@ public final class ValidationEngine {
             SchemaIndex schema, Script script, List<SqlToken> tokens,
             String stepId, int statementIndex,
             Analysis analysis, List<ValidationFinding> findings) {
+        // forbidden-function: a built-in whose *call* is the hazard,
+        // whatever the engine version. `pragma_optimize` is the list: it
+        // executes ANALYZE — creating and populating sqlite_stat1 — from
+        // inside a SELECT the docs otherwise bless as an ordinary read.
+        // Both legal spellings count, `pragma_optimize` bare in table
+        // position and `pragma_optimize(0xfffe)` as a call, so the scan
+        // covers the call list and the bare identifiers. One finding per
+        // name per statement.
+        Set<String> forbiddenSeen = new HashSet<>();
+        List<String> namesUsed = new ArrayList<>();
+        for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
+            namesUsed.add(call.name());
+        }
+        namesUsed.addAll(SqlAnalyzer.bareIdentifiers(tokens));
+        for (String name : namesUsed) {
+            String nameLc = lower(name);
+            if (!Protocol.FORBIDDEN_FUNCTIONS.contains(nameLc) || !forbiddenSeen.add(nameLc)) {
+                continue;
+            }
+            findings.add(ValidationFinding.error(ValidationCodes.FORBIDDEN_FUNCTION,
+                    stepId, statementIndex,
+                    "'" + name + "' " + forbiddenFunctionReason(nameLc)
+                            + " (docs/validation.md)"));
+        }
+
         Set<String> reported = new HashSet<>();
         Set<String> reportedPortability = new HashSet<>();
         for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
@@ -474,7 +525,7 @@ public final class ValidationEngine {
             // adapter through sqlite3_create_function, so neither the engine
             // version nor its compile options decide whether it exists.
             if (!schema.inlineFunctions.containsKey(nameLc)) {
-                checkFunctionPortability(schema, nameLc, call, stepId, statementIndex,
+                checkFunctionPortability(schema, call.name(), stepId, statementIndex,
                         reportedPortability, findings);
             }
             if (isNondeterministic(nameLc, call)) {
@@ -540,6 +591,44 @@ public final class ValidationEngine {
                                         ? "" : ".." + inline.maxArgs())));
             }
         }
+
+        // The pragma_* table-valued functions are version-gated exactly like
+        // the pragmas they wrap (pragma_table_list 3.37, pragma_function_list
+        // and pragma_module_list 3.30, pragma_table_xinfo 3.26), and they are
+        // routinely written WITHOUT an argument list —
+        // `FROM pragma_table_list` — which functionCalls never saw.
+        // Restricted to the prefix on purpose: an ordinary column named
+        // `iif` must not be read as the built-in, and only these names carry
+        // a version in the table.
+        for (String name : SqlAnalyzer.bareIdentifiers(tokens)) {
+            if (lower(name).startsWith("pragma_")) {
+                checkFunctionPortability(schema, name, stepId, statementIndex,
+                        reportedPortability, findings);
+            }
+        }
+
+        // The wall-clock KEYWORDS. SQLite spells CURRENT_TIMESTAMP /
+        // CURRENT_DATE / CURRENT_TIME with no argument list —
+        // `current_timestamp()` is a syntax error — so the call scan above
+        // cannot see them, yet `VALUES (CURRENT_TIMESTAMP)` is exactly as
+        // unreplayable as the `datetime('now')` it does flag. Undelimited
+        // identifier tokens only: a keyword cannot be quoted, so
+        // "current_date" is a column reference (or, under SQLite's
+        // double-quote fallback, a string) and flagging it would make a
+        // table with such a column unlintable. One finding per occurrence,
+        // matching how a repeated random() reports.
+        for (SqlToken token : tokens) {
+            if (token.kind() == SqlToken.Kind.IDENT && !token.delimited()
+                    && Protocol.NONDETERMINISTIC_TIME_KEYWORDS.contains(lower(token.text()))) {
+                findings.add(ValidationFinding.warning(
+                        ValidationCodes.NONDETERMINISTIC_FUNCTION,
+                        stepId, statementIndex,
+                        "SQL reads the wall clock through the keyword '" + token.text()
+                                + "' — replaying this script would diverge from the"
+                                + " original run; compute the value in the host and"
+                                + " bind it instead"));
+            }
+        }
     }
 
     /**
@@ -561,14 +650,15 @@ public final class ValidationEngine {
      * <p>One finding per distinct function name per statement.</p>
      */
     private static void checkFunctionPortability(
-            SchemaIndex schema, String nameLc, FunctionCall call,
+            SchemaIndex schema, String name,
             String stepId, int statementIndex,
             Set<String> reported, List<ValidationFinding> findings) {
+        String nameLc = lower(name);
         if (Protocol.NONPORTABLE_FUNCTIONS.contains(nameLc)) {
             if (reported.add(nameLc)) {
                 findings.add(ValidationFinding.error(ValidationCodes.NONPORTABLE_FUNCTION,
                         stepId, statementIndex,
-                        "'" + call.name() + "' " + nonportableReason(nameLc)
+                        "'" + name + "' " + nonportableReason(nameLc)
                                 + " — its availability is a compile option, not a version,"
                                 + " so raising minSqliteVersion cannot make it safe"));
             }
@@ -579,11 +669,22 @@ public final class ValidationEngine {
             findings.add(ValidationFinding.error(
                     ValidationCodes.SQLITE_VERSION_TOO_LOW_FOR_FUNCTION,
                     stepId, statementIndex,
-                    "built-in '" + call.name() + "' requires SQLite "
+                    "built-in '" + name + "' requires SQLite "
                             + formatVersion(minVersion) + " but the host declares a floor of "
                             + formatVersion(schema.minSqliteVersionNumber)
                             + " — raise the host's minSqliteVersion or avoid the function"));
         }
+    }
+
+    /** What this built-in does that makes calling it forbidden outright. */
+    private static String forbiddenFunctionReason(String nameLc) {
+        if ("pragma_optimize".equals(nameLc)) {
+            return "is not a read: it executes ANALYZE, creating and populating"
+                    + " sqlite_stat1 in the workspace — the statement kind the"
+                    + " forbidden-statement denylist exists to block, reached from"
+                    + " inside a SELECT";
+        }
+        return "may not be called from a script";
     }
 
     /** Which compile option decides this built-in, and what to do instead. */
@@ -592,6 +693,15 @@ public final class ValidationEngine {
             return "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled"
                     + " per connection even where it is compiled in; a script cannot bring"
                     + " its own SQL surface, so the host must register what it needs";
+        }
+        if ("soundex".equals(nameLc)) {
+            return "is only present when the device's SQLite was compiled with"
+                    + " -DSQLITE_SOUNDEX, which stock builds do not set; compute the value"
+                    + " in the host and bind it instead";
+        }
+        if ("sqlite_offset".equals(nameLc)) {
+            return "is only present when the device's SQLite was compiled with"
+                    + " -DSQLITE_ENABLE_OFFSET_SQL_FUNC, which stock builds do not set";
         }
         return "is only present when the device's SQLite was compiled with"
                 + " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host"
@@ -1019,6 +1129,15 @@ public final class ValidationEngine {
         final Map<String, String> protocolTables = new HashMap<>();
 
         SchemaIndex(Manifest manifest) {
+            // Alongside the runtime-owned tables, the tables SQLite itself
+            // owns. These are NOT manifest-derived — nothing in a manifest
+            // can rename sqlite_master — which is exactly why a
+            // manifest-only resolution missed every one of them and left
+            // `UPDATE sqlite_master SET sql = …` (the queue-trigger rewrite)
+            // outside the lint entirely. Fixed list, single-sourced in ir.ts.
+            for (String table : Protocol.SYSTEM_TABLES) {
+                protocolTables.put(table, "a SQLite-owned system table");
+            }
             callIdColumn = manifest.columns().callId();
             itemIndexColumn = manifest.columns().itemIndex();
             functionPrefix = manifest.naming().functionPrefix();

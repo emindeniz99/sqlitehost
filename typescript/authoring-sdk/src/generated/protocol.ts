@@ -52,6 +52,17 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * The wall-clock keywords, which SQLite spells with no argument list
+ * and which a call-only scan therefore never sees. Matched against bare
+ * identifier tokens, lowercased.
+ */
+export const NONDETERMINISTIC_TIME_KEYWORDS: readonly string[] = [
+  "current_timestamp",
+  "current_date",
+  "current_time",
+];
+
+/**
  * SQLite built-ins introduced above the default contract floor, keyed
  * by the SQLITE_VERSION_NUMBER of the release that added them. The lint
  * compares each entry against the host manifest's
@@ -69,14 +80,23 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   first_value: 3025000,
   last_value: 3025000,
   nth_value: 3025000,
+  pragma_table_xinfo: 3026000,
+  pragma_function_list: 3030000,
+  pragma_module_list: 3030000,
   iif: 3032000,
+  substring: 3034000,
+  pragma_table_list: 3037000,
   format: 3038000,
   unixepoch: 3038000,
+  unhex: 3041000,
   octet_length: 3043000,
   timediff: 3043000,
   concat: 3044000,
   concat_ws: 3044000,
   string_agg: 3044000,
+  if: 3048000,
+  unistr: 3050000,
+  unistr_quote: 3050000,
 };
 
 /**
@@ -121,6 +141,8 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
   "radians",
   "sin",
   "sinh",
+  "soundex",
+  "sqlite_offset",
   "sqrt",
   "tan",
   "tanh",
@@ -141,10 +163,36 @@ export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
   "detach",
   "drop",
   "end",
+  "explain",
   "pragma",
   "reindex",
   "release",
   "rollback",
   "savepoint",
   "vacuum",
+];
+
+/**
+ * Built-ins a script may not call at all, because calling one does what
+ * the statement denylist exists to prevent. Matched wherever the
+ * identifier appears — as a call or bare in table position.
+ */
+export const FORBIDDEN_FUNCTIONS: readonly string[] = ["pragma_optimize"];
+
+/**
+ * Tables SQLite itself owns. A write against one is a
+ * protocol-table-write, alongside the manifest-derived runtime tables;
+ * unlike those, these names are fixed rather than host-configurable.
+ * Reads stay legal.
+ */
+export const SYSTEM_TABLES: readonly string[] = [
+  "sqlite_master",
+  "sqlite_schema",
+  "sqlite_sequence",
+  "sqlite_stat1",
+  "sqlite_stat2",
+  "sqlite_stat3",
+  "sqlite_stat4",
+  "sqlite_temp_master",
+  "sqlite_temp_schema",
 ];

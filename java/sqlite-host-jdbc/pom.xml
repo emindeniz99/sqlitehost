@@ -17,6 +17,8 @@
     Prepare-only SQLite validation: creates the generated schema in an
     in-memory xerial SQLite database and prepares every script statement
     without stepping. The xerial dependency stays in this module only.
+    Also carries the validator CLI, which runs all four layers and so
+    needs both this module and sqlite-host-validator.
   </description>
 
   <dependencies>
@@ -35,4 +37,75 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Distributable CLI: shade an executable fat jar
+           (…-cli.jar) next to the plain library jar. Run it with
+           `java -jar` (see java/README.md). It lives in THIS module
+           rather than in sqlite-host-validator because the CLI runs all
+           four validation layers, and layer 3 is here — the other
+           direction would cycle the module graph. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>cli</shadedClassifierName>
+              <!-- The library jar stays the module's main artifact; the
+                   fat jar only rides along under the `cli` classifier, so
+                   there is no reduced dependency set to write out. -->
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>io.sqlitehost.jdbc.cli.ValidatorCli</mainClass>
+                </transformer>
+                <!-- The `cli` classifier is deployed to Maven Central, so
+                     the jar has to carry the attribution of what it
+                     bundles. Jackson (databind, core, annotations) and
+                     org.xerial:sqlite-jdbc are Apache-2.0 and each of
+                     their jars ships its own META-INF/NOTICE; without
+                     this transformer they collide and one arbitrary
+                     NOTICE survives, which is
+                     what Apache-2.0 §4(d) forbids. addHeader=false because
+                     the header this transformer writes by default credits
+                     the Apache Software Foundation, which does not own
+                     this project. META-INF/LICENSE needs no merging: every
+                     bundled dependency is Apache-2.0, so the surviving
+                     copy is the same licence text. -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                  <addHeader>false</addHeader>
+                </transformer>
+                <!-- This project's own MIT terms, under a name that does
+                     not collide with the bundled Apache-2.0 LICENSE. -->
+                <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                  <resource>META-INF/LICENSE-sqlite-host.txt</resource>
+                  <file>${project.basedir}/../../LICENSE</file>
+                </transformer>
+              </transformers>
+              <filters>
+                <!-- Drop per-dependency module descriptors: the fat jar
+                     is classpath-only and shading them just warns. -->
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>

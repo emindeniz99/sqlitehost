@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-protocol-table-write-single-quoted-update",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "rewrite-a-result",
+      "statements": [
+        {
+          "sql": "UPDATE 'result_get_value' SET result_value = 777",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

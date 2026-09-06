@@ -56,9 +56,12 @@ public sealed class SqliteHostBinding
 ### SQLite adapter interfaces
 
 ```csharp
+public enum SqliteHostStorageClass { Null, Integer, Real, Text, Blob }
+
 public interface ISqliteHostRow
 {
     bool IsNull(int index);
+    SqliteHostStorageClass GetStorageClass(int index);
     int GetInt32(int index);
     long GetInt64(int index);
     bool GetBool(int index);
@@ -749,12 +752,17 @@ checks are the fail-loud layer that catches authoring bugs.
       `item_index`), map to the input DTO, invoke the handler, write the
       result parent row (status `'done'`) + result list child rows, mark
       the queue row `status = 'done'`.
-   c. Never drain between statements inside a step.
+   c. Repeat (b) until the pending set comes back empty — writing a
+      result row can itself enqueue a call — bounded by
+      `MaxPendingCallsPerStep` counted across the whole step.
+   d. Never drain between statements inside a step.
 8. Stop immediately on SQL, binding, schema, or handler failure, and on
    the control table's `fail` action (`FailedScript` / `script-abort`) or
    an action other than `halt`/`fail` (`FailedValidation` /
    `invalid-control-action`).
-9. Return `SqliteHostRunResult`; dispose the workspace connection.
+9. Before reporting `Completed` (halted or not), verify the queue holds
+   no `pending` row → `FailedSql` / `undrained-calls` otherwise.
+10. Return `SqliteHostRunResult`; dispose the workspace connection.
 
 ### Threading
 

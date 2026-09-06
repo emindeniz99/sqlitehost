@@ -25,6 +25,21 @@ import java.util.List;
  * functions — and finalizes without stepping. Each failed prepare is
  * reported as a {@code sql-prepare-error} finding with the statement's
  * step id and index.
+ *
+ * <p><b>Every statement is prepared in isolation</b>, on its own
+ * connection with the schema re-created. Preparing a whole step on one
+ * connection made the verdict on statement <i>n</i> depend on the
+ * <i>prepare-time</i> side effects of statement <i>n-1</i>, and SQLite's
+ * flag pragmas ({@code PragTyp_FLAG}) are applied by the code generator
+ * rather than the VDBE — so a leading {@code EXPLAIN PRAGMA
+ * writable_schema = ON}, which executes nothing, turned the flag on
+ * inside this validator's own engine and the following
+ * {@code UPDATE sqlite_master} then compiled clean. A gate whose verdict
+ * the payload can change is not a gate. The isolation is not free but it
+ * is cheap: the generated schema is a couple of dozen small DDL
+ * statements against an in-memory database, and the Java conformance
+ * matrix went from 0.51 s (74 payloads, one connection per step) to
+ * 0.65 s (76 payloads, one per statement).</p>
  */
 public final class PrepareOnlySqliteValidator {
 
@@ -42,16 +57,20 @@ public final class PrepareOnlySqliteValidator {
     public List<ValidationFinding> validate(Manifest manifest, Script script)
             throws SQLException {
         List<ValidationFinding> findings = new ArrayList<>();
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
-            createSchema(connection, manifest);
-            registerInlineFunctionStubs(connection, manifest);
-            for (Step step : script.steps()) {
-                List<io.sqlitehost.model.envelope.Statement> statements = step.statements();
-                for (int i = 0; i < statements.size(); i++) {
-                    String sql = statements.get(i).sql();
-                    if (sql == null || sql.isBlank()) {
-                        continue; // structurally invalid — the semantic lint reports it
-                    }
+        for (Step step : script.steps()) {
+            List<io.sqlitehost.model.envelope.Statement> statements = step.statements();
+            for (int i = 0; i < statements.size(); i++) {
+                String sql = statements.get(i).sql();
+                if (sql == null || sql.isBlank()) {
+                    continue; // structurally invalid — the semantic lint reports it
+                }
+                // One connection per statement: see the class javadoc. A
+                // statement must never be judged against an engine an
+                // earlier statement of the same payload has altered.
+                try (Connection connection =
+                        DriverManager.getConnection("jdbc:sqlite::memory:")) {
+                    createSchema(connection, manifest);
+                    registerInlineFunctionStubs(connection, manifest);
                     try (PreparedStatement prepared = connection.prepareStatement(sql)) {
                         // Prepared successfully; close() finalizes without stepping.
                     } catch (SQLException e) {

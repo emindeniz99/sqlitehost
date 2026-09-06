@@ -45,6 +45,47 @@ namespace SqliteHost.Tests
                 ("value", SqliteHostBindingValue.Int64(value)));
         }
 
+        /// <summary>
+        /// docs/errors.md attributes script-abort to "the script": it wrote
+        /// action fail into the control table, and ErrorMessage carries the
+        /// script's message. But the runtime only READS that table and never
+        /// recorded who wrote the row, so a handler reaching back into the
+        /// live workspace connection — a host holding the connection it
+        /// handed the factory, or a nested runtime — could write fail and
+        /// have the NEXT statement's control check blame a step that never
+        /// touched the table. Same misattribution class as the forged
+        /// SQLITEHOST_HANDLER_ERROR: marker, arriving through the control
+        /// table instead of the SQL error text.
+        /// </summary>
+        [SkippableFact]
+        public void HandlerWritesTheControlTable_IsNotAttributedToTheScript()
+        {
+            var handlers = new FakeGameHandlers();
+            using var factory = new TestWorkspaceFactory(retainWorkspace: true);
+            var runtime = CreateRuntime(handlers, factory);
+            handlers.GetValueOverride = _ =>
+            {
+                factory.LastWorkspace.Execute(
+                    "INSERT INTO script_control (action, message) VALUES ('fail', 'from the handler')",
+                    null);
+                return new GetValueResult { Value = 1 };
+            };
+
+            var script = Scripts.New(
+                Scripts.Step("emit", InsertGetValue("g-1", "k")),
+                Scripts.Step("after", Scripts.Statement("SELECT 1")));
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-wrote-control", result.ErrorCode);
+            Assert.Equal("getValue", result.Method);
+            Assert.Equal("emit", result.StepId);
+            // Not the script's step, and not the script's message.
+            Assert.DoesNotContain("from the handler", result.ErrorMessage);
+            Assert.Equal(1, result.ExecutedCallCount);
+        }
+
         [SkippableFact]
         public void FailAction_SkipsTheFailingStepsDrain_EarlierStepsEffectsPersist()
         {

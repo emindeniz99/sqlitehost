@@ -59,6 +59,15 @@ public final class Protocol {
             Set.of("date", "time", "datetime", "julianday", "strftime");
 
     /**
+     * The wall-clock KEYWORDS ({@code ir.ts NONDETERMINISTIC_TIME_KEYWORDS}).
+     * SQLite spells these with no argument list, so a scan over parsed
+     * function calls never sees them; they are matched against bare
+     * identifier tokens instead, lowercased.
+     */
+    public static final Set<String> NONDETERMINISTIC_TIME_KEYWORDS =
+            Set.of("current_timestamp", "current_date", "current_time");
+
+    /**
      * SQLite built-ins introduced above the default floor
      * ({@code ir.ts FUNCTION_MIN_VERSION}), keyed by the SQLITE_VERSION_NUMBER
      * of the release that added them. The validator compares each entry
@@ -76,14 +85,23 @@ public final class Protocol {
             Map.entry("first_value", 3025000),
             Map.entry("last_value", 3025000),
             Map.entry("nth_value", 3025000),
+            Map.entry("pragma_table_xinfo", 3026000),
+            Map.entry("pragma_function_list", 3030000),
+            Map.entry("pragma_module_list", 3030000),
             Map.entry("iif", 3032000),
+            Map.entry("substring", 3034000),
+            Map.entry("pragma_table_list", 3037000),
             Map.entry("format", 3038000),
             Map.entry("unixepoch", 3038000),
+            Map.entry("unhex", 3041000),
             Map.entry("octet_length", 3043000),
             Map.entry("timediff", 3043000),
             Map.entry("concat", 3044000),
             Map.entry("concat_ws", 3044000),
-            Map.entry("string_agg", 3044000));
+            Map.entry("string_agg", 3044000),
+            Map.entry("if", 3048000),
+            Map.entry("unistr", 3050000),
+            Map.entry("unistr_quote", 3050000));
 
     /**
      * Version floors for whole function families, keyed by name prefix
@@ -103,7 +121,8 @@ public final class Protocol {
             "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "ceil",
             "ceiling", "cos", "cosh", "degrees", "exp", "floor", "ln",
             "load_extension", "log", "log10", "log2", "mod", "pi", "pow",
-            "power", "radians", "sin", "sinh", "sqrt", "tan", "tanh", "trunc");
+            "power", "radians", "sin", "sinh", "soundex", "sqlite_offset",
+            "sqrt", "tan", "tanh", "trunc");
 
     /**
      * Statement kinds a script may not use, matched on the statement's first
@@ -111,8 +130,28 @@ public final class Protocol {
      */
     public static final Set<String> FORBIDDEN_LEADING_KEYWORDS = Set.of(
             "alter", "analyze", "attach", "begin", "commit", "create", "detach",
-            "drop", "end", "pragma", "reindex", "release", "rollback",
+            "drop", "end", "explain", "pragma", "reindex", "release", "rollback",
             "savepoint", "vacuum");
+
+    /**
+     * Built-ins a script may not call at all
+     * ({@code ir.ts FORBIDDEN_FUNCTIONS}), because calling one does what the
+     * statement denylist exists to prevent. Matched wherever the identifier
+     * appears — as a call or bare in table position.
+     */
+    public static final Set<String> FORBIDDEN_FUNCTIONS = Set.of(
+            "pragma_optimize");
+
+    /**
+     * Tables SQLite itself owns ({@code ir.ts SYSTEM_TABLES}). A write
+     * against one is a protocol-table-write, alongside the manifest-derived
+     * runtime tables; unlike those, these names are fixed rather than
+     * host-configurable. Reads stay legal.
+     */
+    public static final Set<String> SYSTEM_TABLES = Set.of(
+            "sqlite_master", "sqlite_schema", "sqlite_sequence", "sqlite_stat1",
+            "sqlite_stat2", "sqlite_stat3", "sqlite_stat4", "sqlite_temp_master",
+            "sqlite_temp_schema");
 
     private Protocol() {
     }

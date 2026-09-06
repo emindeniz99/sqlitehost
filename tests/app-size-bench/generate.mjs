@@ -110,6 +110,7 @@ function benchEntry(withHost) {
 const fakeAdapter = `sealed class Row : SqliteHost.ISqliteHostRow
 {
     public bool IsNull(int i) { return true; }
+    public SqliteHost.SqliteHostStorageClass GetStorageClass(int i) { return SqliteHost.SqliteHostStorageClass.Text; }
     public int GetInt32(int i) { return 0; }
     public long GetInt64(int i) { return 0; }
     public bool GetBool(int i) { return false; }
@@ -127,7 +128,11 @@ sealed class Conn : SqliteHost.ISqliteHostConnection
         System.Func<SqliteHost.ISqliteHostRow, object> mapper)
     {
         var rows = new System.Collections.Generic.List<object>();
-        if (sql.IndexOf("sqlite_version", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        // Two queries must yield a row for the run to complete: the
+        // sqlite_version() probe, and the control-table shape snapshot
+        // (an aggregate, so real SQLite always returns exactly one row).
+        if (sql.IndexOf("sqlite_version", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || sql.IndexOf("COUNT(*)", System.StringComparison.OrdinalIgnoreCase) >= 0)
         {
             rows.Add(mapper(new Row()));
         }

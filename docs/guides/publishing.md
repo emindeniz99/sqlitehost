@@ -334,10 +334,12 @@ want to inspect it at <https://central.sonatype.com/publishing> first.
 Note the parent POM (`sqlite-host-parent`,
 packaging `pom`) publishes too — the modules reference it.
 
-The validator's shaded `-cli.jar` is a local tool (classifier `cli`,
+The shaded `-cli.jar` is a local tool (classifier `cli`,
 `createDependencyReducedPom=false` — see `java/README.md`); it rides
-along as an attached artifact, which is fine, but the *library* jar is
-the published contract.
+along as an attached artifact of **sqlite-host-jdbc**, which is fine,
+but the *library* jar is the published contract. It moved there from
+sqlite-host-validator when the CLI grew its prepare-only layer, so a
+release script that names the old path publishes nothing.
 
 ## f. UPM — com.sqlitehost.runtime
 

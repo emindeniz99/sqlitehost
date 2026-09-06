@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-forbidden-function-pragma-optimize",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "run-analyze-through-a-select",
+      "statements": [
+        {
+          "sql": "SELECT * FROM pragma_optimize",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

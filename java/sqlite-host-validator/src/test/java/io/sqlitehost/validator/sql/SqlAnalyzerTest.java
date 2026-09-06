@@ -244,6 +244,52 @@ class SqlAnalyzerTest {
     }
 
     @Test
+    void deepNestingCostsOnePassNotOnePerCall() {
+        // The original scanned forward from every `identifier(` to its
+        // matching `)`, which is quadratic in the nesting depth, and the
+        // engine walks the call list twice per statement. That is a hang
+        // in an authoring-time lint, reachable from one pasted expression.
+        //
+        // The assertion is completion plus correctness, never a wall-clock
+        // bound: a timing assertion would flake on a loaded CI runner and
+        // tell a future reader nothing about what went wrong.
+        int depth = 100_000;
+        String sql = "SELECT " + "abs(".repeat(depth) + "1" + ")".repeat(depth);
+        List<FunctionCall> calls = SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(sql));
+        assertEquals(depth, calls.size());
+        assertEquals(new FunctionCall("abs", 1, false), calls.get(0));
+        assertEquals(new FunctionCall("abs", 1, false), calls.get(depth - 1));
+    }
+
+    @Test
+    void aNestedGroupNeverCountsAsItsParentsLoneArgument() {
+        // The linear pass folds a whole nested group into the enclosing
+        // frame in one step, which is only sound because an argument
+        // holding a group can never be the single 'now' token the
+        // determinism flag looks for. These are the shapes that would
+        // expose the fold if it were wrong.
+        assertEquals(List.of(new FunctionCall("datetime", 1, false)),
+                calls("SELECT datetime(('now'))"));
+        assertEquals(List.of(new FunctionCall("f", 2, true)),
+                calls("SELECT f((a), 'now')"));
+        assertEquals(List.of(new FunctionCall("f", 2, false), new FunctionCall("g", 2, false)),
+                calls("SELECT f(g(1, 2), 3)"));
+        // An unclosed call: arity is unknowable, but a 'now' already
+        // terminated by a top-level comma was seen for certain.
+        assertEquals(List.of(new FunctionCall("datetime", FunctionCall.UNKNOWN_ARGS, true)),
+                calls("SELECT datetime('now', x"));
+        assertEquals(List.of(new FunctionCall("datetime", FunctionCall.UNKNOWN_ARGS, false)),
+                calls("SELECT datetime('now'"));
+        // A stray ')' closes nothing and must not swallow a later call.
+        assertEquals(List.of(new FunctionCall("f", 1, false), new FunctionCall("g", 1, false)),
+                calls("SELECT f(a)) , g(b)"));
+    }
+
+    private static List<FunctionCall> calls(String sql) {
+        return SqlAnalyzer.functionCalls(SqlTokenizer.tokenize(sql));
+    }
+
+    @Test
     void extractsCallIdComparisons() {
         List<ValueExpr> comparisons = SqlAnalyzer.callIdComparisons(SqlTokenizer.tokenize(
                 "SELECT 1 FROM result_get_value WHERE call_id = 'read-1' AND status = 'done'"),

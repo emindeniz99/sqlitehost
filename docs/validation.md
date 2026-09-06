@@ -65,6 +65,20 @@ Opens an in-memory SQLite database, creates the generated schema,
 errors, missing tables/columns, unsupported functions), and finalizes
 without stepping.
 
+**Each statement is prepared in isolation**, on its own connection with
+the schema re-created. Preparing a whole step on one connection made the
+verdict on statement *n* depend on the *prepare-time* side effects of
+statement *n-1*, and prepare-time side effects exist: SQLite's flag
+pragmas are applied by the code generator rather than the VDBE, so a
+leading `EXPLAIN PRAGMA writable_schema = ON` — which executes nothing —
+turned the flag on inside this validator's own engine, after which the
+`UPDATE sqlite_master` that followed compiled clean. A gate whose verdict
+the payload can change is not a gate. The isolation costs little: the
+generated schema is a couple of dozen small DDL statements against an
+in-memory database, and the Java conformance matrix went from 0.51 s
+(74 payloads, one connection per step) to 0.65 s (76 payloads, one per
+statement).
+
 | Code | Severity | Rule |
 |---|---|---|
 | `sql-prepare-error` | error | a statement failed to compile against the schema generated from the manifest. Java-only: the TypeScript authoring lint has no engine. It is the sole finding for a fault only a compiler can see (`invalid/unknown-column.json`) and a second, corroborating one wherever a lint-rejected statement is also uncompilable |
@@ -139,7 +153,17 @@ have — Java is the gate, and `invalid/non-integral-int.json` carries
 `"validators": ["java"]` for that reason. Note the consequence for the
 CLI's exit code: a payload the strict reader refuses prints an
 `invalid-envelope` finding and exits **1**, not 2. Exit 2 means no
-verdict was reached (bad arguments, an unreadable file).
+verdict was reached (bad arguments, an unreadable file, or a workspace
+layer 3 could not set up).
+
+**The shipped CLI is the whole gate**, all four layers including
+prepare-only. It ships from `sqlite-host-jdbc`
+(`sqlite-host-jdbc-<version>-cli.jar`, see `java/README.md`) rather than
+from `sqlite-host-validator`, because layer 3 lives in that module and
+the dependency runs jdbc → validator. It ran layers 1/2/4 only until
+this was fixed, and the gap was not theoretical: it exited **0**,
+printing nothing, on `invalid/unknown-column.json` — a corpus case whose
+only expected finding is `sql-prepare-error`.
 
 ### Structural
 
@@ -186,7 +210,7 @@ verdict was reached (bad arguments, an unreadable file).
 
 | Code | Severity | Rule |
 |---|---|---|
-| `nondeterministic-function` | warning | the SQL calls a nondeterministic SQLite built-in, so replaying the payload would diverge from the original run: `random`/`randomblob` on every call, and `date`/`time`/`datetime`/`julianday`/`strftime` only when they read the wall clock — called with no arguments, or with a top-level `'now'` string literal (case-insensitive). Reproducible forms (`date(:day)`, `datetime('2020-01-01')`) are not flagged. One warning per offending call; the lists are single-sourced in `codegen/core/src/ir.ts` (docs/proposals/rule-parameters-as-data.md) |
+| `nondeterministic-function` | warning | the SQL calls a nondeterministic SQLite built-in, so replaying the payload would diverge from the original run: `random`/`randomblob` on every call, and `date`/`time`/`datetime`/`julianday`/`strftime` only when they read the wall clock — called with no arguments, or with a top-level `'now'` string literal (case-insensitive). Reproducible forms (`date(:day)`, `datetime('2020-01-01')`) are not flagged. The three wall-clock KEYWORDS — `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `CURRENT_TIME` — count too. SQLite spells them with no argument list (`current_timestamp()` is a syntax error), so they are matched against bare identifier tokens rather than parsed calls; a *delimited* spelling (`"current_date"`) is a column reference, not the keyword, and is never flagged. One warning per offending occurrence; the lists are single-sourced in `codegen/core/src/ir.ts` (`NONDETERMINISTIC_FUNCTIONS_ALWAYS`, `NONDETERMINISTIC_TIME_FUNCTIONS`, `NONDETERMINISTIC_TIME_KEYWORDS` — docs/proposals/rule-parameters-as-data.md) |
 
 ### Engine portability
 
@@ -199,15 +223,28 @@ instead of on a player's device.
 | Code | Severity | Rule |
 |---|---|---|
 | `sqlite-version-too-low-for-function` | error | the SQL calls a built-in introduced *after* the host's `minSqliteVersionNumber`. Resolved from an exact-name table first, then the longest matching family prefix, both single-sourced in `codegen/core/src/ir.ts` (`FUNCTION_MIN_VERSION`, `FUNCTION_PREFIX_MIN_VERSION`). Fix by raising the host's `minSqliteVersion` or dropping the function. One finding per distinct name per statement |
-| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
+| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in; `soundex` needs `-DSQLITE_SOUNDEX` and `sqlite_offset` needs `-DSQLITE_ENABLE_OFFSET_SQL_FUNC`, neither of which stock builds set. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
 
 Every version in the table is sourced from the sqlite.org changelog for
-that release: window functions 3.25.0, `iif` 3.32.0, `format` and
-`unixepoch` 3.38.0, `octet_length` and `timediff` 3.43.0, `concat`,
-`concat_ws` and `string_agg` 3.44.0. Functions at or below the floor are
+that release: window functions 3.25.0, `pragma_table_xinfo` 3.26.0,
+`pragma_function_list` and `pragma_module_list` 3.30.0, `iif` 3.32.0,
+`substring` 3.34.0, `pragma_table_list` 3.37.0, `format` and
+`unixepoch` 3.38.0, `unhex` 3.41.0, `octet_length` and `timediff`
+3.43.0, `concat`, `concat_ws` and `string_agg` 3.44.0, `if` 3.48.0,
+`unistr` and `unistr_quote` 3.50.0. Functions at or below the floor are
 deliberately absent and never flagged — `printf` is the one to watch,
 since `format()` is its 3.38 rename but `printf` itself (3.8.3) stays
 legal forever.
+
+Two spellings, not one. The `pragma_*` table-valued wrappers are
+ordinarily written *without* an argument list (`SELECT * FROM
+pragma_table_list`), so a scan that only recognises `name(` sees none
+of them. Both validators therefore also check bare identifiers whose
+name begins `pragma_`, which is narrow enough that an ordinary column
+reference cannot be caught by it. `if` is the same trap from the other
+side: it is the MySQL-compatible alias for `iif` added in 3.48, so
+until it was listed the identical expression was an error under one
+spelling and invisible under the other.
 
 `json_*` is treated as **3.38.0**, which is not its introduction
 version: JSON1 existed long before, but until 3.38 it was compile-gated
@@ -240,8 +277,10 @@ list lives in `docs/sqlite-surface.md`.
 |---|---|---|
 | `embedded-nul` | error | the `sql` field contains U+0000. SQLite's prepare takes a NUL-terminated string, so it compiles only the text before the first NUL and silently drops the rest — every other rule here reads the whole field, so the statement the validator judged is not the statement the device runs |
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
-| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
-| `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
+| `unrecognized-statement` | error | the statement's **first meaningful token** is not an identifier, so `forbidden-statement` and `protocol-table-write` have nothing to anchor on. Both rules used to skip such a statement silently, which is fail-**open**: every legal script statement starts with an identifier (`SELECT`/`INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`WITH`/`VALUES`), so anything else is either unrunnable or a tokenizer/engine divergence — and one leading U+FEFF was exactly that. A parenthesised `(SELECT 1)` is not a counter-example: sqlite3 3.51.0 rejects it with `near "(": syntax error`. Blank `sql` is `invalid-envelope`, not this |
+| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL), `EXPLAIN` (a prefix to any of them — see below). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
+| `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned **or** SQLite-owned table. Runtime-owned: any `result_*` table or result list child table, the host-call queue table, the runtime inputs table — resolved from the **manifest**, never from a name prefix, because all of those names are host-configurable (docs/naming.md). SQLite-owned: `sqlite_master`, `sqlite_schema`, `sqlite_temp_master`, `sqlite_temp_schema`, `sqlite_sequence` and `sqlite_stat1`..`sqlite_stat4` — a *fixed* list (`SYSTEM_TABLES` in `ir.ts`), because no manifest can rename them and a manifest-only resolution therefore missed every one |
+| `forbidden-function` | error | the SQL calls a built-in whose *call* is the hazard, whatever the engine version: `pragma_optimize`, which executes `ANALYZE` — creating and populating `sqlite_stat1` in the workspace — from inside a `SELECT`. Matched wherever the identifier appears, bare (`FROM pragma_optimize`) or called (`pragma_optimize(0xfffe)`), both being legal SQLite. Single-sourced as `FORBIDDEN_FUNCTIONS` in `ir.ts`; one finding per name per statement |
 
 Why these are errors rather than warnings:
 
@@ -262,6 +301,21 @@ Why these are errors rather than warnings:
   way a harmless leading statement (`SELECT 1; …`) hides the real one,
   because `forbidden-statement` and `protocol-table-write` both anchor on
   the first statement's tokens.
+- **A statement the anchor cannot read must fail closed.** Both denylist
+  rules read token 0, and both used to do nothing when that token was not
+  an identifier. A leading U+FEFF was enough: SQLite's tokenizer gives
+  the UTF-8 BOM its own character class and returns `TK_SPACE` for it, so
+  `<BOM>PRAGMA writable_schema = ON` compiles and runs as the PRAGMA it
+  is, while the ASCII-only scanners made it punctuation at index 0 and
+  skipped both denylists. Both scanners now treat U+FEFF as whitespace —
+  measured on the sqlite3 CLI 3.51.0 and SQLite 3.53.4, where a BOM
+  separates tokens wherever one may start (`SELECT <BOM>1`,
+  `DELETE <BOM> FROM t`) and is an identifier character only when it
+  continues one (`DELETE<BOM>FROM t` is a syntax error). Over-skipping is
+  the fail-safe direction there, the same argument the vertical tab
+  already carries. `unrecognized-statement` is the second, independent
+  half: the next divergence of this shape is rejected instead of waved
+  through.
 - **Transaction control is a silent-data-loss shape.** The unit of
   atomicity is the *step* (its statements plus the drain), not a
   transaction. A script that opens a transaction and rolls it back
@@ -283,7 +337,23 @@ Why these are errors rather than warnings:
 - **Protocol tables have exactly one writer.** The drain and the
   result-write policy both assume it. A script can otherwise forge a
   result the host never produced, or delete queued calls so they never
-  drain while the run reports success.
+  drain while the run reports success. SQLite's own tables are on the
+  same list for a sharper reason: `UPDATE sqlite_master SET sql = …`
+  rewrites the queue trigger itself, which is the DDL rule's failure
+  shape reached without any DDL. Only layer 3 stood in front of it, and
+  only while `writable_schema` was off.
+- **`EXPLAIN` is a prefix, so it hid the statement it prefixes.** It
+  anchored `leadingKeyword` on itself and left the real verb unread, so
+  `EXPLAIN DELETE FROM pending_host_calls` passed both denylists. It is
+  also not inert: SQLite applies the flag pragmas (`PragTyp_FLAG`) in the
+  code generator, i.e. during `sqlite3_prepare`, so `EXPLAIN PRAGMA
+  writable_schema = ON` sets the flag for real while executing nothing —
+  verified on the sqlite3 CLI 3.51.0, and likewise for `foreign_keys`,
+  `case_sensitive_like`, `recursive_triggers`, `trusted_schema`,
+  `legacy_alter_table` and the `EXPLAIN QUERY PLAN` spelling. A script
+  executes statements for effect and discards rows
+  (`docs/sqlite-surface.md` §4), so denying the keyword costs nothing
+  legal.
 - **The runtime owns the schema, so a script has no DDL to do.**
   `DROP TRIGGER trg_call_<method>_queue` is the sharp case: with the queue
   trigger gone, inserts into that call table enqueue nothing, the drain
@@ -303,12 +373,14 @@ What stays legal, and is pinned by tests in both validators:
 - `WITH … INSERT` — a CTE prefix is not a denied keyword, and the write
   target is read *after* walking the CTE prefix, so a dummy CTE can
   neither trip the lint nor smuggle a protocol write past it.
-- `pragma_table_info(...)` and the other `pragma_*` table-valued
-  functions inside a `SELECT`; a table named `pragma_helper`; a column
-  named `begin` or `created_at`; the string literal `'PRAGMA …'`;
-  `CASE … END`. Only the first token is treated as a statement keyword,
-  and only identifier tokens — a leading `'PRAGMA'` literal is a string,
-  not a statement.
+- `pragma_table_info(...)` and the other **read-only** `pragma_*`
+  table-valued functions inside a `SELECT`; a table named
+  `pragma_helper`; a column named `begin` or `created_at`; the string
+  literal `'PRAGMA …'`; `CASE … END`. Only the first token is treated as
+  a statement keyword, and only identifier tokens — a leading `'PRAGMA'`
+  literal is a string, not a statement. The exception is
+  `pragma_optimize`, which is not a read at all (`forbidden-function`
+  above).
 - **Reading** any runtime-owned table. Only writes are denied.
 - Writing **call tables** and their input list child tables (that is how
   a script makes a host call), `script_vars`, and `script_control`.
@@ -332,12 +404,27 @@ can reach it.
 
 Both codes carry `"validators": ["java", "typescript"]` in
 `fixtures/payloads/expectations.json`, and the TypeScript rule lives in
-`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all three
-quoting forms for a result table — `"…"`, `` `…` `` and `[…]` — so
+`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all four
+quoting forms for a result table — `"…"`, `` `…` ``, `[…]` and `'…'` — so
 `invalid/result-read-unknown-call-bracket.json` expects both. That case
 read `["java"]` until the matrix became exact: the TypeScript tokenizer
 had grown bracket support and containment could not see that the
 `validators` list had gone stale.
+
+The fourth form is SQLite's MySQL-compatibility misfeature, and it is a
+name only *by position*: "if a keyword in single quotes is used in a
+context where an identifier is allowed but where a string literal is not
+allowed, then the token is understood to be an identifier"
+(sqlite.org/lang_keywords.html). So `DELETE FROM 'pending_host_calls'`,
+`UPDATE 'result_get_value' SET …`, `INSERT INTO 'result_get_value' (…)`
+and `DELETE FROM main.'pending_host_calls'` all name tables and are
+resolved as such — while the identical token in *value* position stays
+the string literal it looks like, which is what keeps static `call_id`
+resolution reading `call_id = 'c1'` as the id `c1`. Both validators make
+that distinction positionally (`isNameToken` / `SqlAnalyzer.isName`); a
+token-kind gate is what let one quote character silence
+`protocol-table-write`, the INSERT analysis and this lineage rule at
+once.
 
 Static `call_id` resolution covers literals and bindings with text
 values (`call_id = :x` where `x` is bound); computed ids (e.g.

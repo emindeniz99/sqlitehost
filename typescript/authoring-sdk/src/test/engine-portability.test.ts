@@ -172,3 +172,58 @@ test("these findings block publishing", () => {
   };
   assert.ok(!isPublishable(lintScript(payload, manifest)));
 });
+
+test("the scalar builtins added between 3.34 and 3.50 are gated too", () => {
+  // The version table was assembled from the iif/format/concat era and stopped
+  // there, so six later additions were silently publishable against the 3.19.3
+  // floor: substring 3.34.0, unhex 3.41.0, if 3.48.0, unistr 3.50.0. Each is a
+  // "no such function" on every device below its release.
+  for (const [sql, version] of [
+    ["SELECT substring('abc', 1, 2)", "3.34.0"],
+    ["SELECT unhex('41')", "3.41.0"],
+    ["SELECT if(1, 2, 3)", "3.48.0"],
+    ["SELECT unistr('\\u0041')", "3.50.0"],
+  ] as const) {
+    const found = versionFindings(sql);
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+    assert.ok(found[0].message.includes(version), found[0].message);
+  }
+});
+
+test("pragma_* table-valued functions are gated whether or not they are called", () => {
+  // These are the only builtins routinely written with no argument list —
+  // `FROM pragma_table_list` is the documented spelling — so a scan that only
+  // looks at `name(` misses every real use of them. Both spellings must report.
+  for (const [sql, version] of [
+    ["SELECT * FROM pragma_table_xinfo('t')", "3.26.0"],
+    ["SELECT * FROM pragma_function_list", "3.30.0"],
+    ["SELECT * FROM pragma_module_list", "3.30.0"],
+    ["SELECT * FROM pragma_table_list", "3.37.0"],
+  ] as const) {
+    const found = versionFindings(sql);
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.ok(found[0].message.includes(version), found[0].message);
+  }
+  // pragma_table_info is 3.16.0, below the floor, and must stay silent in
+  // both spellings — otherwise the bare-identifier scan is a false-positive
+  // generator for the most common pragma function in the corpus.
+  assert.deepStrictEqual(versionFindings("SELECT * FROM pragma_table_info('t')"), []);
+  assert.deepStrictEqual(versionFindings("SELECT * FROM pragma_table_info"), []);
+});
+
+test("compile-gated builtins outside the math family name their own option", () => {
+  // soundex and sqlite_offset are absent from stock builds for the same
+  // reason load_extension can be: a compile flag, not a version. Pointing the
+  // author at minSqliteVersion would be advice that cannot work.
+  for (const [sql, option] of [
+    ["SELECT soundex('robert')", "SQLITE_SOUNDEX"],
+    ["SELECT sqlite_offset(k) FROM t", "SQLITE_ENABLE_OFFSET_SQL_FUNC"],
+  ] as const) {
+    const found = portabilityFindings(sql);
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+    assert.ok(found[0].message.includes(option), found[0].message);
+    assert.deepStrictEqual(versionFindings(sql), [], sql);
+  }
+});

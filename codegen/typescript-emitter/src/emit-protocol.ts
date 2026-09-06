@@ -14,12 +14,15 @@ import {
   BINDING_TYPE_COMPAT,
   ENGINE_V1,
   FEATURE_INLINE_FUNCTIONS,
+  FORBIDDEN_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
   FUNCTION_MIN_VERSION,
   FUNCTION_PREFIX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
+  SYSTEM_TABLES,
   type ScalarTypeIr,
 } from "@sqlite-host/codegen-core";
 import { docComment, generatedHeader, renderLiteral, type Literal } from "./format.js";
@@ -94,6 +97,14 @@ export function emitProtocol(): string {
         "`'now'`.",
     ),
     constant(
+      "NONDETERMINISTIC_TIME_KEYWORDS",
+      "readonly string[]",
+      [...NONDETERMINISTIC_TIME_KEYWORDS],
+      "The wall-clock keywords, which SQLite spells with no argument list " +
+        "and which a call-only scan therefore never sees. Matched against " +
+        "bare identifier tokens, lowercased.",
+    ),
+    constant(
       "FUNCTION_MIN_VERSION",
       "Readonly<Record<string, number>>",
       { ...FUNCTION_MIN_VERSION },
@@ -124,6 +135,23 @@ export function emitProtocol(): string {
       [...FORBIDDEN_LEADING_KEYWORDS],
       "Statement kinds a script may not use, matched on the statement's " +
         "first meaningful token.",
+    ),
+    constant(
+      "FORBIDDEN_FUNCTIONS",
+      "readonly string[]",
+      [...FORBIDDEN_FUNCTIONS],
+      "Built-ins a script may not call at all, because calling one does " +
+        "what the statement denylist exists to prevent. Matched wherever " +
+        "the identifier appears — as a call or bare in table position.",
+    ),
+    constant(
+      "SYSTEM_TABLES",
+      "readonly string[]",
+      [...SYSTEM_TABLES],
+      "Tables SQLite itself owns. A write against one is a " +
+        "protocol-table-write, alongside the manifest-derived runtime " +
+        "tables; unlike those, these names are fixed rather than " +
+        "host-configurable. Reads stay legal.",
     ),
   ];
 
