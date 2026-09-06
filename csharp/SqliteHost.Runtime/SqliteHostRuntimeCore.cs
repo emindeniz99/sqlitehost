@@ -859,7 +859,7 @@ namespace SqliteHost
                         return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
                             ex.Message, stepId, call.Method), ex);
                     }
-                    if (!controlAfter.Equals(controlBefore))
+                    if (!controlAfter.Matches(controlBefore))
                     {
                         return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-wrote-control",
                             "Method '" + call.Method + "' wrote the control table "
@@ -1238,7 +1238,8 @@ namespace SqliteHost
                 _maxRowId = maxRowId;
             }
 
-            public bool Equals(ControlTableShape other)
+            /// <summary>Not Equals: this is an identity probe, not a value contract.</summary>
+            public bool Matches(ControlTableShape other)
             {
                 return other != null && other._rowCount == _rowCount && other._maxRowId == _maxRowId;
             }
