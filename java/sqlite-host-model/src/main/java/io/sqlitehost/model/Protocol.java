@@ -101,9 +101,9 @@ public final class Protocol {
      */
     public static final Set<String> NONPORTABLE_FUNCTIONS = Set.of(
             "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "ceil",
-            "ceiling", "cos", "cosh", "degrees", "exp", "floor", "ln", "log",
-            "log10", "log2", "mod", "pi", "pow", "power", "radians", "sin",
-            "sinh", "sqrt", "tan", "tanh", "trunc");
+            "ceiling", "cos", "cosh", "degrees", "exp", "floor", "ln",
+            "load_extension", "log", "log10", "log2", "mod", "pi", "pow",
+            "power", "radians", "sin", "sinh", "sqrt", "tan", "tanh", "trunc");
 
     /**
      * Statement kinds a script may not use, matched on the statement's first

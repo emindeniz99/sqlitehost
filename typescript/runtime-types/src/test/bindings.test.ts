@@ -46,6 +46,19 @@ test("base64 validation follows the envelope contract", () => {
   assert.ok(!isValidBase64("3q2+\n7w==")); // line break
   assert.ok(!isValidBase64("3q2-7w==")); // url-safe alphabet
   assert.ok(!isValidBase64("=AAA"));
+  // Canonical: the bits the padding covers must be zero. "QR==" decodes
+  // to the same 0x41 as "QQ==" but is not the encoding of it, and an
+  // envelope is signed bytes — accepting both spellings would force a
+  // reader to pick one to re-emit, producing a different artifact from
+  // the one that was signed.
+  assert.ok(isValidBase64("QQ=="));
+  assert.ok(!isValidBase64("QR=="));
+  assert.ok(isValidBase64("QUI="));
+  assert.ok(!isValidBase64("QUJ="));
+  // Every canonical two-byte tail character is still accepted.
+  for (const tail of "AEIMQUYcgkosw048") {
+    assert.ok(isValidBase64(`QU${tail}=`), `QU${tail}= must be canonical`);
+  }
 });
 
 test("encodeBase64 produces standard base64", () => {

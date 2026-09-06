@@ -118,11 +118,24 @@ that manifest can put a method above the script. It is covered by unit
 tests in both languages; closing the gap needs a per-case manifest
 override in both conformance runners.
 
+One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
+whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader
+sees the token and rejects it; TypeScript's lint runs on a value that
+`JSON.parse` already produced, and `JSON.parse` collapses both spellings
+to the integer 1 and 1000 before any check can look. Recovering the
+distinction would mean parsing the JSON text a second time in the
+authoring SDK, which buys nothing the publication gate does not already
+have — Java is the gate, and `invalid/non-integral-int.json` carries
+`"validators": ["java"]` for that reason. Note the consequence for the
+CLI's exit code: a payload the strict reader refuses prints an
+`invalid-envelope` finding and exits **1**, not 2. Exit 2 means no
+verdict was reached (bad arguments, an unreadable file).
+
 ### Structural
 
 | Code | Severity | Rule |
 |---|---|---|
-| `invalid-envelope` | error | missing/empty required envelope fields (including a step whose `statements` list is empty or missing) |
+| `invalid-envelope` | error | missing or blank required envelope fields (including a step whose `statements` list is empty or missing, a blank binding name, and a blank `requiredFeatures`/`requiredMethods` entry). A field whose *shape* is wrong is this code, never a lookup failure: a blank feature name is `invalid-envelope`, not `unknown-required-feature`, because nothing was named to look up |
 | `duplicate-step-id` | error | step ids must be unique |
 | `required-api-level-too-high` | error | `requiredApiLevel` > manifest apiLevel |
 | `method-api-level-too-high` | error | a used method (call-table INSERT or inline function invocation) has `apiLevel` > the script's `requiredApiLevel` — the script under-declares the API level it depends on |
@@ -176,7 +189,7 @@ instead of on a player's device.
 | Code | Severity | Rule |
 |---|---|---|
 | `sqlite-version-too-low-for-function` | error | the SQL calls a built-in introduced *after* the host's `minSqliteVersionNumber`. Resolved from an exact-name table first, then the longest matching family prefix, both single-sourced in `codegen/core/src/ir.ts` (`FUNCTION_MIN_VERSION`, `FUNCTION_PREFIX_MIN_VERSION`). Fix by raising the host's `minSqliteVersion` or dropping the function. One finding per distinct name per statement |
-| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
+| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
 
 Every version in the table is sourced from the sqlite.org changelog for
 that release: window functions 3.25.0, `iif` 3.32.0, `format` and
@@ -215,12 +228,22 @@ list lives in `docs/sqlite-surface.md`.
 
 | Code | Severity | Rule |
 |---|---|---|
+| `embedded-nul` | error | the `sql` field contains U+0000. SQLite's prepare takes a NUL-terminated string, so it compiles only the text before the first NUL and silently drops the rest — every other rule here reads the whole field, so the statement the validator judged is not the statement the device runs |
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
 | `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
 | `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
 
 Why these are errors rather than warnings:
 
+- **A NUL truncates the statement without a diagnostic.** Verified against
+  libsqlite3 3.51.0: `DELETE FROM t\u0000 WHERE name = :n` prepares
+  cleanly as `DELETE FROM t` with zero bind parameters — an unrestricted
+  delete where the author wrote a filtered one. Nothing in the engine
+  reports it, prepare-only validation compiles the truncated form and
+  passes, and the binding scan sees a `:n` the compiled statement does not
+  have. The shipped native adapter rejects an embedded NUL at run time,
+  which makes this an authoring-time error there and a silent rewrite on
+  any adapter that does not.
 - **One statement per `sql` field is the contract, and a second statement
   is a denylist bypass.** Adapters disagree about the tail: the shipped
   native adapter rejects a trailing statement outright and steps nothing

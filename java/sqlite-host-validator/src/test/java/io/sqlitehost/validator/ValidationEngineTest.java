@@ -84,6 +84,80 @@ class ValidationEngineTest {
         return ManifestJsonReader.read(mapper.writeValueAsString(root));
     }
 
+    /** The sample manifest with a scriptEnvelope.engine no runtime implements. */
+    private static Manifest foreignEngineManifest() throws IOException {
+        Path dir = Paths.get("").toAbsolutePath();
+        while (dir != null && !Files.isRegularFile(
+                dir.resolve("fixtures/manifests/sample-host.manifest.json"))) {
+            dir = dir.getParent();
+        }
+        if (dir == null) {
+            throw new IllegalStateException("fixtures directory not found");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = (ObjectNode) mapper.readTree(Files.readString(
+                dir.resolve("fixtures/manifests/sample-host.manifest.json")));
+        ((ObjectNode) root.get("scriptEnvelope")).put("engine", "sqlite-host-v9");
+        return ManifestJsonReader.read(mapper.writeValueAsString(root));
+    }
+
+    private static final String ENGINE_PROBE_TAIL =
+            "\"requiredApiLevel\":1,\"steps\":[{\"id\":\"s\",\"statements\":["
+            + "{\"sql\":\"SELECT 1\"}]}]}";
+
+    @Test
+    void engineIdComesFromTheProtocolNotTheManifest() throws IOException {
+        // WHY: the engine id names the protocol the runtime implements, so
+        // a manifest cannot redefine it. Comparing against the manifest
+        // inverted both verdicts under a manifest declaring "sqlite-host-v9":
+        // every real v1 payload was rejected and a v9 payload no runtime
+        // understands was accepted. TypeScript has always compared against
+        // its generated SCRIPT_ENGINE_V1.
+        Manifest foreign = foreignEngineManifest();
+        assertEquals(List.of(), errorCodes(validateWith(foreign,
+                "{\"engine\":\"sqlite-host-v1\"," + ENGINE_PROBE_TAIL)));
+        assertTrue(errorCodes(validateWith(foreign,
+                "{\"engine\":\"sqlite-host-v9\"," + ENGINE_PROBE_TAIL))
+                .contains(ValidationCodes.INVALID_ENVELOPE));
+    }
+
+    @Test
+    void aBlankBindingNameIsAShapeErrorNotAnUnusedBinding() throws IOException {
+        // WHY one code and not the other: no SQL parameter can carry a blank
+        // name (SQLite's IdChar excludes whitespace), so nothing was named to
+        // go unreferenced. Reporting unused-binding also disagreed with the
+        // TypeScript lint, which called the identical payload
+        // invalid-envelope.
+        List<String> codes = errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"SELECT :a\",\"bindings\":{"
+                + "\"a\":{\"type\":\"text\",\"value\":\"x\"},"
+                + "\"\":{\"type\":\"text\",\"value\":\"y\"}}}]}]}"));
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), codes);
+    }
+
+    @Test
+    void aBlankRequiredFeatureOrMethodIsAShapeErrorNotAFailedLookup() throws IOException {
+        // WHY one code and not the other: unknown-required-feature says "this
+        // host does not have that feature" about a feature the author never
+        // named. TypeScript called the identical payload invalid-envelope.
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredFeatures\":[\"\"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":[{\"sql\":\"SELECT 1\"}]}]}")));
+        assertEquals(List.of(ValidationCodes.INVALID_ENVELOPE), errorCodes(validate(
+                "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"requiredMethods\":[\"  \"],"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":[{\"sql\":\"SELECT 1\"}]}]}")));
+    }
+
+    @Test
+    void unknownEngineIsInvalidEnvelope() throws IOException {
+        assertTrue(errorCodes(validate("{\"engine\":\"sqlite-host-v9\"," + ENGINE_PROBE_TAIL))
+                .contains(ValidationCodes.INVALID_ENVELOPE));
+    }
+
     @Test
     void methodApiLevelTooHighOnCallTableInsert() throws IOException {
         // WHY: the script under-declares the API level it depends on —

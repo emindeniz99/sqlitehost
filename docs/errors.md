@@ -93,3 +93,14 @@ digits, `_`, `$`, and any character above 0x7f), so `:anahtarİsmi` is one
 parameter named `anahtarİsmi` rather than `anahtar` followed by stray
 text. The adapter conformance suite requires adapters to bind such names
 unmangled, so the scanners accept what the engine accepts.
+
+Two suffix forms belong to that name for the same reason. SQLite's
+variable syntax also admits a doubled colon inside the name (`:a::b`) and
+one trailing parenthesised group (`$a(1)`); both come from its TCL
+variable support, both are compiled in by default, and both apply to
+every prefix, not just `$`. Each is **one** parameter whose name carries
+the suffix, verified against the sqlite3 CLI 3.51.0: `SELECT :a::b` binds
+`:a::b` and reports a missing value for exactly that name. The group must
+close on the same token — `$a( 1)` and `$a(1` are illegal tokens, as are
+`::a` and the adjacent pair `:a:b`, and the scanners leave those to fail
+where they already fail.

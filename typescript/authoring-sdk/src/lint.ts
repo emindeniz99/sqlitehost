@@ -66,6 +66,7 @@ export type LintCode =
   | "nondeterministic-function"
   | "sqlite-version-too-low-for-function"
   | "nonportable-function"
+  | "embedded-nul"
   | "multiple-statements"
   | "forbidden-statement"
   | "protocol-table-write"
@@ -142,6 +143,21 @@ function minVersionFor(nameLc: string): number {
     }
   }
   return best;
+}
+
+/** Which compile option decides this built-in, and what to do instead. */
+function nonportableReason(nameLc: string): string {
+  if (nameLc === "load_extension") {
+    return (
+      "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled per" +
+      " connection even where it is compiled in; a script cannot bring its own SQL" +
+      " surface, so the host must register what it needs"
+    );
+  }
+  return (
+    "is only present when the device's SQLite was compiled with" +
+    " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host and bind it instead"
+  );
 }
 
 /** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
@@ -340,6 +356,24 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   script.steps.forEach((step, stepIndex) => {
     step.statements.forEach((statement, statementIndex) => {
       const at = { stepId: step.id, statementIndex };
+
+      // SQLite's prepare takes a NUL-terminated string, so everything from
+      // the first U+0000 onwards is dropped before the parser ever sees it.
+      // Verified against libsqlite3 3.51.0: "DELETE FROM t\u0000 WHERE name
+      // = :n" compiles to "DELETE FROM t" with zero bind parameters. Every
+      // other rule here reads the whole `sql` field, so without this check
+      // the lint analyses one statement and the device runs a different,
+      // shorter one.
+      const nulIndex = statement.sql.indexOf("\u0000");
+      if (nulIndex >= 0) {
+        findings.push({
+          code: "embedded-nul",
+          severity: "error",
+          message: `statement sql contains U+0000 at index ${nulIndex}; SQLite compiles only the text before it`,
+          ...at,
+        });
+      }
+
       const bindings: Record<string, BindingValue> = statement.bindings ?? {};
       const bindingNames = Object.keys(bindings);
       const parameters = scanNamedParameters(statement.sql);
@@ -518,7 +552,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
             findings.push({
               code: "nonportable-function",
               severity: "error",
-              message: `"${call.name}" is only present when the device's SQLite was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe; compute the value in the host and bind it instead`,
+              message: `"${call.name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
               ...at,
             });
           } else {

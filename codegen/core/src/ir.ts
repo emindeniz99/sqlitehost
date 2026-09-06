@@ -385,6 +385,15 @@ export const FUNCTION_PREFIX_MIN_VERSION: Readonly<Record<string, number>> = {
  * help, which is why these are a separate ERROR (nonportable-function) rather
  * than a version comparison.
  *
+ * `load_extension` is here for the same reason from the other direction:
+ * `-DSQLITE_OMIT_LOAD_EXTENSION` removes the SQL function outright, and
+ * platform builds do use it — the sqlite3 3.51.0 shipped with macOS answers
+ * `SELECT load_extension('x')` with "no such function: load_extension" while
+ * the JDBC driver's bundled engine compiles the same call happily. Even where
+ * it is compiled in it stays disabled per connection until the host calls
+ * sqlite3_enable_load_extension, so Python's stock driver answers "not
+ * authorized". Three engines, three answers, one version.
+ *
  * Single-sourced here and projected per language
  * (docs/proposals/rule-parameters-as-data.md).
  */
@@ -404,6 +413,7 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
   "exp",
   "floor",
   "ln",
+  "load_extension",
   "log",
   "log10",
   "log2",

@@ -1,0 +1,30 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-non-integral-int",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "store",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value) SELECT 'n', 'int64', :count + :total",
+          "bindings": {
+            "count": {
+              "type": "int32",
+              "value": 1.0
+            },
+            "total": {
+              "type": "int64",
+              "value": 1e3
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

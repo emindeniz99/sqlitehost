@@ -10,6 +10,7 @@ import {
   BINDING_TYPES,
   SCRIPT_ENGINE_V1,
   type BindingType,
+  type BindingValue,
   type Script,
 } from "./generated/envelope.js";
 import {
@@ -37,6 +38,30 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 const DECIMAL_STRING = /^-?[0-9]+$/;
+
+/**
+ * A required string that carries nothing: empty, or only the pinned
+ * whitespace set — space, `\t`, `\n`, `\v`, `\f`, `\r` (C's `isspace()`,
+ * the same set the SQL scanners already agree on).
+ *
+ * The set is enumerated rather than delegated to `String.prototype.trim`
+ * for the same reason the scanners enumerate theirs: `trim` and Java's
+ * `String.isBlank` disagree on eight code points (`trim` counts U+00A0,
+ * U+2007, U+202F and U+FEFF; `isBlank` counts U+001C..U+001F), so
+ * delegating would trade one parity bug for a narrower one. Whether a
+ * step id is "empty" must not depend on which SDK is asking.
+ */
+function isBlank(value: string): boolean {
+  for (const ch of value) {
+    if (
+      ch !== " " && ch !== "\t" && ch !== "\n" &&
+      ch !== "\v" && ch !== "\f" && ch !== "\r"
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /** Validate one binding value node; returns findings (empty = valid). */
 export function validateBindingValue(value: unknown, path: string): EnvelopeFinding[] {
@@ -131,8 +156,8 @@ export function validateRuntimeInput(value: unknown, path: string): EnvelopeFind
     return [invalid(path, "input must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["name"] !== "string" || value["name"] === "") {
-    findings.push(invalid(`${path}.name`, "input name must be a non-empty string"));
+  if (typeof value["name"] !== "string" || isBlank(value["name"])) {
+    findings.push(invalid(`${path}.name`, "input name must be a non-blank string"));
   }
   findings.push(...validateBindingValue(value["value"], `${path}.value`));
   return findings;
@@ -144,8 +169,8 @@ export function validateStatement(value: unknown, path: string): EnvelopeFinding
     return [invalid(path, "statement must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["sql"] !== "string" || value["sql"] === "") {
-    findings.push(invalid(`${path}.sql`, "statement sql must be a non-empty string"));
+  if (typeof value["sql"] !== "string" || isBlank(value["sql"])) {
+    findings.push(invalid(`${path}.sql`, "statement sql must be a non-blank string"));
   }
   const bindings = value["bindings"];
   if (bindings !== undefined) {
@@ -153,8 +178,8 @@ export function validateStatement(value: unknown, path: string): EnvelopeFinding
       findings.push(invalid(`${path}.bindings`, "bindings must be an object map"));
     } else {
       for (const [name, binding] of Object.entries(bindings)) {
-        if (name === "") {
-          findings.push(invalid(`${path}.bindings`, "binding names must be non-empty"));
+        if (isBlank(name)) {
+          findings.push(invalid(`${path}.bindings`, "binding names must be non-blank"));
         }
         findings.push(...validateBindingValue(binding, `${path}.bindings.${name}`));
       }
@@ -169,8 +194,8 @@ export function validateStep(value: unknown, path: string): EnvelopeFinding[] {
     return [invalid(path, "step must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["id"] !== "string" || value["id"] === "") {
-    findings.push(invalid(`${path}.id`, "step id must be a non-empty string"));
+  if (typeof value["id"] !== "string" || isBlank(value["id"])) {
+    findings.push(invalid(`${path}.id`, "step id must be a non-blank string"));
   }
   const statements = value["statements"];
   if (!Array.isArray(statements) || statements.length === 0) {
@@ -193,8 +218,8 @@ function validateStringArray(
     return;
   }
   value.forEach((entry, index) => {
-    if (typeof entry !== "string" || entry === "") {
-      findings.push(invalid(`${path}[${index}]`, "must be a non-empty string"));
+    if (typeof entry !== "string" || isBlank(entry)) {
+      findings.push(invalid(`${path}[${index}]`, "must be a non-blank string"));
     }
   });
 }
@@ -245,7 +270,7 @@ export function validateScript(value: unknown): EnvelopeFinding[] {
   const seenIds = new Set<string>();
   steps.forEach((step, index) => {
     findings.push(...validateStep(step, `steps[${index}]`));
-    if (isPlainObject(step) && typeof step["id"] === "string" && step["id"] !== "") {
+    if (isPlainObject(step) && typeof step["id"] === "string" && !isBlank(step["id"])) {
       const id = step["id"];
       if (seenIds.has(id)) {
         findings.push({
@@ -276,6 +301,35 @@ export class ScriptParseError extends Error {
 }
 
 /**
+ * Round every float32 binding to the IEEE-754 single the engine will
+ * hold, in place. `float32` on the wire is a JSON number — a double —
+ * and docs/script-envelope.md says it is "parsed via round-to-nearest",
+ * so 0.1 becomes 0.10000000149011612 before anything reads it. The Java
+ * and C# readers narrow through their `float` types and get exactly
+ * that; leaving the double alone here made the same envelope mean two
+ * different numbers depending on which SDK opened it.
+ *
+ * Safe to mutate: the object came from this function's own JSON.parse.
+ */
+function roundFloat32Bindings(script: Script): void {
+  const round = (value: BindingValue): void => {
+    if (value !== null && typeof value === "object" && value.type === "float32") {
+      value.value = Math.fround(value.value);
+    }
+  };
+  for (const input of script.inputs ?? []) {
+    round(input.value);
+  }
+  for (const step of script.steps) {
+    for (const statement of step.statements) {
+      for (const binding of Object.values(statement.bindings ?? {})) {
+        round(binding);
+      }
+    }
+  }
+}
+
+/**
  * Parse a script envelope from JSON text with structural validation.
  * Throws ScriptParseError (carrying `invalid-envelope` /
  * `duplicate-step-id` findings) when the payload is malformed, and
@@ -287,5 +341,7 @@ export function parseScript(json: string): Script {
   if (findings.length > 0) {
     throw new ScriptParseError(findings);
   }
-  return value as Script;
+  const script = value as Script;
+  roundFloat32Bindings(script);
+  return script;
 }

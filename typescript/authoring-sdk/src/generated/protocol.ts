@@ -110,6 +110,7 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
   "exp",
   "floor",
   "ln",
+  "load_extension",
   "log",
   "log10",
   "log2",

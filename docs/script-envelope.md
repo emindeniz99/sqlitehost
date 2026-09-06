@@ -42,7 +42,7 @@ golden tests keep the three projections in sync.
 | `requiredFeatures` | no | subset of the host's supported features, else clean skip |
 | `requiredMethods` | no | methods the script uses; missing method → clean skip |
 | `inputs` | no | runtime inputs inserted into `script_inputs` before step 1; names must be unique (`duplicate-input-name`); SqliteHost never computes or injects runtime facts itself — the caller places them in `inputs` before `Run(script)` |
-| `steps` | yes | ordered; step `id`s must be unique and non-empty |
+| `steps` | yes | ordered; step `id`s must be unique and non-blank |
 | `steps[].statements` | yes | ordered, non-empty; each has `sql` and optional `bindings` |
 
 ## Binding values
@@ -56,7 +56,7 @@ Discriminated by `type`:
 | `int64` | number when \|v\| ≤ 2^53−1, else decimal string; parsers accept both | INTEGER |
 | `bool` | `true` / `false` | INTEGER 1 / 0 |
 | `text` | string | TEXT |
-| `blob` | base64 string (standard alphabet, padding, no line breaks) | BLOB |
+| `blob` | canonical base64 string (standard alphabet, padding, no line breaks, padding bits zero) | BLOB |
 | `float32` | finite JSON number representable as an IEEE-754 single (parsed via round-to-nearest); string form NOT accepted | REAL |
 | `float64` | finite JSON number; string form NOT accepted | REAL |
 
@@ -64,6 +64,29 @@ Float rules: NaN and ±Infinity are not representable (JSON has no
 literal for them) and readers must reject any string-typed value for
 `float32`/`float64` — unlike `int64`, floats never need a string form
 because every IEEE-754 double round-trips through a JSON number.
+
+Base64 must be **canonical**: `"QR=="` is refused even though it decodes
+to the same byte as `"QQ=="`, because the four bits it carries past that
+byte are padding and must be zero. Several spellings of one blob would
+force a reader to choose which to re-emit, and an envelope is signed
+bytes — normalizing after verification produces a different artifact from
+the one that was signed.
+
+A required string must be **non-blank**, not merely non-empty: `"   "` is
+rejected wherever `""` is (step `id`, statement `sql`, input `name`).
+Blankness is decided on one pinned character set — space, `\t`, `\n`,
+`\v`, `\f`, `\r`, C's `isspace()`, the same set the SQL scanners share —
+rather than each language's own idea of whitespace, which differ.
+
+An **explicit JSON `null` is not an absent field.** Every optional field
+above is absent by being missing from the object; spelling it `null`
+instead is a type error and readers reject the payload. This is the same
+rule the `null` binding type already states from the other side — a
+`{"type": "null", "value": null}` is refused because a present `value` is
+present even when it is null. Serializers that emit `null` for an absent
+optional must be configured not to; an envelope is signed bytes, and a
+reader that quietly accepted both spellings would let the same payload be
+publishable through one SDK and not another.
 
 Binding **names** are bare (no prefix). In SQL, named parameters may be
 written `:name`, `@name`, or `$name`; a binding matches a parameter when

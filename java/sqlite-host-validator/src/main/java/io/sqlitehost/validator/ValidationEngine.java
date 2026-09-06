@@ -50,7 +50,7 @@ public final class ValidationEngine {
 
     public ValidationReport validate(Manifest manifest, Script script) {
         List<ValidationFinding> findings = new ArrayList<>();
-        checkEnvelope(manifest, script, findings);
+        checkEnvelope(script, findings);
         checkDuplicateStepIds(script, findings);
         checkDuplicateInputNames(script, findings);
         checkCompatibility(manifest, script, findings);
@@ -69,15 +69,21 @@ public final class ValidationEngine {
     // Structural
     // ---------------------------------------------------------------
 
-    private static void checkEnvelope(
-            Manifest manifest, Script script, List<ValidationFinding> findings) {
+    private static void checkEnvelope(Script script, List<ValidationFinding> findings) {
+        // The engine id is the protocol's own constant, not manifest data.
+        // Comparing against manifest.scriptEnvelope().engine() let a
+        // manifest redefine which protocol the validator enforces: declare
+        // "sqlite-host-v9" and every real v1 payload became invalid while a
+        // v9 payload no runtime understands passed. TypeScript has always
+        // compared against its generated SCRIPT_ENGINE_V1; this is the
+        // generated Java twin of it (emitted with the rest of Script.java).
         if (isBlank(script.engine())) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
                     "envelope is missing its engine"));
-        } else if (!script.engine().equals(manifest.scriptEnvelope().engine())) {
+        } else if (!Script.ENGINE_V1.equals(script.engine())) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
                     "envelope engine '" + script.engine() + "' is not '"
-                            + manifest.scriptEnvelope().engine() + "'"));
+                            + Script.ENGINE_V1 + "'"));
         }
         if (script.requiredApiLevel() == null || script.requiredApiLevel() < 1) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
@@ -90,9 +96,16 @@ public final class ValidationEngine {
         for (RuntimeInput input : script.inputs()) {
             if (isBlank(input.name()) || input.value() == null) {
                 findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
-                        "runtime inputs must have a non-empty name and a value"));
+                        "runtime inputs must have a non-blank name and a value"));
             }
         }
+        // A blank entry in requiredFeatures/requiredMethods names nothing, so
+        // it is a shape error, not a lookup that missed. Reporting it as
+        // unknown-required-feature said "this host does not have that
+        // feature" about a feature the author never named — and TypeScript
+        // reported invalid-envelope for the identical payload.
+        checkNamedList(script.requiredFeatures(), "requiredFeatures", findings);
+        checkNamedList(script.requiredMethods(), "requiredMethods", findings);
         for (int s = 0; s < script.steps().size(); s++) {
             Step step = script.steps().get(s);
             if (isBlank(step.id())) {
@@ -106,7 +119,16 @@ public final class ValidationEngine {
             for (int i = 0; i < step.statements().size(); i++) {
                 if (isBlank(step.statements().get(i).sql())) {
                     findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
-                            step.id(), i, "statement has empty sql"));
+                            step.id(), i, "statement has blank sql"));
+                }
+                for (String binding : step.statements().get(i).bindings().keySet()) {
+                    if (isBlank(binding)) {
+                        // No SQL parameter can carry a blank name (SQLite's
+                        // IdChar excludes whitespace), so this is a shape
+                        // error rather than a binding nothing referenced.
+                        findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
+                                step.id(), i, "binding names must be non-blank"));
+                    }
                 }
             }
         }
@@ -147,12 +169,18 @@ public final class ValidationEngine {
                             + manifest.library().apiLevel()));
         }
         for (String feature : script.requiredFeatures()) {
+            if (isBlank(feature)) {
+                continue; // already invalid-envelope
+            }
             if (!manifest.library().features().contains(feature)) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_REQUIRED_FEATURE,
                         "required feature '" + feature + "' is not in the manifest features"));
             }
         }
         for (String method : script.requiredMethods()) {
+            if (isBlank(method)) {
+                continue; // already invalid-envelope
+            }
             if (manifest.methodByName(method) == null) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_REQUIRED_METHOD,
                         "required method '" + method + "' is not in the manifest"));
@@ -184,6 +212,21 @@ public final class ValidationEngine {
             SchemaIndex schema, Script script, Statement statement,
             int stepIndex, String stepId, int statementIndex,
             Analysis analysis, List<ValidationFinding> findings) {
+        // embedded-nul: SQLite's prepare takes a NUL-terminated string, so
+        // everything from the first U+0000 onwards is dropped before the
+        // parser ever sees it. Verified against libsqlite3 3.51.0:
+        // "DELETE FROM t\u0000 WHERE name = :n" compiles to "DELETE FROM t"
+        // with zero bind parameters. Every other rule here reads the whole
+        // `sql` field, so without this check the validator analyses one
+        // statement and the device runs a different, shorter one.
+        if (statement.sql().indexOf('\0') >= 0) {
+            findings.add(ValidationFinding.error(ValidationCodes.EMBEDDED_NUL,
+                    stepId, statementIndex,
+                    "statement sql contains U+0000 at index "
+                            + statement.sql().indexOf('\0')
+                            + "; SQLite compiles only the text before it"));
+        }
+
         List<SqlToken> tokens = SqlTokenizer.tokenize(statement.sql());
         Map<String, BindingValue> bindings = statement.bindings();
 
@@ -197,6 +240,9 @@ public final class ValidationEngine {
             }
         }
         for (String binding : bindings.keySet()) {
+            if (isBlank(binding)) {
+                continue; // already invalid-envelope
+            }
             if (!parameters.contains(binding)) {
                 findings.add(ValidationFinding.error(ValidationCodes.UNUSED_BINDING,
                         stepId, statementIndex,
@@ -522,11 +568,9 @@ public final class ValidationEngine {
             if (reported.add(nameLc)) {
                 findings.add(ValidationFinding.error(ValidationCodes.NONPORTABLE_FUNCTION,
                         stepId, statementIndex,
-                        "'" + call.name() + "' is only present when the device's SQLite"
-                                + " was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS —"
-                                + " its availability is a compile option, not a version,"
-                                + " so raising minSqliteVersion cannot make it safe;"
-                                + " compute the value in the host and bind it instead"));
+                        "'" + call.name() + "' " + nonportableReason(nameLc)
+                                + " — its availability is a compile option, not a version,"
+                                + " so raising minSqliteVersion cannot make it safe"));
             }
             return;
         }
@@ -540,6 +584,18 @@ public final class ValidationEngine {
                             + formatVersion(schema.minSqliteVersionNumber)
                             + " — raise the host's minSqliteVersion or avoid the function"));
         }
+    }
+
+    /** Which compile option decides this built-in, and what to do instead. */
+    private static String nonportableReason(String nameLc) {
+        if ("load_extension".equals(nameLc)) {
+            return "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled"
+                    + " per connection even where it is compiled in; a script cannot bring"
+                    + " its own SQL surface, so the host must register what it needs";
+        }
+        return "is only present when the device's SQLite was compiled with"
+                + " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host"
+                + " and bind it instead";
     }
 
     /**
@@ -817,8 +873,43 @@ public final class ValidationEngine {
         return null;
     }
 
+    /** Every entry of requiredFeatures/requiredMethods must name something. */
+    private static void checkNamedList(
+            List<String> entries, String field, List<ValidationFinding> findings) {
+        for (String entry : entries) {
+            if (isBlank(entry)) {
+                findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
+                        field + " entries must be non-blank strings"));
+            }
+        }
+    }
+
+    /**
+     * A required string that carries nothing: null, empty, or only the
+     * pinned whitespace set — space, {@code \t}, {@code \n}, {@code U+000B},
+     * {@code \f}, {@code \r} (C's {@code isspace()}, the same set the SQL
+     * scanners already agree on).
+     *
+     * <p>The set is enumerated rather than delegated to
+     * {@link String#isBlank()} for the same reason the scanners enumerate
+     * theirs: {@code isBlank} and JavaScript's {@code String.prototype.trim}
+     * disagree on eight code points ({@code isBlank} counts
+     * {@code U+001C..U+001F}; {@code trim} counts {@code U+00A0},
+     * {@code U+2007}, {@code U+202F} and {@code U+FEFF}), so delegating on
+     * each side would trade one parity bug for a narrower one. Whether a
+     * step id is "empty" must not depend on which SDK is asking.</p>
+     */
     private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        if (value == null) {
+            return true;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c != ' ' && c != '\t' && c != '\n' && c != 0x0b && c != '\f' && c != '\r') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String lower(String value) {

@@ -89,11 +89,24 @@ export function int32ToNumber(value: number | string): number {
   return result;
 }
 
-const BASE64_SHAPE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+// The trailing character classes are the canonicality half of the rule:
+// in an "XY==" group the last character carries four padding bits that
+// must be zero (indices 0/16/32/48 = A/Q/g/w), and in an "XYZ=" group
+// two (indices that are multiples of four). "QR==" decodes to the same
+// 0x41 as "QQ==" but is not the encoding of it.
+const BASE64_SHAPE =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/;
 
 /**
- * True when the string is valid standard base64: standard alphabet,
- * correct `=` padding, no line breaks or whitespace.
+ * True when the string is *canonical* standard base64: standard
+ * alphabet, correct `=` padding, no line breaks or whitespace, and no
+ * non-zero bits in the padding.
+ *
+ * WHY canonicality is part of the rule and not pedantry: an envelope is
+ * signed bytes. Several distinct strings decode to the same blob, and a
+ * reader that accepts all of them must pick one to re-emit — which is a
+ * different artifact from the one that was signed. Refusing the
+ * non-canonical spellings keeps the payload and its bytes one thing.
  */
 export function isValidBase64(value: string): boolean {
   return BASE64_SHAPE.test(value);

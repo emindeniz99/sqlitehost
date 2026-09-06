@@ -22,7 +22,10 @@ import java.util.regex.Pattern;
 /**
  * Strict JSON reader for the script envelope (docs/script-envelope.md).
  *
- * <p>Strictness rules: field types must match the contract, an unknown
+ * <p>Strictness rules: field types must match the contract, an explicit
+ * JSON {@code null} is a type error rather than an absent field (the
+ * same "null is not absence" rule the {@code null} binding type already
+ * follows, docs/script-envelope.md), an unknown
  * envelope binding {@code type} is an error, {@code int32}/{@code int64}
  * accept a JSON number or a decimal string (with range checks),
  * {@code float32}/{@code float64} accept a finite JSON number only, and
@@ -36,9 +39,18 @@ public final class ScriptJsonReader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     /** Largest int64 magnitude representable exactly as a JSON number (2^53−1), mirrors ScriptJsonWriter. */
     private static final BigInteger MAX_SAFE_JSON_INTEGER = BigInteger.valueOf(9007199254740991L);
-    /** Strict base64 (docs/script-envelope.md): standard alphabet, padded, no whitespace. */
+    /**
+     * Strict base64 (docs/script-envelope.md): standard alphabet, padded,
+     * no whitespace, and <em>canonical</em> — the trailing character
+     * classes require the padding bits to be zero, so {@code "QR=="} is
+     * refused even though it decodes to the same 0x41 as {@code "QQ=="}.
+     * An envelope is signed bytes; accepting several spellings of one blob
+     * forces a reader to pick one to re-emit, which is a different
+     * artifact from the one that was signed.
+     */
     private static final Pattern BASE64 = Pattern.compile(
-            "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$");
+            "^(?:[A-Za-z0-9+/]{4})*"
+                    + "(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$");
     /** Strict decimal string: no whitespace, no leading '+'. */
     private static final Pattern DECIMAL_STRING = Pattern.compile("^-?[0-9]+$");
 
@@ -70,7 +82,7 @@ public final class ScriptJsonReader {
 
     private static List<RuntimeInput> readInputs(JsonNode node) throws JsonReadException {
         List<RuntimeInput> inputs = new ArrayList<>();
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return inputs;
         }
         if (!node.isArray()) {
@@ -82,7 +94,7 @@ public final class ScriptJsonReader {
             }
             String name = optionalString(entry, "name");
             JsonNode value = entry.get("value");
-            BindingValue bindingValue = value == null || value.isNull()
+            BindingValue bindingValue = value == null
                     ? null
                     : readBindingValue(value, "input '" + name + "'");
             inputs.add(new RuntimeInput(name, bindingValue));
@@ -92,7 +104,7 @@ public final class ScriptJsonReader {
 
     private static List<Step> readSteps(JsonNode node) throws JsonReadException {
         List<Step> steps = new ArrayList<>();
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return steps;
         }
         if (!node.isArray()) {
@@ -112,7 +124,7 @@ public final class ScriptJsonReader {
     private static List<Statement> readStatements(JsonNode node, String stepId)
             throws JsonReadException {
         List<Statement> statements = new ArrayList<>();
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return statements;
         }
         if (!node.isArray()) {
@@ -134,7 +146,7 @@ public final class ScriptJsonReader {
     private static Map<String, BindingValue> readBindings(JsonNode node, String stepId)
             throws JsonReadException {
         Map<String, BindingValue> bindings = new LinkedHashMap<>();
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return bindings;
         }
         if (!node.isObject()) {
@@ -286,7 +298,7 @@ public final class ScriptJsonReader {
     private static String optionalString(JsonNode parent, String field)
             throws JsonReadException {
         JsonNode node = parent.get(field);
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return null;
         }
         if (!node.isTextual()) {
@@ -298,7 +310,7 @@ public final class ScriptJsonReader {
     private static Integer optionalInt(JsonNode parent, String field)
             throws JsonReadException {
         JsonNode node = parent.get(field);
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return null;
         }
         if (!node.isIntegralNumber() || !node.canConvertToInt()) {
@@ -311,7 +323,7 @@ public final class ScriptJsonReader {
             throws JsonReadException {
         List<String> values = new ArrayList<>();
         JsonNode node = parent.get(field);
-        if (node == null || node.isNull()) {
+        if (node == null) {
             return values;
         }
         if (!node.isArray()) {

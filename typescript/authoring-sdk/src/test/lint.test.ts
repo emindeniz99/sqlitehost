@@ -61,6 +61,37 @@ test("parameter names run over SQLite's full IdChar set", () => {
   assert.deepStrictEqual(scanNamedParameters("SELECT :a$b"), ["a$b"]);
 });
 
+test("parameter names carry SQLite's TCL variable suffixes", () => {
+  // SQLite's variable syntax admits a doubled colon inside the name and one
+  // trailing '(...)' group, for every prefix — verified against the sqlite3
+  // CLI 3.51.0, where `SELECT :a::b` reports a missing value for the binding
+  // parameter `:a::b`, not for `:a`. Splitting them accepted the payload that
+  // fails on every device and rejected (missing-binding x2 + unused-binding)
+  // the only one that runs.
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a::b"), ["a::b"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT @x::y"), ["x::y"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a::b::c"), ["a::b::c"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a::"), ["a::"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $a(1)"), ["a(1)"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a(1)"), ["a(1)"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $a()"), ["a()"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $a::b(1)"), ["a::b(1)"]);
+});
+
+test("neighbouring variable forms SQLite rejects stay rejected", () => {
+  // Each of these is a tokenizer error in the engine, so no scanner reading
+  // may invent a well-formed parameter out of them: `:a:b` is two adjacent
+  // variables (a parse error), `::a` and `$(1)` have no IdChar to name, and a
+  // '(' group that does not close on the same token is illegal. Only `:a:b`
+  // yields parameters, exactly as the engine's tokenizer does before the
+  // parser rejects the pair.
+  assert.deepStrictEqual(scanNamedParameters("SELECT :a:b"), ["a", "b"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT ::a"), ["a"]);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $(1)"), []);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $a( 1)"), []);
+  assert.deepStrictEqual(scanNamedParameters("SELECT $a(1"), []);
+});
+
 test("list-child-without-parent: child rows with no parent insert anywhere", () => {
   const payload = {
     engine: "sqlite-host-v1",

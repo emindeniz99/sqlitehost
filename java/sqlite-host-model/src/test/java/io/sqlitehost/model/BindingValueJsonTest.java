@@ -113,6 +113,23 @@ class BindingValueJsonTest {
     }
 
     @Test
+    void base64WithNonZeroPaddingBitsIsRejected() throws IOException {
+        // "QR==" decodes to the same 0x41 as "QQ==" but is not the encoding
+        // of it: the four bits 'R' contributes past the byte are padding and
+        // must be zero. A reader that accepts both has to pick one to
+        // re-emit, and an envelope is signed bytes — normalizing after
+        // verification produces a different artifact from the signed one.
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"QR==\"}"));
+        assertThrows(JsonReadException.class,
+                () -> scriptWithBinding("{\"type\":\"blob\",\"value\":\"QUJ=\"}"));
+        assertArrayEquals(new byte[] {0x41},
+                onlyBinding(scriptWithBinding("{\"type\":\"blob\",\"value\":\"QQ==\"}")).asBlob());
+        assertArrayEquals(new byte[] {0x41, 0x42},
+                onlyBinding(scriptWithBinding("{\"type\":\"blob\",\"value\":\"QUI=\"}")).asBlob());
+    }
+
+    @Test
     void floatsAcceptFiniteJsonNumbers() throws IOException {
         BindingValue score = onlyBinding(
                 scriptWithBinding("{\"type\":\"float64\",\"value\":98.5}"));

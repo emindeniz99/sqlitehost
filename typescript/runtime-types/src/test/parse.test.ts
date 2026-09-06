@@ -96,6 +96,53 @@ test("empty or missing statements list is invalid-envelope (pinned fixture)", ()
   expectFindings(s, "invalid-envelope", "steps[0].statements");
 });
 
+test("a blank required string is invalid-envelope, not just an empty one", () => {
+  // WHY: Java rejected "   " and TypeScript accepted it, so the same
+  // payload was publishable through one SDK and not the other. Blankness
+  // is now one pinned character set in both (C's isspace()), because
+  // String.isBlank and String.prototype.trim disagree on eight code points.
+  const fixture = JSON.parse(readFixture("payloads/invalid/blank-strings.json"));
+  expectFindings(fixture, "invalid-envelope", "steps[0].id");
+  expectFindings(fixture, "invalid-envelope", "steps[0].statements[0].sql");
+  const s = baseScript();
+  (s["inputs"] as Array<Record<string, unknown>>) = [
+    { name: " \t ", value: { type: "int64", value: 1 } },
+  ];
+  expectFindings(s, "invalid-envelope", "inputs[0].name");
+});
+
+test("an explicit null is a type error, not an absent optional field", () => {
+  // docs/script-envelope.md: absence is spelled by leaving the field out.
+  // The Java reader used to treat an explicit null as absence, so the same
+  // signed bytes were publishable through one SDK and not the other; the
+  // fixture pins both readers to the rejection.
+  expectFindings(
+    JSON.parse(readFixture("payloads/invalid/null-optional-field.json")),
+    "invalid-envelope",
+    "scriptId",
+  );
+  for (const field of ["scriptId", "requiredFeatures", "requiredMethods", "inputs"]) {
+    const s = baseScript();
+    s[field] = null;
+    expectFindings(s, "invalid-envelope", field);
+  }
+});
+
+test("known limit: JSON.parse hides a non-integral int32/int64 literal", () => {
+  // Pinned so nobody "fixes" this the wrong way. The wire spellings 1.0
+  // and 1e3 violate the envelope contract, and Java's reader rejects them
+  // because it sees the token. Here JSON.parse has already collapsed both
+  // to plain integers before any check can run, so the value under test is
+  // indistinguishable from a conforming one. docs/validation.md records
+  // Java as authoritative for this rule; the fixture carries
+  // "validators": ["java"] for the same reason.
+  assert.equal(JSON.parse("1.0"), 1);
+  assert.equal(JSON.parse("1e3"), 1000);
+  const fixture = readFixture("payloads/invalid/non-integral-int.json");
+  assert.match(fixture, /"value": 1\.0/);
+  assert.deepStrictEqual(validateScript(JSON.parse(fixture)), []);
+});
+
 test("statement without sql is invalid-envelope", () => {
   const s = baseScript();
   const statements = (s["steps"] as Array<Record<string, unknown>>)[0][

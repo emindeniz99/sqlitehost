@@ -1,0 +1,26 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-embedded-nul",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "prune",
+      "statements": [
+        {
+          "sql": "DELETE FROM script_vars\u0000 WHERE name = :name",
+          "bindings": {
+            "name": {
+              "type": "text",
+              "value": "total"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

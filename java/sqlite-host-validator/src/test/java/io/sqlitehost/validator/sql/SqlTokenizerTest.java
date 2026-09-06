@@ -136,6 +136,40 @@ class SqlTokenizerTest {
     }
 
     @Test
+    void parameterNamesCarrySqlitesTclVariableSuffixes() {
+        // SQLite's variable syntax admits a doubled colon inside the name
+        // and one trailing '(...)' group, for every prefix — verified
+        // against the sqlite3 CLI 3.51.0, where `SELECT :a::b` reports a
+        // missing value for the binding parameter `:a::b`, not for `:a`.
+        // Splitting them accepted the payload that fails on every device
+        // and rejected (missing-binding x2 + unused-binding) the only one
+        // that runs.
+        assertEquals(Set.of("a::b"), params("SELECT :a::b"));
+        assertEquals(Set.of("x::y"), params("SELECT @x::y"));
+        assertEquals(Set.of("a::b::c"), params("SELECT :a::b::c"));
+        assertEquals(Set.of("a::"), params("SELECT :a::"));
+        assertEquals(Set.of("a(1)"), params("SELECT $a(1)"));
+        assertEquals(Set.of("a(1)"), params("SELECT :a(1)"));
+        assertEquals(Set.of("a()"), params("SELECT $a()"));
+        assertEquals(Set.of("a::b(1)"), params("SELECT $a::b(1)"));
+    }
+
+    @Test
+    void neighbouringVariableFormsSqliteRejectsStayRejected() {
+        // Each of these is a tokenizer error in the engine, so no scanner
+        // reading may invent a well-formed parameter out of them: `:a:b` is
+        // two adjacent variables (a parse error), `::a` and `$(1)` have no
+        // IdChar to name, and a '(' group that does not close on the same
+        // token is illegal. Only `:a:b` yields parameters, exactly as the
+        // engine's tokenizer does before the parser rejects the pair.
+        assertEquals(Set.of("a", "b"), params("SELECT :a:b"));
+        assertEquals(Set.of("a"), params("SELECT ::a"));
+        assertEquals(Set.of(), params("SELECT $(1)"));
+        assertEquals(Set.of(), params("SELECT $a( 1)"));
+        assertEquals(Set.of(), params("SELECT $a(1"));
+    }
+
+    @Test
     void lonePrefixCharacterIsPunctuation() {
         List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT a : b");
         assertTrue(tokens.contains(new SqlToken(SqlToken.Kind.PUNCT, ":")));

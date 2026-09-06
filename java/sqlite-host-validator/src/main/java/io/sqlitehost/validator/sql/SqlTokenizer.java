@@ -135,15 +135,43 @@ public final class SqlTokenizer {
                 continue;
             }
 
-            // :name / @name / $name named parameter
+            // :name / @name / $name named parameter — SQLite's variable
+            // grammar (see the isParamChar javadoc for the two suffix forms)
             if (c == ':' || c == '@' || c == '$') {
-                int start = i + 1;
-                int end = start;
-                while (end < n && isParamChar(sql.charAt(end))) {
-                    end++;
+                int end = i + 1;
+                int idChars = 0;
+                boolean illegal = false;
+                while (end < n) {
+                    char ch = sql.charAt(end);
+                    if (isParamChar(ch)) {
+                        idChars++;
+                        end++;
+                    } else if (ch == '(' && idChars > 0) {
+                        // A single trailing '(...)' group closes the name.
+                        end++;
+                        while (end < n && sql.charAt(end) != ')' && !isSqlWhitespace(sql.charAt(end))) {
+                            end++;
+                        }
+                        if (end < n && sql.charAt(end) == ')') {
+                            end++;
+                        } else {
+                            illegal = true;
+                        }
+                        break;
+                    } else if (ch == ':' && end + 1 < n && sql.charAt(end + 1) == ':') {
+                        end += 2;
+                    } else {
+                        break;
+                    }
                 }
-                if (end > start) {
-                    tokens.add(new SqlToken(SqlToken.Kind.PARAM, sql.substring(start, end), c));
+                if (illegal) {
+                    // SQLite lexes an unterminated '(' group as one illegal
+                    // token; consume the same span so the stray '(' cannot
+                    // unbalance the paren depth the statement analysis tracks.
+                    tokens.add(new SqlToken(SqlToken.Kind.PUNCT, sql.substring(i, end)));
+                    i = end;
+                } else if (idChars > 0) {
+                    tokens.add(new SqlToken(SqlToken.Kind.PARAM, sql.substring(i + 1, end), c));
                     i = end;
                 } else {
                     tokens.add(new SqlToken(SqlToken.Kind.PUNCT, String.valueOf(c)));
@@ -264,6 +292,17 @@ public final class SqlTokenizer {
      * '_', '$', and any character above 0x7f. Cutting the name at its ASCII
      * head would report missing-binding for a name the author never wrote,
      * and the adapter conformance suite requires non-ASCII names to bind.
+     *
+     * <p>Two further characters can appear <em>inside</em> a name and are
+     * handled by the scan loop rather than here, because they are only legal
+     * in position: a doubled colon ({@code :a::b}) and one trailing
+     * parenthesised group ({@code $a(1)}). Both come from SQLite's TCL
+     * variable syntax, are compiled in by default, and apply to every prefix
+     * — verified against the sqlite3 CLI 3.51.0, where {@code :a::b} and
+     * {@code $a(1)} each bind as a <em>single</em> parameter whose name
+     * carries the suffix. Splitting them, as this scanner used to, accepts
+     * the payload that fails on every device and rejects the only one that
+     * runs.</p>
      */
     private static boolean isParamChar(char c) {
         return isIdentPart(c) || c > 0x7f;
