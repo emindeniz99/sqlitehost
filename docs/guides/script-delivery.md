@@ -22,6 +22,8 @@ The pieces:
 
 **`SqliteHost.Delivery` does no networking and reads no clock.** You
 supply the bytes and the current time; it supplies trust and freshness.
+Which clock you supply is a policy decision the library leaves to you —
+step 4 says what the choice costs.
 That is deliberate — see `docs/proposals/script-delivery.md`.
 
 ## 0. Make a key pair (development)
@@ -132,6 +134,12 @@ Then, per download:
 static readonly ScriptEnvelopeVerificationOptions Policy =
     new ScriptEnvelopeVerificationOptions();
 
+// The DEVICE clock — the least trustworthy of the three sources the
+// library deliberately refuses to choose between. Fine for catching a
+// stale CDN; not fine if expiresAt is load-bearing, because the owner
+// of the device can wind it back and keep an expired envelope
+// verifying. Where it matters, anchor a server `Date` header to a
+// monotonic timer at launch and pass that instead.
 long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 ScriptEnvelopeVerificationResult result =
     ScriptEnvelopeVerifier.Verify(downloadedBytes, TrustedKeys, nowUnixMs, Policy);
