@@ -15,7 +15,7 @@ All line counts below are for the vendored runtime sources
 DTOs are *generated separately* into your own generated folder and are not
 part of these counts.
 
-## The map (≈7,080 vendored lines)
+## The map (7,134 vendored lines)
 
 | Bucket | ≈ lines | Runs when |
 |---|---:|---|
