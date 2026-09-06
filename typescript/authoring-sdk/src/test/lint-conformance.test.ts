@@ -11,15 +11,30 @@ interface ExpectedFinding {
 
 interface ExpectationCase {
   payload: string;
+  /** Relative to fixtures/payloads/; defaults to the top-level manifest. */
+  manifest?: string;
   valid: boolean;
   errors: ExpectedFinding[];
   warnings: ExpectedFinding[];
 }
 
 const expectations = JSON.parse(readFixture("payloads/expectations.json")) as {
+  manifest: string;
   cases: ExpectationCase[];
 };
-const manifest = parseHostManifest(readFixture("manifests/sample-host.manifest.json"));
+
+// A case may bind to its own manifest. Nearly every one uses the sample
+// host, but a rule about a method's API level needs a host with a method
+// above the level a script may declare, and the sample host has none.
+const manifests = new Map<string, ReturnType<typeof parseHostManifest>>();
+function manifestFor(relative: string) {
+  let parsed = manifests.get(relative);
+  if (parsed === undefined) {
+    parsed = parseHostManifest(readFixture(`payloads/${relative}`));
+    manifests.set(relative, parsed);
+  }
+  return parsed;
+}
 
 function typescriptCodes(expected: ExpectedFinding[]): string[] {
   return expected
@@ -31,7 +46,10 @@ function typescriptCodes(expected: ExpectedFinding[]): string[] {
 for (const expectationCase of expectations.cases) {
   test(`conformance: ${expectationCase.payload}`, () => {
     const payload = JSON.parse(readFixture(`payloads/${expectationCase.payload}`));
-    const findings = lintScript(payload, manifest);
+    const findings = lintScript(
+      payload,
+      manifestFor(expectationCase.manifest ?? expectations.manifest),
+    );
     const errors: string[] = findings
       .filter((f) => f.severity === "error")
       .map((f) => f.code)

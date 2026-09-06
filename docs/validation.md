@@ -114,13 +114,19 @@ Static rules over the parsed script + manifest. Error codes are pinned
 here and asserted by `fixtures/payloads/expectations.json`; the
 `validators` field there says which implementations must catch each
 code (`java` = full engine, `typescript` = static authoring subset).
-One code has no payload fixture and cannot have one as the harness
-stands: `method-api-level-too-high`. Every case binds to
-`sample-host.manifest.json`, whose methods are all `apiLevel` 1, and the
-envelope check rejects `requiredApiLevel < 1`, so no payload against
-that manifest can put a method above the script. It is covered by unit
-tests in both languages; closing the gap needs a per-case manifest
-override in both conformance runners.
+Every code in the tables below has at least one fixture, and
+`scripts/check-fixture-corpus.mjs` fails the build if one loses its last.
+
+`method-api-level-too-high` was the exception until the corpus grew a
+second manifest. Every case bound to `sample-host.manifest.json`, whose
+methods are all `apiLevel` 1, and the envelope check rejects
+`requiredApiLevel < 1` — so no payload against that manifest could put a
+method above the script. A case may now name its own manifest with an
+optional `"manifest"` key (relative to `fixtures/payloads/`, defaulting
+to the top-level one), and `typespec/examples/high-api-host-methods.tsp`
+is a one-method host at `apiLevel` 2 that exists for this rule.
+Manifests are never hand-written, so it is emitted and byte-pinned by
+`tests/cross-language-golden/run.mjs` like the sample host.
 
 One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
 whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader

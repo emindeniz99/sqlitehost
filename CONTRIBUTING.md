@@ -91,10 +91,9 @@ points at a real pre-3.19.3 build (see `tests/compatibility-sqlite/`).
 Generated code is committed. It is an input to the C#, Java and TypeScript
 builds, not a build output, and emission is deterministic.
 
-- **Never hand-edit** a `.g.cs`, a generated Java or TypeScript file,
-  `fixtures/manifests/sample-host.manifest.json`, or
-  `fixtures/schemas/sample-host.ddl.sql`. Change the emitter in
-  `codegen/`, or the definition in `typespec/`, and re-emit.
+- **Never hand-edit** a `.g.cs`, a generated Java or TypeScript file, or
+  anything under `fixtures/manifests/` and `fixtures/schemas/`. Change the
+  emitter in `codegen/`, or the definition in `typespec/`, and re-emit.
 - **Re-emit and commit in the same change.** Each CLI takes a manifest and
   an output directory, so emit into a scratch directory and copy each file
   onto the committed one:
@@ -103,6 +102,10 @@ builds, not a build output, and emission is deterministic.
   pnpm -r run build
   node codegen/manifest-emitter/dist/cli.js \
       typespec/examples/sample-host-methods.tsp generated --base-name sample-host
+  # Conformance-only second host: manifest + DDL, no language emitters.
+  node codegen/manifest-emitter/dist/cli.js \
+      typespec/examples/high-api-host-methods.tsp generated \
+      --base-name high-api-host
   node codegen/csharp-emitter/dist/cli.js     generated/sample-host.manifest.json generated/csharp
   node codegen/java-emitter/dist/cli.js       generated/sample-host.manifest.json generated/java
   node codegen/typescript-emitter/dist/cli.js generated/sample-host.manifest.json generated/ts \

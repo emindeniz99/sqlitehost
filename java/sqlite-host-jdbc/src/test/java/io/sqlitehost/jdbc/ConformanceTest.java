@@ -16,10 +16,13 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,14 +54,27 @@ class ConformanceTest {
         JsonNode expectations = MAPPER.readTree(
                 Files.readString(payloadsDir.resolve("expectations.json")));
 
-        Path manifestPath = payloadsDir
-                .resolve(expectations.get("manifest").asText())
-                .normalize();
-        Manifest manifest = ManifestJsonReader.read(Files.readString(manifestPath));
+        String defaultManifest = expectations.get("manifest").asText();
+
+        // A case may bind to its own manifest. Nearly every one uses the
+        // sample host, but a rule about a method's API level needs a host
+        // with a method above the level a script may declare, and the
+        // sample host has none.
+        Map<String, Manifest> manifests = new HashMap<>();
 
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode caseNode : expectations.get("cases")) {
             String payload = caseNode.get("payload").asText();
+            JsonNode override = caseNode.get("manifest");
+            String relative = override == null ? defaultManifest : override.asText();
+            Manifest manifest = manifests.computeIfAbsent(relative, key -> {
+                try {
+                    return ManifestJsonReader.read(
+                            Files.readString(payloadsDir.resolve(key).normalize()));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
             tests.add(DynamicTest.dynamicTest(payload,
                     () -> runCase(manifest, payloadsDir, caseNode)));
         }

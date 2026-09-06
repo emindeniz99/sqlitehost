@@ -26,15 +26,10 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * merely inconvenient does not belong here — write the fixture.
  */
 const knownUncovered = [
-  {
-    code: "method-api-level-too-high",
-    reason:
-      "every case validates against sample-host.manifest.json, whose " +
-      "methods are all apiLevel 1, and the envelope check rejects " +
-      "requiredApiLevel < 1 — so no payload against that manifest can " +
-      "put a method above the script. Closing it needs a per-case " +
-      "manifest override in both runners (docs/validation.md).",
-  },
+  // Empty, and worth keeping that way. `method-api-level-too-high` was
+  // the last entry: it had no fixture because every case bound to the
+  // sample host, whose methods are all apiLevel 1. The per-case
+  // `manifest` key and the one-method high-api host closed it.
 ];
 
 /**
