@@ -289,6 +289,18 @@ validate and throw, because that is the app's own configuration, not
 attacker input, and a malformed trusted key must fail loudly at
 startup rather than degrade to "nothing verifies".
 
+What "malformed" covers for an RSA key: an empty modulus or exponent,
+a modulus under 2048 significant bits, an **even** modulus (no product
+of two odd primes is even), an exponent that is even or ≤ 1, and an
+exponent wider than 8 significant bytes. All of those are typos,
+truncations or mis-decoded fields rather than keys a generator emits.
+The floor and the exponent checks catch the misconfigurations that
+fail *open*; the even-modulus and width checks catch ones that fail
+*closed*, which is the "nothing verifies" degrade this paragraph is
+about. The set is structural on purpose — it does not attempt to tell
+a composite modulus from a real one, which would need factoring-grade
+analysis.
+
 ## Downgrade and replay: the app's cache contract
 
 The library does not store anything, so it cannot detect replay on its

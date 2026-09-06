@@ -401,6 +401,76 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void EvenRsaModulus_ThrowsAtConstruction()
+        {
+            // Every RSA modulus is a product of two odd primes, so an even
+            // one is not a modulus at all. Accepting it degrades the app to
+            // "nothing verifies" at run time, which is the silent failure
+            // DeliveryKey's throw-at-construction contract promises not to
+            // allow, and it is the shape a truncated or mis-decoded config
+            // produces.
+            var modulus = Modulus(256);
+            modulus[255] = 0x02;
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(modulus), "AQAB"));
+        }
+
+        [Fact]
+        public void AllZeroRsaModulus_ThrowsAtConstruction()
+        {
+            // A wrong-field or truncated config reads as 256 zero bytes.
+            // It has no significant bytes at all, so it fails the floor
+            // rather than reaching Verify and returning bad-signature for
+            // every envelope forever.
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(new byte[256]), "AQAB"));
+        }
+
+        [Fact]
+        public void AllOnesRsaModulus_IsAcceptedBecauseTheCheckIsStructuralOnly()
+        {
+            // Boundary marker, not an endorsement. 2^2048-1 is odd and has
+            // a non-zero top byte, so it satisfies every structural
+            // property an RSA modulus has; separating it from a real one
+            // needs factoring-grade analysis, which this constructor
+            // deliberately does not attempt (same non-goal as the exponent
+            // check: reject degenerate shapes, do not audit key quality).
+            // Recorded here so a future reader does not assume every
+            // unusable modulus is caught.
+            var modulus = new byte[256];
+            for (int i = 0; i < modulus.Length; i++) { modulus[i] = 0xff; }
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(modulus), "AQAB");
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Fact]
+        public void OversizedRsaExponent_ThrowsAtConstruction()
+        {
+            // A 256-byte exponent is odd and greater than 1, so the
+            // degenerate-exponent check waves it through; no real public
+            // exponent is anywhere near that wide, and the value is another
+            // spelling of a mis-decoded config that fails closed at run time.
+            var exponent = new byte[256];
+            exponent[0] = 0x01;
+            exponent[255] = 0x01;
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), Convert.ToBase64String(exponent)));
+        }
+
+        [Fact]
+        public void RsaExponentPaddedToTheKeyWidth_IsAccepted()
+        {
+            // The exponent bound is on significant bytes for the same
+            // reason the modulus floor is: 65537 written as a fixed-width
+            // field is still 65537.
+            var exponent = new byte[256];
+            exponent[253] = 0x01;
+            exponent[255] = 0x01;
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), Convert.ToBase64String(exponent));
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Fact]
         public void RsaModulusWithALeadingZeroByte_IsAcceptedAtItsTrueBitLength()
         {
             // Java's BigInteger.toByteArray() prepends a 0x00 sign byte to a

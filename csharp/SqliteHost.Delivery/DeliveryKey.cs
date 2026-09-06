@@ -41,6 +41,12 @@ namespace SqliteHost.Delivery
         private const int MinimumRsaModulusBytes = 256;
 
         /// <summary>
+        /// Width bound for the public exponent, in significant bytes. 65537
+        /// needs three; nothing legitimate needs more than a machine word.
+        /// </summary>
+        private const int MaximumRsaExponentBytes = 8;
+
+        /// <summary>
         /// An RSA public key for <c>rsa-sha256</c> (RSASSA-PKCS#1 v1.5 over
         /// SHA-256). Only <see cref="RSAParameters.Modulus"/> and
         /// <see cref="RSAParameters.Exponent"/> are used. The modulus must
@@ -76,23 +82,50 @@ namespace SqliteHost.Delivery
                     + "-byte modulus); this one is " + (modulus.Length * 8) + " bits.",
                     "publicKey");
             }
+            // Every RSA modulus is a product of two odd primes, so an even
+            // one is not a modulus at all. Unlike the two checks around it
+            // this one fails CLOSED at run time — Verify would return
+            // bad-signature for every envelope forever — which is precisely
+            // the silent degrade this constructor promises not to allow. It
+            // is the shape a truncated, mis-base64'd or wrong-field config
+            // produces, and it must be a startup failure, not a mystery in
+            // production.
+            if ((modulus[modulus.Length - 1] & 1) == 0)
+            {
+                throw new ArgumentException(
+                    "RSA public key modulus must be odd; this one is even, which no RSA modulus is.",
+                    "publicKey");
+            }
             // A degenerate exponent fails OPEN the same way. e=1 makes RSA
             // the identity, so m^e mod n is the padded digest itself and
             // anyone forges a signature without the private key; an even e
             // has no inverse mod phi(n), so it is not an RSA exponent at
             // all. Both are typos or tampering, never a key
             // generateDeliveryKeyPair() minted.
-            if (!IsUsableRsaExponent(publicKey.Exponent))
+            byte[] exponent = TrimLeadingZeros(publicKey.Exponent);
+            if (!IsUsableRsaExponent(exponent))
             {
                 throw new ArgumentException(
                     "RSA public key exponent must be odd and greater than 1.",
+                    "publicKey");
+            }
+            // No real public exponent is wider than a machine word (65537
+            // is three bytes, and 2^64 is already far beyond anything a
+            // generator emits). A wide one is odd and greater than 1, so
+            // the check above waves it through, and it is another spelling
+            // of a mis-decoded config that would fail closed at run time.
+            if (exponent.Length > MaximumRsaExponentBytes)
+            {
+                throw new ArgumentException(
+                    "RSA public key exponent must be at most " + MaximumRsaExponentBytes
+                    + " significant bytes; this one is " + exponent.Length + ".",
                     "publicKey");
             }
             var key = new DeliveryKey(keyId, ScriptEnvelopeAlgorithms.RsaSha256);
             key.RsaPublicKey = new RSAParameters
             {
                 Modulus = modulus,
-                Exponent = Copy(publicKey.Exponent)
+                Exponent = exponent
             };
             return key;
         }
