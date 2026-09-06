@@ -104,6 +104,7 @@ namespace SqliteHost.Tests.Fixtures
         internal static readonly IReadOnlyDictionary<string, string> ReaderRefusals =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
+                { "non-canonical-base64.json", "canonical base64" },
                 { "non-integral-int.json", "invalid format" },
             };
         // <<< invalid-reader-refusals
@@ -156,7 +157,6 @@ namespace SqliteHost.Tests.Fixtures
                 { "list-child-without-parent.json", "lint-only: list-child-without-parent is an authoring rule; the orphan row is ordinary SQL" },
                 { "missing-binding.json", "post-envelope: refused at bind as missing-binding (the conformance suite owns that)" },
                 { "multiple-statements.json", "lint-only: multiple-statements is an authoring rule; the adapter contract already forbids the second statement running" },
-                { "non-canonical-base64.json", "gap: invalid-envelope in expectations.json, but Convert.FromBase64String accepts non-zero discarded bits, so the reader takes it" },
                 { "nonportable-function.json", "lint-only: nonportable-function is an authoring rule; whether the build has the function is the engine's" },
                 { "nonportable-load-extension.json", "lint-only: nonportable-function is an authoring rule; whether load_extension exists is a compile-time flag of the engine" },
                 { "nonportable-soundex.json", "lint-only: nonportable-function is an authoring rule; whether the build has soundex is a compile-time flag of the engine" },
