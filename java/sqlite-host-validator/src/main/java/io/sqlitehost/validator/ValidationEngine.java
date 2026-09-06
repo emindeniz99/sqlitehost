@@ -442,7 +442,13 @@ public final class ValidationEngine {
             }
             MethodDescriptor method = schema.inlineFunctions.get(nameLc);
             if (method == null) {
-                if (nameLc.startsWith(schema.functionPrefixLc) && reported.add(nameLc)) {
+                // Tolerate pre-inline manifests (no functionPrefix): an empty
+                // prefix never matches, so no identifier is ever flagged
+                // unknown-function. Without the guard "".startsWith("") is
+                // true and every built-in the script calls is an error.
+                if (!schema.functionPrefixLc.isEmpty()
+                        && nameLc.startsWith(schema.functionPrefixLc)
+                        && reported.add(nameLc)) {
                     findings.add(ValidationFinding.error(ValidationCodes.UNKNOWN_FUNCTION,
                             stepId, statementIndex,
                             "function '" + call.name() + "' matches the functionPrefix '"

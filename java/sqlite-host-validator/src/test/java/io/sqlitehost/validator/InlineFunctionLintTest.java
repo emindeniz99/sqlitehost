@@ -196,4 +196,59 @@ class InlineFunctionLintTest {
         assertFalse(errorCodes(fnIsNotSpecial).contains(ValidationCodes.UNKNOWN_FUNCTION),
                 errorCodes(fnIsNotSpecial).toString());
     }
+
+    @Test
+    void emptyFunctionPrefixMatchesNothing() throws IOException {
+        // WHY: an empty prefix is what a pre-inline manifest carries, and
+        // "".startsWith("") is true for every name — so the unknown-function
+        // lint fired on every built-in the script called, blocking
+        // publication of scripts that use plain SQLite functions. The
+        // TypeScript lint has always guarded this case explicitly; Java had
+        // not, so the two disagreed on every such manifest.
+        Manifest noPrefix = ManifestJsonReader.read(PRE_INLINE_MANIFEST);
+
+        ValidationReport builtins = validate(noPrefix, script(
+                "", "", "SELECT abs(-1), max(1, 2), lower('A')"));
+        assertFalse(errorCodes(builtins).contains(ValidationCodes.UNKNOWN_FUNCTION),
+                errorCodes(builtins).toString());
+        assertTrue(builtins.isValid(), builtins.findings().toString());
+
+        // Not even a name that looks like somebody else's convention.
+        ValidationReport looksLikeAnInline = validate(noPrefix, script(
+                "", "", "SELECT fn_get_value('k')"));
+        assertFalse(errorCodes(looksLikeAnInline).contains(ValidationCodes.UNKNOWN_FUNCTION),
+                errorCodes(looksLikeAnInline).toString());
+    }
+
+    /** A host that declares no inline functions: functionPrefix is "". */
+    private static final String PRE_INLINE_MANIFEST =
+            "{\"manifestVersion\":1,\"engine\":\"sqlite-host-v1\","
+            + "\"library\":{\"namespace\":\"N\",\"interfaceName\":\"I\",\"apiLevel\":1,"
+            + "\"minSqliteVersionNumber\":3019003,\"features\":[]},"
+            + "\"naming\":{\"callTablePrefix\":\"call_\",\"resultTablePrefix\":\"result_\","
+            + "\"inputColumnPrefix\":\"input_\",\"resultColumnPrefix\":\"result_\","
+            + "\"inputListTableInfix\":\"__input_\",\"resultListTableInfix\":\"__result_\","
+            + "\"functionPrefix\":\"\"},"
+            + "\"columns\":{\"callId\":\"call_id\",\"itemIndex\":\"item_index\","
+            + "\"status\":\"status\",\"doneValue\":\"done\",\"queueId\":\"queue_id\","
+            + "\"method\":\"method\",\"name\":\"name\",\"valueType\":\"value_type\","
+            + "\"intValue\":\"int_value\",\"realValue\":\"real_value\","
+            + "\"textValue\":\"text_value\",\"blobValue\":\"blob_value\","
+            + "\"action\":\"action\",\"message\":\"message\"},"
+            + "\"queueTable\":{\"name\":\"q\",\"columns\":[]},"
+            + "\"inputsTable\":{\"name\":\"i\",\"columns\":[]},"
+            + "\"varsTable\":{\"name\":\"v\",\"columns\":[]},"
+            + "\"controlTable\":{\"name\":\"c\",\"columns\":[]},"
+            + "\"scriptEnvelope\":{\"engine\":\"sqlite-host-v1\",\"bindingTypes\":[]},"
+            + "\"methods\":[{\"operationName\":\"GetValue\",\"methodName\":\"getValue\","
+            + "\"handlerName\":\"GetValue\",\"apiLevel\":1,\"mutates\":false,"
+            + "\"callTable\":\"call_get_value\",\"resultTable\":\"result_get_value\","
+            + "\"queueTrigger\":\"trg_call_get_value_queue\","
+            + "\"input\":{\"modelName\":\"GetValueInput\",\"fields\":["
+            + "{\"propertyName\":\"key\",\"sqlName\":\"key\",\"column\":\"input_key\","
+            + "\"scalarType\":\"string\",\"optional\":false}],\"listFields\":[]},"
+            + "\"result\":{\"modelName\":\"GetValueResult\",\"fields\":["
+            + "{\"propertyName\":\"value\",\"sqlName\":\"value\",\"column\":\"result_value\","
+            + "\"scalarType\":\"int64\",\"optional\":false}],\"listFields\":[]},"
+            + "\"inline\":null}]}";
 }
