@@ -211,9 +211,8 @@ if (process.env.UPDATE_SIZE_BASELINE === "1") {
   // Tolerance: 3% of the recorded delta, floored so the small rows do not
   // trip on a few kilobytes of compiler noise.
   const tolerance = (value, floor) => Math.max(Math.abs(value) * 0.03, floor);
-  for (const [name, got] of Object.entries(deltas)) {
-    const want = recorded.deltas?.[name];
-    if (!want) continue;
+  const compare = (name, got, want) => {
+    if (!want) return;
     for (const metric of ["raw", "gz"]) {
       const allowed = tolerance(want[metric], metric === "raw" ? 10240 : 5120);
       const moved = got[metric] - want[metric];
@@ -226,7 +225,17 @@ if (process.env.UPDATE_SIZE_BASELINE === "1") {
         else drift.push(line);
       }
     }
+  };
+  for (const [name, got] of Object.entries(deltas)) {
+    compare(name, got, recorded.deltas?.[name]);
   }
+  // The probe pair, under the same rule. It was written into baseline.json
+  // from the first run and then never read: the only assertion on it was
+  // the ordering check above (probeDelta.raw > 0), which a generic virtual
+  // method costing ten times what it used to would still pass. This is the
+  // number docs/guides/il2cpp-size-protocol.md quotes for the GVM cost, so
+  // it gets the same treatment as a row.
+  compare("probeDelta", probeDelta, recorded.probeDelta);
   if (!recorded.gate) {
     console.log(
       `\nbaseline.json has ${RID} recorded but "gate": false — differences are advisory. ` +
