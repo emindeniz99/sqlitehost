@@ -1130,3 +1130,144 @@ test("binding-type-mismatch: the check covers input list child tables", () => {
   assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
   assert.equal(mismatch[0].statementIndex, 1);
 });
+
+// -- quoted function names ---------------------------------------------------
+// SQLite resolves a quoted name in call position to the same function:
+// `select "random"()`, `select [random]()` and ``select `random`()`` each
+// execute random() (verified against the sqlite3 CLI). The Java tokenizer
+// folds all four spellings into one IDENT kind and SqlAnalyzer.functionCalls
+// matches on that kind, so a TypeScript scan keyed on the bare-identifier
+// kind alone let every function lint be bypassed by quoting the name.
+
+test("functionCalls sees a quoted function name in every quoting form", () => {
+  for (const sql of ['SELECT "random"()', "SELECT [random]()", "SELECT `random`()"]) {
+    assert.deepStrictEqual(
+      functionCalls(tokenizeSql(sql)),
+      [{ name: "random", argCount: 0, hasNowArg: false }],
+      sql,
+    );
+  }
+});
+
+test("quoting a function name does not bypass the function lints", () => {
+  // One case per lint that reads the function-call list. Each of these
+  // reported nothing while the scan matched only bare identifiers, which
+  // made quoting a complete bypass of the publish gate.
+  const cases: Array<[string, string]> = [
+    ["SELECT \"jsonb_extract\"('{}', '$.a')", "sqlite-version-too-low-for-function"],
+    ["SELECT [sqrt](2.0)", "nonportable-function"],
+    ["SELECT `random`()", "nondeterministic-function"],
+    ['SELECT "fn_not_a_method"(1)', "unknown-function"],
+    ["SELECT [fn_get_value]('k')", "undeclared-feature-use"],
+    ["SELECT `fn_get_value`('k', 'extra')", "function-arity-mismatch"],
+  ];
+  for (const [sql, code] of cases) {
+    const found = lintScript(bareStatementScript(sql), manifest).filter((f) => f.code === code);
+    assert.equal(found.length, 1, `${sql} => ${code}: ${JSON.stringify(found)}`);
+  }
+});
+
+test("quoting an inline function name does not bypass method-api-level-too-high", () => {
+  // The inline path is the only route to this code that does not go
+  // through a call-table INSERT, so it needs its own quoted-name case.
+  const payload = inlineScript(["inlineFunctions"], [], "SELECT \"fn_get_value\"('k')");
+  const found = lintScript(payload, level2Manifest()).filter(
+    (f) => f.code === "method-api-level-too-high",
+  );
+  assert.equal(found.length, 1, JSON.stringify(found));
+});
+
+// -- protocol columns in the binding-type map --------------------------------
+// call_id and item_index are host-configurable names (docs/naming.md) but
+// their types are pinned by the protocol: call_id is text, item_index is an
+// integer (docs/validation.md). The Java engine seeds both into its
+// binding-type map; the TypeScript map was built from manifest input/item
+// fields alone, and unknown columns are skipped, so a wrongly-typed binding
+// into either column produced no finding at all.
+
+test("binding-type-mismatch: call_id is pinned to text on a call table", () => {
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValue"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_value (call_id, input_key) VALUES (:cid, 'k')",
+            bindings: { cid: { type: "int32", value: 7 } },
+          },
+        ],
+      },
+    ],
+  };
+  const mismatch = lintScript(payload, manifest).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
+  assert.ok(mismatch[0].message.includes("call_id"), mismatch[0].message);
+});
+
+test("binding-type-mismatch: call_id and item_index are pinned on child tables", () => {
+  const child = (bindings: Record<string, BindingValue>) => ({
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          { sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES ('q-1', 0)" },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:c, :i, 'k')",
+            bindings,
+          },
+        ],
+      },
+    ],
+  });
+  const badCallId = lintScript(
+    child({ c: { type: "int64", value: 1 }, i: { type: "int64", value: 0 } }),
+    manifest,
+  ).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(badCallId.length, 1, JSON.stringify(badCallId));
+
+  const badItemIndex = lintScript(
+    child({ c: { type: "text", value: "q-1" }, i: { type: "text", value: "0" } }),
+    manifest,
+  ).filter((f) => f.code === "binding-type-mismatch");
+  assert.equal(badItemIndex.length, 1, JSON.stringify(badItemIndex));
+});
+
+test("binding-type-mismatch: correctly typed protocol columns stay silent", () => {
+  // WHY: the pinned types must not fire on the shapes every real script
+  // writes — text call_id, int64 item_index — or the lint is unusable.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: "INSERT INTO call_get_values (call_id, input_default_value) VALUES (:c, 0)",
+            bindings: { c: { type: "text", value: "q-1" } },
+          },
+          {
+            sql: "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:c2, :i, 'k')",
+            bindings: {
+              c2: { type: "text", value: "q-1" },
+              i: { type: "int32", value: 0 },
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const findings = lintScript(payload, manifest);
+  assert.deepStrictEqual(
+    findings.filter((f) => f.code === "binding-type-mismatch"),
+    [],
+    JSON.stringify(findings),
+  );
+});

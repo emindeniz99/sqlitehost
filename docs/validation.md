@@ -110,6 +110,13 @@ Static rules over the parsed script + manifest. Error codes are pinned
 here and asserted by `fixtures/payloads/expectations.json`; the
 `validators` field there says which implementations must catch each
 code (`java` = full engine, `typescript` = static authoring subset).
+One code has no payload fixture and cannot have one as the harness
+stands: `method-api-level-too-high`. Every case binds to
+`sample-host.manifest.json`, whose methods are all `apiLevel` 1, and the
+envelope check rejects `requiredApiLevel < 1`, so no payload against
+that manifest can put a method above the script. It is covered by unit
+tests in both languages; closing the gap needs a per-case manifest
+override in both conformance runners.
 
 ### Structural
 

@@ -78,6 +78,13 @@ export type LintSeverity = "error" | "warning";
 interface InsertableColumn {
   scalarType: ManifestScalarType;
   optional: boolean;
+  /**
+   * Set for the protocol-owned columns (call_id, item_index), whose type is
+   * pinned by the protocol rather than declared by a manifest field. Used in
+   * place of the scalar type when describing the column, mirroring the Java
+   * engine's ColumnType.describe().
+   */
+  role?: string;
 }
 
 /**
@@ -87,6 +94,12 @@ interface InsertableColumn {
  * the column scalar type's accepted set (int64 widens from int32, float64
  * from float32, integers never coerce into float columns).
  */
+/** How a column is named in a mismatch message (Java: ColumnType.describe()). */
+function describeColumn(column: InsertableColumn): string {
+  if (column.role !== undefined) return column.role;
+  return `${column.scalarType}${column.optional ? ", optional" : ""}`;
+}
+
 function bindingCompatible(column: InsertableColumn, bindingType: string): boolean {
   if (bindingType === "null") return column.optional;
   const accepted = BINDING_TYPE_COMPAT[column.scalarType];
@@ -231,6 +244,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
 
   // -- manifest table index -------------------------------------------------
   const callIdColumn = manifest.columns.callId;
+  const itemIndexColumn = manifest.columns.itemIndex;
   const callTables = new Map<string, string>(); // call table -> method name
   const inputChildTables = new Map<string, { methodName: string; callTable: string }>();
   const resultTables = new Map<string, string>(); // result table -> method name
@@ -278,6 +292,11 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       inlineFunctions.set(method.inline.functionName.toLowerCase(), method);
     }
     const callCols = new Map<string, InsertableColumn>();
+    callCols.set(callIdColumn.toLowerCase(), {
+      scalarType: "string",
+      optional: false,
+      role: callIdColumn,
+    });
     for (const field of method.input.fields) {
       callCols.set(field.column.toLowerCase(), {
         scalarType: field.scalarType,
@@ -291,6 +310,16 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         callTable: method.callTable.toLowerCase(),
       });
       const childCols = new Map<string, InsertableColumn>();
+      childCols.set(callIdColumn.toLowerCase(), {
+        scalarType: "string",
+        optional: false,
+        role: callIdColumn,
+      });
+      childCols.set(itemIndexColumn.toLowerCase(), {
+        scalarType: "int64",
+        optional: false,
+        role: itemIndexColumn,
+      });
       for (const field of listField.itemFields) {
         childCols.set(field.column.toLowerCase(), {
           scalarType: field.scalarType,
@@ -452,7 +481,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
                 findings.push({
                   code: "binding-type-mismatch",
                   severity: "error",
-                  message: `binding "${cell.param}" of type ${binding.type} is not compatible with column ${insert.table}.${cell.column} (${columnType.scalarType}${columnType.optional ? ", optional" : ""})`,
+                  message: `binding "${cell.param}" of type ${binding.type} is not compatible with column ${insert.table}.${cell.column} (${describeColumn(columnType)})`,
                   ...at,
                 });
               }

@@ -62,6 +62,27 @@ function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
+/**
+ * The characters that separate tokens: C's `isspace()` set — space, `\t`,
+ * `\n`, `\v`, `\f`, `\r`. The Java tokenizer enumerates the identical set,
+ * and that agreement is the point: whitespace decides where one token ends,
+ * so a byte one validator skips and the other does not makes the whole
+ * statement analysis (the denylist included) diverge between them.
+ *
+ * It is deliberately one character wider than SQLite's own `sqlite3Isspace`,
+ * which omits U+000B — verified against the sqlite3 CLI 3.51.0, where an
+ * INSERT split by a vertical tab is a parse error while the form-feed
+ * version runs. Over-skipping is the fail-safe direction: the extra
+ * character can only appear in SQL SQLite refuses to prepare, so treating it
+ * as a separator costs no valid script a false positive, while not skipping
+ * it hides a denied statement from the lint.
+ */
+function isSqlWhitespace(ch: string): boolean {
+  return (
+    ch === " " || ch === "\t" || ch === "\n" || ch === "\v" || ch === "\f" || ch === "\r"
+  );
+}
+
 /** Tokenize SQL, skipping whitespace and comments. */
 export function tokenizeSql(sql: string): SqlToken[] {
   const tokens: SqlToken[] = [];
@@ -69,7 +90,7 @@ export function tokenizeSql(sql: string): SqlToken[] {
   const n = sql.length;
   while (i < n) {
     const ch = sql[i];
-    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f") {
+    if (isSqlWhitespace(ch)) {
       i++;
       continue;
     }
@@ -347,11 +368,16 @@ export const UNKNOWN_ARGS = -1;
  * comments never confuse the scan — the tokenizer already collapsed
  * them. Calls nested in another call's arguments are extracted as
  * their own entries (mirrors the Java validator's SqlAnalyzer).
+ *
+ * A *quoted* name in call position counts too, in every quoting form:
+ * `"random"()`, `[random]()` and `` `random`() `` all invoke random()
+ * in SQLite. Matching bare identifiers alone let an author bypass every
+ * lint that reads this list simply by quoting the name.
  */
 export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   const calls: SqlFunctionCall[] = [];
   for (let i = 0; i + 1 < tokens.length; i++) {
-    if (tokens[i].kind === "identifier" && isPunctAt(tokens[i + 1], "(")) {
+    if (isIdentToken(tokens[i]) && isPunctAt(tokens[i + 1], "(")) {
       calls.push({
         name: tokens[i].value,
         argCount: countArgs(tokens, i + 2),

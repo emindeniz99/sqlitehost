@@ -1,0 +1,24 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-list-child-without-parent",
+  "requiredApiLevel": 1,
+  "requiredMethods": [
+    "getValues"
+  ],
+  "steps": [
+    {
+      "id": "children-only",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) VALUES (:callId, 0, 'alpha')",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "list-1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
