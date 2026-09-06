@@ -42,6 +42,13 @@ editor performs happens on the runner's throwaway checkout.
 `docs/compatibility.md` carries the full table and the lines a personal
 licence cannot reach.
 
+Half those legs compile the package with `SQLITEHOST_SLIM` and half
+without, so both vendoring builds get editor coverage for the same wall
+clock. The workflow's `matrix.build` decides, the define arrives as a
+`csc.rsp` it drops next to `com.sqlitehost.runtime/Runtime/SqliteHost.asmdef`,
+and `Assets/sqlitehost-build.txt` records the choice for the test below.
+The floor and 6000.3.22f1 stay on the shipping (`full`) build.
+
 ## The sample is copied in, never committed
 
 Unity ignores a package's `Samples~` folder, so `SmokeBehaviour.cs` is
@@ -59,6 +66,14 @@ Unity 2021.3.45f2 (or any editor from the workflow matrix) and run
 editor starts.
 
 ## What the tests check
+
+`Assets/Tests/EditMode/VendoringModeTests.cs` checks that the leg compiled
+the vendoring build it asked for: it reads `Assets/sqlitehost-build.txt`
+and looks for `SqliteHost.SqlParameterScanner` — the package's one
+whole-file `#if !SQLITEHOST_SLIM` — in the compiled assembly. Without it a
+`csc.rsp` that Unity had stopped reading would leave the slim legs
+compiling the full build and passing. It skips itself when the marker file
+is absent, which is what a hand-opened project looks like.
 
 `Assets/Tests/EditMode/CleanSkipRunTests.cs` drives the runtime through a
 fake in-memory connection factory. The package declares no native SQLite

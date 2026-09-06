@@ -31,3 +31,10 @@ CodeCoverage/
 # folder so the sample compiles under a real editor. Never committed here —
 # unity/com.sqlitehost.runtime/Samples~/ is the only copy that exists.
 Assets/Samples/
+
+# Written by the same workflow, per leg: which vendoring build (full or
+# slim) it asked the editor for. VendoringModeTests.cs reads it and
+# compares it against what the package assembly actually compiled. A
+# committed copy would make every hand-opened project claim a build it
+# never asked for.
+Assets/sqlitehost-build.txt
