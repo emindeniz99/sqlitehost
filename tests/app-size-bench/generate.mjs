@@ -110,6 +110,7 @@ function benchEntry(withHost) {
 const fakeAdapter = `sealed class Row : SqliteHost.ISqliteHostRow
 {
     public bool IsNull(int i) { return true; }
+    public SqliteHost.SqliteHostStorageClass GetStorageClass(int i) { return SqliteHost.SqliteHostStorageClass.Text; }
     public int GetInt32(int i) { return 0; }
     public long GetInt64(int i) { return 0; }
     public bool GetBool(int i) { return false; }
