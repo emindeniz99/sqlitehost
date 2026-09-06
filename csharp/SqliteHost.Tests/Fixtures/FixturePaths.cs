@@ -11,6 +11,9 @@ namespace SqliteHost.Tests.Fixtures
         public static string Schema(string fileName)
             => Path.Combine(Root, "schemas", fileName);
 
+        public static string Manifest(string fileName)
+            => Path.Combine(Root, "manifests", fileName);
+
         public static string Payload(string relativePath)
             => Path.Combine(Root, "payloads", relativePath);
 

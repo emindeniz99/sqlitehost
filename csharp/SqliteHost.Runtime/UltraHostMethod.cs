@@ -92,6 +92,27 @@ namespace SqliteHost
         IUltraHostMethodBuilder<THandlers> Inline(
             string functionName, int minArgs, int maxArgs);
 
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        IUltraHostMethodBuilder<THandlers> Column(string column);
+
+        /// <summary>
+        /// Physical child table name of the list field declared immediately
+        /// before this call (resolved <c>childTable</c>; omit to derive).
+        /// </summary>
+        IUltraHostMethodBuilder<THandlers> ChildTable(string childTable);
+
+        /// <summary>
+        /// Physical call/result/queue-trigger table names of this method
+        /// (resolved names from the manifest; omit to derive all three).
+        /// </summary>
+        IUltraHostMethodBuilder<THandlers> Tables(
+            string callTable, string resultTable, string queueTrigger);
+
         IHostMethodSpec<THandlers> Build();
     }
 
@@ -112,6 +133,14 @@ namespace SqliteHost
         IUltraListItemFieldsBuilder OptionalBlob(string sqlName);
         IUltraListItemFieldsBuilder OptionalFloat(string sqlName);
         IUltraListItemFieldsBuilder OptionalDouble(string sqlName);
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        IUltraListItemFieldsBuilder Column(string column);
     }
 
     /// <summary>One declared ultra field: name, kind, optionality.</summary>
@@ -127,6 +156,25 @@ namespace SqliteHost
         public string SqlName { get; }
         public HostScalarType ScalarType { get; }
         public bool Optional { get; }
+
+        /// <summary>Resolved physical column name, or null to derive it.</summary>
+        public string Column { get; set; }
+    }
+
+    /// <summary>One declared ultra list field: name, item fields, child table.</summary>
+    internal sealed class UltraListDecl
+    {
+        public UltraListDecl(string sqlName, List<UltraFieldDecl> fields)
+        {
+            SqlName = sqlName;
+            Fields = fields;
+        }
+
+        public string SqlName { get; }
+        public List<UltraFieldDecl> Fields { get; }
+
+        /// <summary>Resolved physical child table name, or null to derive it.</summary>
+        public string ChildTable { get; set; }
     }
 
     internal sealed class UltraListItemFieldsBuilder : IUltraListItemFieldsBuilder
@@ -216,19 +264,31 @@ namespace SqliteHost
             Fields.Add(new UltraFieldDecl(sqlName, HostScalarType.Float64, true));
             return this;
         }
+
+        public IUltraListItemFieldsBuilder Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
+            return this;
+        }
     }
 
     internal sealed class UltraHostMethodBuilder<THandlers> : IUltraHostMethodBuilder<THandlers>
     {
         private readonly string _methodName;
         private readonly List<UltraFieldDecl> _inputFields = new List<UltraFieldDecl>();
-        private readonly List<KeyValuePair<string, List<UltraFieldDecl>>> _inputLists =
-            new List<KeyValuePair<string, List<UltraFieldDecl>>>();
+        private readonly List<UltraListDecl> _inputLists = new List<UltraListDecl>();
         private readonly List<UltraFieldDecl> _resultFields = new List<UltraFieldDecl>();
-        private readonly List<KeyValuePair<string, List<UltraFieldDecl>>> _resultLists =
-            new List<KeyValuePair<string, List<UltraFieldDecl>>>();
+        private readonly List<UltraListDecl> _resultLists = new List<UltraListDecl>();
         private int _apiLevel = 1;
         private Func<object, SqliteHostUltraCall, SqliteHostUltraResult> _handler;
+        // Most recent scalar / list declaration, so Column(...) and
+        // ChildTable(...) attach to it (see CompactHostMethodBuilder).
+        private UltraFieldDecl _lastField;
+        private UltraListDecl _lastListField;
+        private string _callTable;
+        private string _resultTable;
+        private string _queueTrigger;
         private string _inlineFunctionName;
         private int _inlineMinArgs = InlineShapeRules.NotDeclared;
         private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
@@ -324,7 +384,8 @@ namespace SqliteHost
         {
             var itemBuilder = new UltraListItemFieldsBuilder();
             configureItem(itemBuilder);
-            _inputLists.Add(new KeyValuePair<string, List<UltraFieldDecl>>(sqlName, itemBuilder.Fields));
+            _lastListField = new UltraListDecl(sqlName, itemBuilder.Fields);
+            _inputLists.Add(_lastListField);
             return this;
         }
 
@@ -404,7 +465,8 @@ namespace SqliteHost
         {
             var itemBuilder = new UltraListItemFieldsBuilder();
             configureItem(itemBuilder);
-            _resultLists.Add(new KeyValuePair<string, List<UltraFieldDecl>>(sqlName, itemBuilder.Fields));
+            _lastListField = new UltraListDecl(sqlName, itemBuilder.Fields);
+            _resultLists.Add(_lastListField);
             return this;
         }
 
@@ -434,6 +496,29 @@ namespace SqliteHost
             return this;
         }
 
+        public IUltraHostMethodBuilder<THandlers> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(_lastField != null, "Column");
+            _lastField.Column = column;
+            return this;
+        }
+
+        public IUltraHostMethodBuilder<THandlers> ChildTable(string childTable)
+        {
+            SpecGuards.RequireDeclarationBefore(_lastListField != null, "ChildTable");
+            _lastListField.ChildTable = childTable;
+            return this;
+        }
+
+        public IUltraHostMethodBuilder<THandlers> Tables(
+            string callTable, string resultTable, string queueTrigger)
+        {
+            _callTable = callTable;
+            _resultTable = resultTable;
+            _queueTrigger = queueTrigger;
+            return this;
+        }
+
         public IHostMethodSpec<THandlers> Build()
         {
             if (_handler == null)
@@ -451,10 +536,10 @@ namespace SqliteHost
 
             var inputListFields = new List<ErasedInputListField>(_inputLists.Count);
             var listNames = new List<string>(_inputLists.Count);
-            foreach (KeyValuePair<string, List<UltraFieldDecl>> list in _inputLists)
+            foreach (UltraListDecl list in _inputLists)
             {
-                inputListFields.Add(UltraFields.InputList(list.Key, list.Value));
-                listNames.Add(list.Key);
+                inputListFields.Add(UltraFields.InputList(list));
+                listNames.Add(list.SqlName);
             }
 
             var resultFields = new List<ErasedWriteField>(_resultFields.Count);
@@ -464,9 +549,9 @@ namespace SqliteHost
             }
 
             var resultListFields = new List<ErasedResultListField>(_resultLists.Count);
-            foreach (KeyValuePair<string, List<UltraFieldDecl>> list in _resultLists)
+            foreach (UltraListDecl list in _resultLists)
             {
-                resultListFields.Add(UltraFields.ResultList(list.Key, list.Value));
+                resultListFields.Add(UltraFields.ResultList(list));
             }
 
             var shape = new UltraResultShape(_methodName, _resultFields, _resultLists);
@@ -501,18 +586,23 @@ namespace SqliteHost
                     resultFields.Count,
                     resultListFields.Count,
                     _inlineMinArgs,
-                    _inlineMaxArgs)));
+                    _inlineMaxArgs),
+                _callTable,
+                _resultTable,
+                _queueTrigger));
         }
 
         private IUltraHostMethodBuilder<THandlers> AddInput(string sqlName, HostScalarType type, bool optional)
         {
-            _inputFields.Add(new UltraFieldDecl(sqlName, type, optional));
+            _lastField = new UltraFieldDecl(sqlName, type, optional);
+            _inputFields.Add(_lastField);
             return this;
         }
 
         private IUltraHostMethodBuilder<THandlers> AddResult(string sqlName, HostScalarType type, bool optional)
         {
-            _resultFields.Add(new UltraFieldDecl(sqlName, type, optional));
+            _lastField = new UltraFieldDecl(sqlName, type, optional);
+            _resultFields.Add(_lastField);
             return this;
         }
     }

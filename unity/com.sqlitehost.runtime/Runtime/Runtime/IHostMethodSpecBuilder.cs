@@ -34,6 +34,16 @@ namespace SqliteHost
         IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(
             string functionName, int minArgs, int maxArgs);
 
+        /// <summary>
+        /// Physical call/result/queue-trigger table names of this method.
+        /// Generated code emits the manifest's resolved names so the host
+        /// reads and writes exactly the tables its own schema SQL creates;
+        /// omit the call and the runtime derives all three from the host
+        /// naming (docs/naming.md).
+        /// </summary>
+        IHostMethodSpecBuilder<THandlers, TInput, TResult> Tables(
+            string callTable, string resultTable, string queueTrigger);
+
         IHostMethodSpec<THandlers> Build();
     }
 }

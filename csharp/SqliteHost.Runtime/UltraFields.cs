@@ -27,7 +27,10 @@ namespace SqliteHost
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
                     ((IUltraValueSink)dto).Store(sqlName, ReadValue(row, index, scalarType, optional));
-                });
+                })
+            {
+                Column = decl.Column
+            };
         }
 
         public static ErasedWriteField WriteField(UltraFieldDecl decl)
@@ -38,11 +41,16 @@ namespace SqliteHost
                 delegate(object source)
                 {
                     return ((IUltraValueSource)source).ReadStored(sqlName, optional);
-                });
+                })
+            {
+                Column = decl.Column
+            };
         }
 
-        public static ErasedInputListField InputList(string sqlName, List<UltraFieldDecl> itemDecls)
+        public static ErasedInputListField InputList(UltraListDecl list)
         {
+            List<UltraFieldDecl> itemDecls = list.Fields;
+            string sqlName = list.SqlName;
             var itemFields = new List<ErasedReadField>(itemDecls.Count);
             foreach (UltraFieldDecl decl in itemDecls)
             {
@@ -62,11 +70,16 @@ namespace SqliteHost
                         rows.Add((SqliteHostUltraRow)items[i]);
                     }
                     ((SqliteHostUltraCall)dto).AssignList(listName, rows);
-                });
+                })
+            {
+                ChildTable = list.ChildTable
+            };
         }
 
-        public static ErasedResultListField ResultList(string sqlName, List<UltraFieldDecl> itemDecls)
+        public static ErasedResultListField ResultList(UltraListDecl list)
         {
+            List<UltraFieldDecl> itemDecls = list.Fields;
+            string sqlName = list.SqlName;
             var itemFields = new List<ErasedWriteField>(itemDecls.Count);
             foreach (UltraFieldDecl decl in itemDecls)
             {
@@ -77,7 +90,10 @@ namespace SqliteHost
                 sqlName,
                 ToSchemaFields(itemDecls),
                 delegate(object result) { return ((SqliteHostUltraResult)result).BoxedRows(listName); },
-                itemFields);
+                itemFields)
+            {
+                ChildTable = list.ChildTable
+            };
         }
 
         public static IReadOnlyList<SchemaFieldModel> ToSchemaFields(List<UltraFieldDecl> decls)
@@ -85,7 +101,7 @@ namespace SqliteHost
             var schemaFields = new List<SchemaFieldModel>(decls.Count);
             foreach (UltraFieldDecl decl in decls)
             {
-                schemaFields.Add(new SchemaFieldModel(decl.SqlName, decl.ScalarType, decl.Optional));
+                schemaFields.Add(new SchemaFieldModel(decl.SqlName, decl.ScalarType, decl.Optional, decl.Column));
             }
             return schemaFields;
         }
@@ -128,7 +144,7 @@ namespace SqliteHost
         public UltraResultShape(
             string methodName,
             IReadOnlyList<UltraFieldDecl> fields,
-            IReadOnlyList<KeyValuePair<string, List<UltraFieldDecl>>> lists)
+            IReadOnlyList<UltraListDecl> lists)
         {
             _methodName = methodName;
             _fields = fields;
@@ -138,9 +154,9 @@ namespace SqliteHost
                 _fieldsByName[field.SqlName] = field;
             }
             _listsByName = new Dictionary<string, IReadOnlyList<UltraFieldDecl>>(StringComparer.Ordinal);
-            foreach (KeyValuePair<string, List<UltraFieldDecl>> list in lists)
+            foreach (UltraListDecl list in lists)
             {
-                _listsByName[list.Key] = list.Value;
+                _listsByName[list.SqlName] = list.Fields;
             }
         }
 

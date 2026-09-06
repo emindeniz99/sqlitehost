@@ -29,5 +29,20 @@ namespace SqliteHost
             string sqlName,
             Action<TInput, List<TItem>> setter,
             Action<IListItemFieldsBuilder<TItem>> configureItem) where TItem : new();
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        IInputFieldsBuilder<TInput> Column(string column);
+
+        /// <summary>
+        /// Physical child table name of the list field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>childTable</c>; omit it and the runtime derives it.
+        /// </summary>
+        IInputFieldsBuilder<TInput> ChildTable(string childTable);
     }
 }

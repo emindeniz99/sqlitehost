@@ -744,3 +744,90 @@ test("CLI accepts --dto-fields and writes the fields DTO variant", () => {
     fieldsVariantOf(golden),
   );
 });
+
+// ---------------------------------------------------------------------------
+// Resolved names: the specs must name what the schema SQL creates.
+// ---------------------------------------------------------------------------
+
+/**
+ * The smoke IR with the physical names of its first method rewritten to
+ * something the naming conventions would never produce. Nothing but the
+ * frontend writes these fields today, so the two halves of a generated
+ * host agreed by luck: the schema SQL read them and the specs did not.
+ * A manifest is an input to three CLIs that accept any path, and
+ * parseManifest does not check that a resolved name matches what the
+ * naming would derive — so "they always agree" is a property of the
+ * frontend, not of the emitter.
+ */
+function renamedIr(): HostLibraryIr {
+  const ir = smokeIr();
+  const method = ir.methods[0];
+  method.callTable = "legacy_call_table";
+  method.resultTable = "legacy_result_table";
+  method.queueTrigger = "trg_legacy_queue";
+  // payload, not report_id: only the first method declares it, so the
+  // superseded name below is unique to the method being renamed.
+  method.input.fields[1].column = "legacy_payload";
+  method.result.fields[0].column = "legacy_archived";
+  method.result.listFields[0].childTable = "legacy_tags";
+  method.result.listFields[0].itemFields[0].column = "legacy_label";
+  return ir;
+}
+
+const renamedNames = [
+  "legacy_call_table",
+  "legacy_result_table",
+  "trg_legacy_queue",
+  "legacy_payload",
+  "legacy_archived",
+  "legacy_tags",
+  "legacy_label",
+];
+
+/** What the naming conventions would have derived for the same method. */
+const supersededNames = [
+  "hc_archive_report",
+  "hr_archive_report",
+  "trg_hc_archive_report_queue",
+  "in_payload",
+  "out_archived",
+  "hr_archive_report__out_tags",
+  "out_label",
+];
+
+for (const profile of ["classic", "compact", "ultra"] as const) {
+  test(`${profile} profile: the specs carry the manifest's resolved names`, () => {
+    const files = emitCSharp(renamedIr(), { profile });
+    const specs = files.find((f) => f.path === "GeneratedHostMethodSpecs.g.cs")!
+      .contents;
+    const schema = files.find((f) => f.path === "GeneratedSchemaSql.g.cs")!
+      .contents;
+    for (const name of renamedNames) {
+      assert.ok(schema.includes(name), `schema is missing ${name}`);
+      assert.ok(specs.includes(name), `specs are missing ${name}`);
+    }
+    for (const name of supersededNames) {
+      assert.ok(!schema.includes(name), `schema still derives ${name}`);
+      assert.ok(!specs.includes(name), `specs still derive ${name}`);
+    }
+  });
+}
+
+for (const profile of ["classic", "compact", "ultra"] as const) {
+  test(`${profile} profile: a derivable name costs no bytes`, () => {
+    // The complement of the three tests above, and the reason they are
+    // not visible in the committed goldens: on a frontend-produced
+    // manifest every resolved name equals what the naming rules derive,
+    // the runtime's NamingDerivation recomputes it, and the spec says
+    // nothing. tests/app-size-bench measures the difference.
+    const specs = emitCSharp(sampleIr(), { profile }).find(
+      (f) => f.path === "GeneratedHostMethodSpecs.g.cs",
+    )!.contents;
+    assert.ok(!specs.includes(".Tables("), "specs restate derived tables");
+    assert.ok(!specs.includes(".Column("), "specs restate derived columns");
+    assert.ok(
+      !specs.includes(".ChildTable("),
+      "specs restate derived child tables",
+    );
+  });
+}

@@ -12,6 +12,9 @@ namespace SqliteHost
         private readonly ResultFieldsBuilder<TResult> _results = new ResultFieldsBuilder<TResult>();
         private int _apiLevel = 1;
         private Func<THandlers, TInput, TResult> _handler;
+        private string _callTable;
+        private string _resultTable;
+        private string _queueTrigger;
         private string _inlineFunctionName;
         private int _inlineMinArgs = InlineShapeRules.NotDeclared;
         private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
@@ -72,6 +75,15 @@ namespace SqliteHost
             return this;
         }
 
+        public IHostMethodSpecBuilder<THandlers, TInput, TResult> Tables(
+            string callTable, string resultTable, string queueTrigger)
+        {
+            _callTable = callTable;
+            _resultTable = resultTable;
+            _queueTrigger = queueTrigger;
+            return this;
+        }
+
         public IHostMethodSpec<THandlers> Build()
         {
             if (_handler == null)
@@ -97,7 +109,10 @@ namespace SqliteHost
                     _results.Fields.Count,
                     _results.ListFields.Count,
                     _inlineMinArgs,
-                    _inlineMaxArgs)));
+                    _inlineMaxArgs),
+                _callTable,
+                _resultTable,
+                _queueTrigger));
         }
     }
 }

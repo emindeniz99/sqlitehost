@@ -376,6 +376,10 @@ public interface IHostMethodSpecBuilder<THandlers, TInput, TResult>
     // definition needs.
     IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(
         string functionName, int minArgs, int maxArgs);
+    // Resolved physical table names of this method (call, result, queue
+    // trigger). See "Resolved names" below.
+    IHostMethodSpecBuilder<THandlers, TInput, TResult> Tables(
+        string callTable, string resultTable, string queueTrigger);
     IHostMethodSpec<THandlers> Build();
 }
 ```
@@ -404,6 +408,10 @@ public interface IInputFieldsBuilder<TInput>
         string sqlName,
         Action<TInput, List<TItem>> setter,
         Action<IListItemFieldsBuilder<TItem>> configureItem) where TItem : new();
+    // Resolved physical names of the declaration immediately before the
+    // call. See "Resolved names" below.
+    IInputFieldsBuilder<TInput> Column(string column);
+    IInputFieldsBuilder<TInput> ChildTable(string childTable);
 }
 
 public interface IListItemFieldsBuilder<TItem>
@@ -422,6 +430,7 @@ public interface IListItemFieldsBuilder<TItem>
     IListItemFieldsBuilder<TItem> OptionalBlob(string sqlName, Action<TItem, byte[]> setter);
     IListItemFieldsBuilder<TItem> OptionalFloat(string sqlName, Action<TItem, float?> setter);
     IListItemFieldsBuilder<TItem> OptionalDouble(string sqlName, Action<TItem, double?> setter);
+    IListItemFieldsBuilder<TItem> Column(string column);
 }
 
 public interface IResultFieldsBuilder<TResult>
@@ -444,6 +453,8 @@ public interface IResultFieldsBuilder<TResult>
         string sqlName,
         Func<TResult, List<TItem>> getter,
         Action<IListItemResultFieldsBuilder<TItem>> configureItem);
+    IResultFieldsBuilder<TResult> Column(string column);
+    IResultFieldsBuilder<TResult> ChildTable(string childTable);
 }
 
 public interface IListItemResultFieldsBuilder<TItem>
@@ -462,6 +473,7 @@ public interface IListItemResultFieldsBuilder<TItem>
     IListItemResultFieldsBuilder<TItem> OptionalBlob(string sqlName, Func<TItem, byte[]> getter);
     IListItemResultFieldsBuilder<TItem> OptionalFloat(string sqlName, Func<TItem, float?> getter);
     IListItemResultFieldsBuilder<TItem> OptionalDouble(string sqlName, Func<TItem, double?> getter);
+    IListItemResultFieldsBuilder<TItem> Column(string column);
 }
 ```
 
@@ -469,6 +481,36 @@ DTO types must be **classes**: the erased execution core passes DTOs
 around boxed, so `HostMethod.For<...>` and the `List<TItem>` field
 builders reject value-type DTO/item types fail-loud
 (`ArgumentException`, "must be classes") at registration time.
+
+#### Resolved names
+
+`Tables`, `Column` and `ChildTable` carry the **physical** names —
+everything else in a descriptor is logical. They exist because a
+generated host ships its own schema SQL: the manifest already resolved
+every table and column (`callTable`, `resultTable`, `queueTrigger`,
+`column`, `childTable`), and a runtime that re-derived them instead
+could answer differently from the DDL the same host created.
+
+A spec carries a name only where the manifest's resolved name differs
+from what the naming rules derive (`docs/naming.md`). Generated code
+therefore emits none of these calls for a manifest the TypeSpec
+frontend produced — every name there is derivable, the runtime's
+derivation reproduces it, and a literal per method and per field would
+cost app-size bytes to restate what the runtime already computes
+(`tests/app-size-bench` pins that). The calls appear where a manifest
+was hand-written or rewritten and the two disagree, and a hand-written
+definition may use them the same way. That makes the derivation
+load-bearing for generated hosts rather than a fallback for
+hand-written ones, and it is pinned against the frontend's own manifest
+by `NamingDerivationManifestTests`.
+
+`Column` and `ChildTable` name the declaration immediately before the
+call — the scalar field and the list field respectively — and throw
+`InvalidOperationException` when nothing has been declared yet, in
+slim builds too: dropping the name silently would leave the runtime
+deriving a column the generated schema never created. `Tables` takes
+all three method-level names together, since a partial override is a
+host whose trigger and call table disagree.
 
 ### Compact descriptor API (size profile `compact`)
 
@@ -510,12 +552,19 @@ public interface ICompactHostMethodBuilder<THandlers>
     // Arity-carrying overload used by generated code; see the
     // classic builder above.
     ICompactHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs);
+    // Resolved names; see "Resolved names" under the classic builder.
+    // Column/ChildTable name the last scalar / list declaration on the
+    // flat chain, whether it was an Input* or a Result* one.
+    ICompactHostMethodBuilder<THandlers> Column(string column);
+    ICompactHostMethodBuilder<THandlers> ChildTable(string childTable);
+    ICompactHostMethodBuilder<THandlers> Tables(
+        string callTable, string resultTable, string queueTrigger);
     IHostMethodSpec<THandlers> Build();
 }
 
-// Item builders: the same 14 scalar kinds with erased accessors.
-public interface ICompactListItemFieldsBuilder { /* Int(string, Action<object,int>) ... OptionalDouble */ }
-public interface ICompactListItemResultFieldsBuilder { /* Int(string, Func<object,int>) ... OptionalDouble */ }
+// Item builders: the same 14 scalar kinds with erased accessors, plus Column.
+public interface ICompactListItemFieldsBuilder { /* Int(string, Action<object,int>) ... OptionalDouble, Column(string) */ }
+public interface ICompactListItemResultFieldsBuilder { /* Int(string, Func<object,int>) ... OptionalDouble, Column(string) */ }
 ```
 
 `Build()` enforces the classic preconditions with the same messages
@@ -555,10 +604,15 @@ public interface IUltraHostMethodBuilder<THandlers>
     // Arity-carrying overload used by generated code; see the
     // classic builder above.
     IUltraHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs);
+    // Resolved names; see "Resolved names" under the classic builder.
+    IUltraHostMethodBuilder<THandlers> Column(string column);
+    IUltraHostMethodBuilder<THandlers> ChildTable(string childTable);
+    IUltraHostMethodBuilder<THandlers> Tables(
+        string callTable, string resultTable, string queueTrigger);
     IHostMethodSpec<THandlers> Build();
 }
 
-public interface IUltraListItemFieldsBuilder { /* Int(string) ... OptionalDouble(string), shared by input and result lists */ }
+public interface IUltraListItemFieldsBuilder { /* Int(string) ... OptionalDouble(string), Column(string); shared by input and result lists */ }
 
 public sealed class SqliteHostUltraCall
 {
@@ -728,7 +782,7 @@ where the accessors cost real bytes; measured in
 |---|---|
 | `HostMethodDtos.g.cs` | input/result/item DTO classes — plain classes, public auto-properties, `List<T>` properties initialized to `new List<T>()` |
 | `IGeneratedHostHandlers.g.cs` | handler interface, one method per op: `GetValueResult GetValue(GetValueInput input);` |
-| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API |
+| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API — a physical name the naming rules would not derive is emitted with it (`.Tables(...)` after `.ApiLevel`, `.Column(...)` after the scalar field, `.ChildTable(...)` after the list field), so the spec and `GeneratedSchemaSql.g.cs` cannot name different tables; a frontend-produced manifest derives every name and emits none of the three |
 | `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all eleven naming values explicitly (six prefixes, the queue/inputs/vars/control table names, the function prefix), followed by a `.Columns(...)` block emitting all fourteen column identifiers |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
 

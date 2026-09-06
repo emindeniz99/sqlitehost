@@ -32,7 +32,10 @@ namespace SqliteHost
             IReadOnlyList<ErasedWriteField> resultFields,
             IReadOnlyList<ErasedResultListField> resultListFields,
             Func<object, object, object> handler,
-            InlineFunctionModel inlineFunction)
+            InlineFunctionModel inlineFunction,
+            string callTable = null,
+            string resultTable = null,
+            string queueTrigger = null)
         {
             MethodName = methodName;
             ApiLevel = apiLevel;
@@ -43,7 +46,7 @@ namespace SqliteHost
             _resultListFields = resultListFields;
             _handler = handler;
             InlineFunction = inlineFunction;
-            SchemaModel = BuildSchemaModel();
+            SchemaModel = BuildSchemaModel(callTable, resultTable, queueTrigger);
         }
 
         public string MethodName { get; }
@@ -157,11 +160,11 @@ namespace SqliteHost
             SqliteHostColumns hostColumns,
             string callId)
         {
-            string callTable = NamingDerivation.CallTable(naming, MethodName);
+            string callTable = ResolvedNames.CallTable(naming, SchemaModel);
             var columns = new List<string>();
             foreach (ErasedReadField field in _inputFields)
             {
-                columns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                columns.Add(field.ColumnName(naming));
             }
             string selectList = columns.Count > 0 ? string.Join(", ", columns) : hostColumns.CallId;
             string sql = "SELECT " + selectList + " FROM " + callTable
@@ -204,12 +207,13 @@ namespace SqliteHost
             SqliteHostColumns hostColumns,
             string callId)
         {
-            string childTable = NamingDerivation.InputListTable(naming, MethodName, listField.SqlName);
+            string childTable = listField.ChildTable
+                ?? NamingDerivation.InputListTable(naming, MethodName, listField.SqlName);
             var columns = new List<string>();
             IReadOnlyList<ErasedReadField> itemFields = listField.ItemFields;
             foreach (ErasedReadField field in itemFields)
             {
-                columns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                columns.Add(field.ColumnName(naming));
             }
             string sql = "SELECT " + string.Join(", ", columns)
                 + " FROM " + childTable
@@ -237,7 +241,7 @@ namespace SqliteHost
             string callId,
             object result)
         {
-            string resultTable = NamingDerivation.ResultTable(naming, MethodName);
+            string resultTable = ResolvedNames.ResultTable(naming, SchemaModel);
             var columns = new List<string> { hostColumns.CallId, hostColumns.Status };
             var placeholders = new List<string> { ":callId", ":status" };
             var bindings = new List<SqliteHostBinding>
@@ -249,7 +253,7 @@ namespace SqliteHost
             {
                 ErasedWriteField field = _resultFields[i];
                 string parameter = "r" + i;
-                columns.Add(NamingDerivation.ResultColumn(naming, field.SqlName));
+                columns.Add(field.ColumnName(naming));
                 placeholders.Add(":" + parameter);
                 bindings.Add(new SqliteHostBinding(parameter, field.Read(result)));
             }
@@ -272,13 +276,14 @@ namespace SqliteHost
             {
                 return;
             }
-            string childTable = NamingDerivation.ResultListTable(naming, MethodName, listField.SqlName);
+            string childTable = listField.ChildTable
+                ?? NamingDerivation.ResultListTable(naming, MethodName, listField.SqlName);
             IReadOnlyList<ErasedWriteField> itemFields = listField.ItemFields;
             var columns = new List<string> { hostColumns.CallId, hostColumns.ItemIndex };
             var placeholders = new List<string> { ":callId", ":itemIndex" };
             for (int i = 0; i < itemFields.Count; i++)
             {
-                columns.Add(NamingDerivation.ResultColumn(naming, itemFields[i].SqlName));
+                columns.Add(itemFields[i].ColumnName(naming));
                 placeholders.Add(":v" + i);
             }
             string sql = "INSERT INTO " + childTable
@@ -299,7 +304,10 @@ namespace SqliteHost
             }
         }
 
-        private SchemaMethodModel BuildSchemaModel()
+        private SchemaMethodModel BuildSchemaModel(
+            string callTable,
+            string resultTable,
+            string queueTrigger)
         {
             var inputFields = new List<SchemaFieldModel>();
             foreach (ErasedReadField field in _inputFields)
@@ -309,7 +317,8 @@ namespace SqliteHost
             var inputListFields = new List<SchemaListFieldModel>();
             foreach (ErasedInputListField listField in _inputListFields)
             {
-                inputListFields.Add(new SchemaListFieldModel(listField.SqlName, listField.ItemSchemaFields));
+                inputListFields.Add(new SchemaListFieldModel(
+                    listField.SqlName, listField.ItemSchemaFields, listField.ChildTable));
             }
             var resultFields = new List<SchemaFieldModel>();
             foreach (ErasedWriteField field in _resultFields)
@@ -319,9 +328,18 @@ namespace SqliteHost
             var resultListFields = new List<SchemaListFieldModel>();
             foreach (ErasedResultListField listField in _resultListFields)
             {
-                resultListFields.Add(new SchemaListFieldModel(listField.SqlName, listField.ItemSchemaFields));
+                resultListFields.Add(new SchemaListFieldModel(
+                    listField.SqlName, listField.ItemSchemaFields, listField.ChildTable));
             }
-            return new SchemaMethodModel(MethodName, inputFields, inputListFields, resultFields, resultListFields);
+            return new SchemaMethodModel(
+                MethodName,
+                inputFields,
+                inputListFields,
+                resultFields,
+                resultListFields,
+                callTable,
+                resultTable,
+                queueTrigger);
         }
     }
 

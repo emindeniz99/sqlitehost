@@ -42,30 +42,30 @@ namespace SqliteHost
             foreach (SchemaMethodModel method in methods)
             {
                 statements.Add(ParentTableDdl(
-                    NamingDerivation.CallTable(naming, method.MethodName),
+                    ResolvedNames.CallTable(naming, method),
                     columns,
                     InputColumnLines(naming, method.InputFields),
                     false));
                 foreach (SchemaListFieldModel listField in method.InputListFields)
                 {
                     statements.Add(ChildTableDdl(
-                        NamingDerivation.InputListTable(naming, method.MethodName, listField.SqlName),
+                        ResolvedNames.InputListTable(naming, method, listField),
                         columns,
                         InputColumnLines(naming, listField.ItemFields)));
                 }
                 statements.Add(ParentTableDdl(
-                    NamingDerivation.ResultTable(naming, method.MethodName),
+                    ResolvedNames.ResultTable(naming, method),
                     columns,
                     ResultColumnLines(naming, method.ResultFields),
                     true));
                 foreach (SchemaListFieldModel listField in method.ResultListFields)
                 {
                     statements.Add(ChildTableDdl(
-                        NamingDerivation.ResultListTable(naming, method.MethodName, listField.SqlName),
+                        ResolvedNames.ResultListTable(naming, method, listField),
                         columns,
                         ResultColumnLines(naming, listField.ItemFields)));
                 }
-                statements.Add(QueueTriggerDdl(naming, columns, method.MethodName));
+                statements.Add(QueueTriggerDdl(naming, columns, method));
             }
             return statements;
         }
@@ -96,7 +96,7 @@ namespace SqliteHost
             var lines = new List<string>();
             foreach (SchemaFieldModel field in fields)
             {
-                lines.Add(ScalarColumnLine(NamingDerivation.InputColumn(naming, field.SqlName), field));
+                lines.Add(ScalarColumnLine(ResolvedNames.InputColumn(naming, field), field));
             }
             return lines;
         }
@@ -108,7 +108,7 @@ namespace SqliteHost
             var lines = new List<string>();
             foreach (SchemaFieldModel field in fields)
             {
-                lines.Add(ScalarColumnLine(NamingDerivation.ResultColumn(naming, field.SqlName), field));
+                lines.Add(ScalarColumnLine(ResolvedNames.ResultColumn(naming, field), field));
             }
             return lines;
         }
@@ -198,10 +198,11 @@ namespace SqliteHost
         private static string QueueTriggerDdl(
             SqliteHostNaming naming,
             SqliteHostColumns columns,
-            string methodName)
+            SchemaMethodModel method)
         {
-            return "CREATE TRIGGER " + NamingDerivation.QueueTrigger(naming, methodName) + "\n"
-                + "AFTER INSERT ON " + NamingDerivation.CallTable(naming, methodName) + "\n"
+            string methodName = method.MethodName;
+            return "CREATE TRIGGER " + ResolvedNames.QueueTrigger(naming, method) + "\n"
+                + "AFTER INSERT ON " + ResolvedNames.CallTable(naming, method) + "\n"
                 + "BEGIN\n"
                 + "    INSERT INTO " + naming.QueueTable + " (" + columns.CallId + ", " + columns.Method + ")\n"
                 + "    VALUES (NEW." + columns.CallId + ", '" + methodName + "');\n"

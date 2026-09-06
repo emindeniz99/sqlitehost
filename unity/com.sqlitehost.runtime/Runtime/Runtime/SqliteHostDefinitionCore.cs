@@ -118,15 +118,15 @@ namespace SqliteHost
             foreach (ErasedHostMethodSpec spec in specs)
             {
                 SchemaMethodModel model = spec.SchemaModel;
-                tableNames.Add(NamingDerivation.CallTable(naming, model.MethodName));
-                tableNames.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                tableNames.Add(ResolvedNames.CallTable(naming, model));
+                tableNames.Add(ResolvedNames.ResultTable(naming, model));
                 foreach (SchemaListFieldModel listField in model.InputListFields)
                 {
-                    tableNames.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                    tableNames.Add(ResolvedNames.InputListTable(naming, model, listField));
                 }
                 foreach (SchemaListFieldModel listField in model.ResultListFields)
                 {
-                    tableNames.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                    tableNames.Add(ResolvedNames.ResultListTable(naming, model, listField));
                 }
             }
             var functionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -242,15 +242,15 @@ namespace SqliteHost
             {
                 SchemaMethodModel model = spec.SchemaModel;
                 var derivedTables = new List<string>();
-                derivedTables.Add(NamingDerivation.CallTable(naming, model.MethodName));
-                derivedTables.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                derivedTables.Add(ResolvedNames.CallTable(naming, model));
+                derivedTables.Add(ResolvedNames.ResultTable(naming, model));
                 foreach (SchemaListFieldModel listField in model.InputListFields)
                 {
-                    derivedTables.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                    derivedTables.Add(ResolvedNames.InputListTable(naming, model, listField));
                 }
                 foreach (SchemaListFieldModel listField in model.ResultListFields)
                 {
-                    derivedTables.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                    derivedTables.Add(ResolvedNames.ResultListTable(naming, model, listField));
                 }
                 foreach (string derivedTable in derivedTables)
                 {
@@ -283,15 +283,15 @@ namespace SqliteHost
             {
                 SchemaMethodModel model = spec.SchemaModel;
                 var derivedTables = new List<string>();
-                derivedTables.Add(NamingDerivation.CallTable(naming, model.MethodName));
-                derivedTables.Add(NamingDerivation.ResultTable(naming, model.MethodName));
+                derivedTables.Add(ResolvedNames.CallTable(naming, model));
+                derivedTables.Add(ResolvedNames.ResultTable(naming, model));
                 foreach (SchemaListFieldModel listField in model.InputListFields)
                 {
-                    derivedTables.Add(NamingDerivation.InputListTable(naming, model.MethodName, listField.SqlName));
+                    derivedTables.Add(ResolvedNames.InputListTable(naming, model, listField));
                 }
                 foreach (SchemaListFieldModel listField in model.ResultListFields)
                 {
-                    derivedTables.Add(NamingDerivation.ResultListTable(naming, model.MethodName, listField.SqlName));
+                    derivedTables.Add(ResolvedNames.ResultListTable(naming, model, listField));
                 }
                 foreach (string derivedTable in derivedTables)
                 {
@@ -419,24 +419,24 @@ namespace SqliteHost
                 var derivedColumns = new List<string>();
                 foreach (SchemaFieldModel field in model.InputFields)
                 {
-                    derivedColumns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                    derivedColumns.Add(ResolvedNames.InputColumn(naming, field));
                 }
                 foreach (SchemaListFieldModel listField in model.InputListFields)
                 {
                     foreach (SchemaFieldModel field in listField.ItemFields)
                     {
-                        derivedColumns.Add(NamingDerivation.InputColumn(naming, field.SqlName));
+                        derivedColumns.Add(ResolvedNames.InputColumn(naming, field));
                     }
                 }
                 foreach (SchemaFieldModel field in model.ResultFields)
                 {
-                    derivedColumns.Add(NamingDerivation.ResultColumn(naming, field.SqlName));
+                    derivedColumns.Add(ResolvedNames.ResultColumn(naming, field));
                 }
                 foreach (SchemaListFieldModel listField in model.ResultListFields)
                 {
                     foreach (SchemaFieldModel field in listField.ItemFields)
                     {
-                        derivedColumns.Add(NamingDerivation.ResultColumn(naming, field.SqlName));
+                        derivedColumns.Add(ResolvedNames.ResultColumn(naming, field));
                     }
                 }
                 foreach (string derivedColumn in derivedColumns)
