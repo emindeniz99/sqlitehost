@@ -6,6 +6,7 @@ import type {
   Program,
 } from "@typespec/compiler";
 import { reportDiagnostic, stateKeys } from "./lib.js";
+import { reservedWordLanguages } from "./reserved.js";
 
 /** Resolved `@hostLibrary` options (naming keys stay optional here; the frontend applies defaults). */
 export interface HostLibraryOptions {
@@ -162,6 +163,34 @@ export function $hostMethod(
     reportDiagnostic(context.program, {
       code: "invalid-handler-name",
       format: { name: opts.handler },
+      target: context.decoratorTarget,
+    });
+  } else {
+    // IDENTIFIER is the TypeSpec/SQL shape; a name that satisfies it can
+    // still be a target-language keyword. The C# emitter interpolates
+    // the handler name raw into the handler interface member and both
+    // call sites, with no @-verbatim path.
+    const languages = reservedWordLanguages(opts.handler);
+    if (languages.length > 0) {
+      reportDiagnostic(context.program, {
+        code: "reserved-word-name",
+        format: {
+          kind: "Handler name",
+          name: opts.handler,
+          languages: languages.join(" and "),
+        },
+        target: context.decoratorTarget,
+      });
+    }
+  }
+  // functionName overrides the derived functionPrefix + snake(name) and
+  // is registered verbatim as a SQL function name, so it has to be a
+  // SQL name. Without this a name like "my func'; --" registers cleanly
+  // in the runtime and is then unreachable from any script.
+  if (opts.functionName !== undefined && !SQL_NAME.test(opts.functionName)) {
+    reportDiagnostic(context.program, {
+      code: "invalid-function-name",
+      format: { name: opts.functionName },
       target: context.decoratorTarget,
     });
   }

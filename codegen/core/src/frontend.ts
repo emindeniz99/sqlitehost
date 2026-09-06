@@ -70,6 +70,7 @@ import {
   deriveResultColumn,
   deriveResultListTable,
   deriveResultTable,
+  toKebabCase,
   toSnakeCase,
 } from "./naming.js";
 import {
@@ -160,9 +161,10 @@ export function buildHostLibraryIr(program: Program): HostLibraryIr | undefined 
 
 /**
  * Normalize an already compiled Program into one IR per @hostLibrary
- * interface, in declaration order. Interface names must be unique
- * across the compilation (they name the emitted artifacts); derived
- * table names may collide *across* libraries because each library is an
+ * interface, in declaration order. Interface names must derive unique
+ * kebab-case base names across the compilation (those name the emitted
+ * artifacts); derived table names may collide *across* libraries
+ * because each library is an
  * independent workspace. Reports diagnostics into the program and
  * returns undefined when any library fails validation.
  */
@@ -176,17 +178,27 @@ export function buildHostLibraryIrs(
   }
 
   let ok = true;
-  const names = new Set<string>();
+  // Keyed on the ARTIFACT base name, not on iface.name: what has to be
+  // unique is what names the files, and that is
+  // toKebabCase(interfaceName) (manifest-emitter's libraryBaseName).
+  // Kebab-casing lowercases and merges `_` with the camel-case boundary,
+  // so `Foo`/`foo` and `FooBar`/`Foo_bar` are distinct interface names
+  // that write the same manifest and DDL paths — and the write loop has
+  // no collision check, so the second library silently replaced the
+  // first.
+  const baseNames = new Map<string, string>();
   for (const iface of interfaces) {
-    if (names.has(iface.name)) {
+    const baseName = toKebabCase(iface.name);
+    const first = baseNames.get(baseName);
+    if (first !== undefined) {
       reportDiagnostic(program, {
         code: "duplicate-host-library-name",
-        format: { name: iface.name },
+        format: { first, second: iface.name, baseName },
         target: iface,
       });
       ok = false;
     } else {
-      names.add(iface.name);
+      baseNames.set(baseName, iface.name);
     }
   }
 

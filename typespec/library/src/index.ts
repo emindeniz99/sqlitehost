@@ -13,6 +13,13 @@ export {
   SQL_NAME,
 } from "./decorators.js";
 export type { HostLibraryOptions, HostMethodOptions } from "./decorators.js";
+export {
+  CSHARP_RESERVED_WORDS,
+  JAVA_RESERVED_WORDS,
+  isCSharpReservedWord,
+  isJavaReservedWord,
+  reservedWordLanguages,
+} from "./reserved.js";
 
 import { $hostLibrary, $hostMethod, $sqlName } from "./decorators.js";
 

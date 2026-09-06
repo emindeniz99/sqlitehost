@@ -5,6 +5,7 @@
  * against fixtures/manifests/*.manifest.json.
  */
 
+import { checkManifest } from "./manifest-check.js";
 import type {
   HostLibraryIr,
   HostMethodIr,
@@ -141,7 +142,26 @@ export function serializeManifest(ir: HostLibraryIr): string {
   return JSON.stringify(manifest, null, 2) + "\n";
 }
 
-/** Parse a manifest JSON string back into the IR shape (no validation). */
+/**
+ * Parse a manifest JSON string into the IR, validating its structure.
+ *
+ * Throws a SyntaxError for malformed JSON and a ManifestValidationError
+ * listing every structural problem otherwise. Every emitter funnels
+ * through here, so this is the single place a hand-edited or
+ * merge-conflicted manifest is caught — see manifest-check.ts for what
+ * is checked and what is deliberately not.
+ */
 export function parseManifest(json: string): HostLibraryIr {
+  const value: unknown = JSON.parse(json);
+  checkManifest(value);
+  return value;
+}
+
+/**
+ * Parse without validating. For callers that construct a deliberately
+ * partial or non-conforming IR — test fixtures probing emitter
+ * behaviour — and for nothing else.
+ */
+export function parseManifestUnchecked(json: string): HostLibraryIr {
   return JSON.parse(json) as HostLibraryIr;
 }

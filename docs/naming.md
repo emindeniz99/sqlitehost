@@ -38,8 +38,17 @@ functionPrefix: fn_                  (default; inline scalar functions)
 
 Derived inline function name: `functionPrefix + snake(methodName)` —
 `getValue` → `fn_get_value` (only for inline-eligible methods; see
-`docs/proposals/inline-host-functions.md`). Diagnostics reject
-collisions with derived names and SQLite built-in function names.
+`docs/proposals/inline-host-functions.md`). An explicit
+`@hostMethod({ functionName })` must be snake_case, the same shape
+`@sqlName` takes — it is registered verbatim as a SQL function name.
+Diagnostics reject collisions with derived names and with every name
+SQLite already owns: the built-in functions, the compile-option-gated
+ones, the version-gated ones and their `json_*`/`jsonb_*` families, the
+nondeterministic and wall-clock names, the built-ins scripts may not
+call, and the `sqlite_*` system tables. Naming an inline function after
+a built-in is not just confusing — the script lint exempts declared
+inline functions from the portability and version rules, so the name
+would switch those rules off for itself.
 
 Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
 ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`, same reason as the prefixes

@@ -377,3 +377,103 @@ test("the authoritative sample compiles without diagnostics", async () => {
   assert.equal(interfaces.length, 1);
   assert.equal((interfaces[0] as Interface).name, "GameHostMethods");
 });
+
+test("rejects a handler name that is a target-language reserved word", async () => {
+  // The C# emitter interpolates handlerName raw into the handler
+  // interface member and the call site, with no @-verbatim path.
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "class" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(program, "reserved-word-name");
+});
+
+test("a handler name differing only by case from a keyword is accepted", async () => {
+  // C# and Java are both case-sensitive: `Class` is an ordinary name.
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "Class" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.deepEqual(diagnosticCodes(program), []);
+});
+
+test("a C# contextual keyword is not a reserved word", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "record" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.deepEqual(diagnosticCodes(program), []);
+});
+
+test("rejects a functionName that is not a SQL-callable name", async () => {
+  // functionName is registered verbatim as a SQL function name; a name
+  // outside SQL_NAME registers cleanly and is simply uncallable.
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "weird",
+        handler: "Weird",
+        mutates: false,
+        functionName: "my func'; --"
+      })
+      op Weird(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+  assertDiagnostic(program, "invalid-function-name");
+});
+
+test("rejects an uppercase functionName (SQL names are snake_case)", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "sq",
+        handler: "Sq",
+        mutates: false,
+        functionName: "MyFunc"
+      })
+      op Sq(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+  assertDiagnostic(program, "invalid-function-name");
+});

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -284,3 +284,26 @@ test("CLI exits non-zero and emits nothing for an invalid model", () => {
   assert.match(run.stderr, /invalid-method-shape/);
   rmSync(outDir, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// --base-name containment (round-3 audit finding 6)
+// ---------------------------------------------------------------------------
+
+for (const baseName of ["../../ESCAPED3", "a/b", "..", "a b", ""]) {
+  test(`CLI rejects --base-name ${JSON.stringify(baseName)}`, () => {
+    // The flag is interpolated into a path segment and joined with no
+    // normalization, so a traversing value wrote outside <out-dir> and
+    // overwrote whatever was there without a word.
+    const outDir = scratchDir("basename-reject");
+    const run = spawnSync(
+      process.execPath,
+      [join(packageRoot, "dist/cli.js"), samplePath, outDir, "--base-name", baseName],
+      { encoding: "utf8" },
+    );
+    const written = readdirSync(outDir);
+    rmSync(outDir, { recursive: true, force: true });
+    assert.notEqual(run.status, 0, `stdout: ${run.stdout}`);
+    assert.match(run.stderr, /--base-name/);
+    assert.deepEqual(written, [], "nothing may be written when the flag is rejected");
+  });
+}

@@ -1,3 +1,4 @@
+import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   assertDiagnostic,
@@ -939,14 +940,18 @@ test("rejects inline exposure requested with a required input field after an opt
 });
 
 test("rejects two methods claiming the same inline function name", async () => {
+  // Case-insensitively, the way SQLite resolves function names. An
+  // explicit functionName is snake_case by rule, so the uppercase half
+  // of the pair comes from the DERIVED side: functionPrefix is an
+  // IDENTIFIER and may carry capitals.
   const result = await compileSource(
     shell(`
-      @hostLibrary({ apiLevel: 1 })
+      @hostLibrary({ apiLevel: 1, functionPrefix: "FN_" })
       interface Methods {
-        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "fn_same" })
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false })
         op GetValue(input: In): Out;
 
-        @hostMethod({ name: "peekValue", handler: "PeekValue", mutates: false, functionName: "FN_SAME" })
+        @hostMethod({ name: "peekValue", handler: "PeekValue", mutates: false, functionName: "fn_get_value" })
         op PeekValue(input: In): Out;
       }
       model In { key: string; }
@@ -1107,4 +1112,280 @@ test("rejects duplicate @hostLibrary interface names across libraries", async ()
     }
   `);
   assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+// ---------------------------------------------------------------------------
+// Derived SQL names (round-3 audit finding 1)
+// ---------------------------------------------------------------------------
+
+test("rejects a property whose derived SQL name is not snake_case", async () => {
+  // A backtick identifier survives toSnakeCase verbatim, so the derived
+  // column lands unquoted in the DDL: `input_weird-name TEXT NOT NULL`
+  // is a sqlite3 parse error, and the same string is an illegal Java
+  // record component and TS interface member.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`weird-name\`: string; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a non-ASCII property name on the derived SQL-name path", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`Ünïcode\`: int32; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a leading-underscore property name on the derived SQL-name path", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { _leading: boolean; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a bad derived SQL name inside a list item model", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model Item { \`weird-name\`: string; }
+      model In { items: Item[]; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("an explicit @sqlName rescues a property name that cannot be derived", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In {
+        @sqlName("weird_name")
+        \`weird-name\`: string;
+      }
+      model Out { ok: boolean; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].sqlName, "weird_name");
+});
+
+// ---------------------------------------------------------------------------
+// Target-language reserved words (round-3 audit finding 2)
+// ---------------------------------------------------------------------------
+
+test("rejects a namespace segment that is a Java keyword once lowercased", async () => {
+  // The Java emitter lowercases the library namespace straight into a
+  // package declaration, so `New.Thing` emits `package new.thing.generated;`.
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace New.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("rejects a namespace segment that is a keyword in both languages", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace \`int\`.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("accepts a namespace segment that only resembles a keyword", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Newer.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.equal(result.ir?.library.namespace, "Newer.Thing");
+});
+
+// ---------------------------------------------------------------------------
+// Artifact base-name collisions (round-3 audit finding 3)
+// ---------------------------------------------------------------------------
+
+test("rejects two libraries whose names differ only by case", async () => {
+  // The artifact base name is kebab-case(interfaceName), so `Foo` and
+  // `foo` both write foo.manifest.json / foo.ddl.sql — the second run
+  // of the write loop silently overwrote the first.
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Foo {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface foo {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+test("rejects two libraries whose names kebab-case to the same base name", async () => {
+  // No case difference needed: FooBar and Foo_bar both derive foo-bar.
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBar {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Foo_bar {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+test("accepts two libraries whose kebab base names differ", async () => {
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBar {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBaz {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assert.equal(result.irs?.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Inline function names vs SQLite's own name space (round-3 audit finding 4)
+// ---------------------------------------------------------------------------
+
+/** An inline-eligible one-in/one-out method claiming `functionName`. */
+function inlineFn(functionName: string): string {
+  return shell(`
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "sq",
+        handler: "Sq",
+        mutates: false,
+        functionName: "${functionName}"
+      })
+      op Sq(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+}
+
+for (const [label, name] of [
+  ["a compile-gated math built-in", "sqrt"],
+  ["a version-gated built-in", "iif"],
+  ["a version-gated built-in family member", "json_extract"],
+  ["an always-nondeterministic built-in", "randomblob"],
+  ["a wall-clock time built-in", "julianday"],
+  ["a wall-clock keyword", "current_timestamp"],
+  ["a forbidden built-in", "pragma_optimize"],
+  ["a SQLite system table", "sqlite_master"],
+] as const) {
+  test(`rejects a functionName that is ${label}`, async () => {
+    const result = await compileSource(inlineFn(name));
+    assertDiagnostic(result, "builtin-function-collision");
+  });
+}
+
+test("accepts a functionName that only resembles a reserved family", async () => {
+  const result = await compileSource(inlineFn("fn_json_lookup"));
+  assert.equal(result.ir?.methods[0].inline?.functionName, "fn_json_lookup");
 });

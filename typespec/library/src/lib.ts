@@ -40,10 +40,28 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Handler name "${"name"}" is not a valid identifier ([A-Za-z_][A-Za-z0-9_]*).`,
       },
     },
+    "invalid-function-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" must be snake_case ([a-z][a-z0-9_]*); it is registered verbatim as a SQL function name, so a name outside that shape registers cleanly and is then uncallable from SQL.`,
+      },
+    },
+    "reserved-word-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"kind"} "${"name"}" is a reserved word in ${"languages"}; the emitters interpolate it into generated source and no emitter escapes or prefixes it (Java has no escape at all for a keyword package segment), so the generated code would not compile. Pick another name.`,
+      },
+    },
     "invalid-sql-name": {
       severity: "error",
       messages: {
         default: paramMessage`SQL name "${"name"}" must be snake_case ([a-z][a-z0-9_]*).`,
+      },
+    },
+    "invalid-derived-sql-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Property "${"property"}" derives the SQL name "${"name"}", which is not snake_case ([a-z][a-z0-9_]*); the derived name is interpolated unquoted into the generated DDL and verbatim into the generated Java/TypeScript members. Add @sqlName("...") to name the column explicitly.`,
       },
     },
     "no-host-library": {
@@ -61,7 +79,7 @@ export const $lib = createTypeSpecLibrary({
     "duplicate-host-library-name": {
       severity: "error",
       messages: {
-        default: paramMessage`Duplicate @hostLibrary interface name "${"name"}"; interface names must be unique within a compilation because they name the emitted artifacts.`,
+        default: paramMessage`@hostLibrary interfaces "${"first"}" and "${"second"}" both derive the artifact base name "${"baseName"}"; base names must be unique within a compilation because they name the emitted manifest and DDL files, and the second library would overwrite the first.`,
       },
     },
     "missing-namespace": {
@@ -247,7 +265,7 @@ export const $lib = createTypeSpecLibrary({
     "builtin-function-collision": {
       severity: "error",
       messages: {
-        default: paramMessage`Inline function name "${"name"}" collides with a SQLite built-in function; pick a different functionName or functionPrefix.`,
+        default: paramMessage`Inline function name "${"name"}" collides with a name SQLite already owns (${"kind"}); pick a different functionName or functionPrefix.`,
       },
     },
   },

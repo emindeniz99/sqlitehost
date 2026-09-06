@@ -4,7 +4,8 @@
  * frontend builds the IR: non-model top-level input/output, unsupported
  * scalars, nested models, nested lists, optional list fields, empty list
  * item models, unions and maps, duplicate method names, duplicate SQL
- * names per shape, duplicate derived table names, duplicate DTO simple
+ * names per shape, derived SQL names that are not snake_case, duplicate
+ * derived table names, duplicate DTO simple
  * names across namespaces, a method apiLevel above the library apiLevel,
  * missing @hostMethod, host interfaces declared outside any namespace,
  * and invalid shared table / column / naming-prefix configuration
@@ -31,16 +32,25 @@ import {
   getSqlName,
   IDENTIFIER,
   reportDiagnostic,
+  reservedWordLanguages,
   SQL_NAME,
   type HostMethodOptions,
 } from "@sqlite-host/typespec";
 import type { ColumnsIr, NamingIr, ScalarTypeIr } from "./ir.js";
 import {
   controlTableColumns,
+  FORBIDDEN_FUNCTIONS,
+  FUNCTION_MIN_VERSION,
+  FUNCTION_PREFIX_MIN_VERSION,
   namedValueTableColumns,
+  NONDETERMINISTIC_FUNCTIONS_ALWAYS,
+  NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
+  NONPORTABLE_FUNCTIONS,
   PENDING_STATUS,
   queueTableColumns,
   SQLITE_BUILTIN_FUNCTIONS,
+  SYSTEM_TABLES,
 } from "./ir.js";
 import {
   deriveCallTable,
@@ -64,11 +74,60 @@ const SUPPORTED_SCALARS: Record<string, ScalarTypeIr> = {
 };
 
 /**
- * Lowercased lookup set over the single-sourced SQLite built-in function
- * names (ir.ts SQLITE_BUILTIN_FUNCTIONS). Function names resolve
- * case-insensitively, so inline-function-name collisions compare lowercased.
+ * Every name SQLite already answers to, keyed lowercased (SQLite
+ * resolves function names case-insensitively). An inline function name
+ * that hits one of these is not merely confusing: the script lint
+ * exempts declared inline functions from the portability and version
+ * rules, so naming one `sqrt` or `iif` turns those rules OFF for that
+ * name — and on an adapter whose connection factory is not
+ * function-capable the script then falls through to the very built-in
+ * the lint exists to keep it away from.
+ *
+ * The union is assembled here rather than in ir.ts because each of those
+ * tables is a single-sourced rule parameter with its own meaning and its
+ * own projection per language; this is a consumer of all of them.
  */
-const SQLITE_BUILTIN_FUNCTION_SET: ReadonlySet<string> = new Set(SQLITE_BUILTIN_FUNCTIONS);
+const RESERVED_SQLITE_NAMES: ReadonlyMap<string, string> = new Map([
+  ...SQLITE_BUILTIN_FUNCTIONS.map((n) => [n, "a SQLite built-in function"] as const),
+  ...NONPORTABLE_FUNCTIONS.map(
+    (n) => [n, "a compile-option-gated SQLite built-in"] as const,
+  ),
+  ...Object.keys(FUNCTION_MIN_VERSION).map(
+    (n) => [n, "a version-gated SQLite built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_FUNCTIONS_ALWAYS.map(
+    (n) => [n, "a nondeterministic SQLite built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_TIME_FUNCTIONS.map(
+    (n) => [n, "a SQLite date/time built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_TIME_KEYWORDS.map(
+    (n) => [n, "a SQLite wall-clock keyword"] as const,
+  ),
+  ...FORBIDDEN_FUNCTIONS.map(
+    (n) => [n, "a SQLite built-in scripts may not call"] as const,
+  ),
+  ...SYSTEM_TABLES.map((n) => [n, "a SQLite system table"] as const),
+]);
+
+/** Family prefixes whose whole namespace SQLite owns (json_, jsonb_). */
+const RESERVED_SQLITE_PREFIXES: readonly string[] = Object.keys(
+  FUNCTION_PREFIX_MIN_VERSION,
+);
+
+/** The reason `name` is unusable as an inline function name, if it is. */
+function reservedSqliteName(lower: string): string | undefined {
+  const direct = RESERVED_SQLITE_NAMES.get(lower);
+  if (direct !== undefined) {
+    return direct;
+  }
+  for (const prefix of RESERVED_SQLITE_PREFIXES) {
+    if (lower.startsWith(prefix)) {
+      return `the version-gated ${prefix}_* built-in family`;
+    }
+  }
+  return undefined;
+}
 
 /** Map a std scalar to the IR scalar type; undefined when unsupported. */
 export function mapSupportedScalar(
@@ -236,6 +295,27 @@ export function validateHostLibraryInterface(
     iface.namespace !== undefined ? getNamespaceFullName(iface.namespace) : "";
   if (namespaceName.length === 0) {
     error(ctx, "missing-namespace", { name: iface.name }, iface);
+  } else {
+    // ...and no segment of it may be a target-language keyword. The C#
+    // emitter writes the namespace as authored; the Java emitter
+    // LOWERCASES it into a package declaration, so `New.Thing` reaches
+    // javac as `package new.thing.generated;`. Neither language can
+    // escape a keyword there.
+    for (const segment of namespaceName.split(".")) {
+      const languages = reservedWordLanguages(segment, segment.toLowerCase());
+      if (languages.length > 0) {
+        error(
+          ctx,
+          "reserved-word-name",
+          {
+            kind: "Namespace segment",
+            name: segment,
+            languages: languages.join(" and "),
+          },
+          iface,
+        );
+      }
+    }
   }
 
   // functionPrefix must be a non-empty ASCII name fragment
@@ -408,8 +488,9 @@ export function validateHostLibraryInterface(
     if (tableNames.has(lower)) {
       error(ctx, "function-name-collision", { name }, target);
     }
-    if (SQLITE_BUILTIN_FUNCTION_SET.has(lower)) {
-      error(ctx, "builtin-function-collision", { name }, target);
+    const reserved = reservedSqliteName(lower);
+    if (reserved !== undefined) {
+      error(ctx, "builtin-function-collision", { name, kind: reserved }, target);
     }
   }
 
@@ -600,6 +681,36 @@ function checkResultModel(
 }
 
 /**
+ * Resolve a property's SQL name and shape-check the DERIVED form.
+ *
+ * An explicit @sqlName was already tested against SQL_NAME by the
+ * decorator; the derived name never was. toSnakeCase only lowercases
+ * ASCII A-Z, so every other character survives verbatim — a TypeSpec
+ * backtick identifier such as `weird-name`, a non-ASCII letter, or a
+ * leading underscore all pass straight through. The result is
+ * interpolated unquoted into the DDL column line (ddl.ts) and verbatim
+ * into the Java record component and TypeScript interface member, so an
+ * unrepresentable name is invalid SQL and invalid source in two
+ * languages rather than a naming wart.
+ */
+function resolveSqlName(ctx: ValidationContext, prop: ModelProperty): string {
+  const explicit = getSqlName(ctx.program, prop);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const derived = toSnakeCase(prop.name);
+  if (!SQL_NAME.test(derived)) {
+    error(
+      ctx,
+      "invalid-derived-sql-name",
+      { property: prop.name, name: derived },
+      prop,
+    );
+  }
+  return derived;
+}
+
+/**
  * Validate one input/result shape. Returns the list-field SQL names (with
  * their diagnostic targets) so the caller can claim derived child tables.
  * Every scalar field's derived physical column (parent and list item)
@@ -615,7 +726,7 @@ function validateShape(
   const listFields: Array<[string, ModelProperty]> = [];
 
   for (const prop of model.properties.values()) {
-    const sqlName = getSqlName(ctx.program, prop) ?? toSnakeCase(prop.name);
+    const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);
     } else {
@@ -705,7 +816,7 @@ function validateItemModel(
   }
   const sqlNames = new Set<string>();
   for (const prop of model.properties.values()) {
-    const sqlName = getSqlName(ctx.program, prop) ?? toSnakeCase(prop.name);
+    const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);
     } else {
