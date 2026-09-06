@@ -424,6 +424,32 @@ namespace SqliteHost.Conformance
         }
 
         [SkippableFact]
+        public void StorageClass_ReportsTheStoredValue_NotTheDeclaredType()
+        {
+            // Column affinity is a hint: SQLite converts a value only when
+            // the conversion is lossless, so an INTEGER-declared column
+            // keeps 'abc' as TEXT and a REAL as REAL. GetStorageClass must
+            // report what is THERE — the runtime's read path uses it to
+            // refuse a value the declared type cannot hold, and an adapter
+            // that answers from the declared type instead re-opens exactly
+            // the silent coercion it exists to stop.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, a INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, a) VALUES (1, 7), (2, 1.5), (3, 'abc'),"
+                + " (4, x'414243'), (5, NULL)",
+                null);
+
+            var rows = connection.Query(
+                "SELECT a, typeof(a) FROM scratch ORDER BY id", null,
+                row => row.GetStorageClass(0) + "/" + (row.IsNull(1) ? "?" : row.GetText(1)));
+
+            Assert.Equal(
+                new[] { "Integer/integer", "Real/real", "Text/text", "Blob/blob", "Null/null" },
+                rows);
+        }
+
+        [SkippableFact]
         public void EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray()
         {
             // The distinction the write side already makes — Blob(new byte[0])

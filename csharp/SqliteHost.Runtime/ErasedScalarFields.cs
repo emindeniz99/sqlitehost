@@ -26,12 +26,14 @@ namespace SqliteHost
             ISqliteHostRow row,
             int index,
             HostScalarType scalarType,
-            bool optional)
+            bool optional,
+            string sqlName)
         {
             if (optional && row.IsNull(index))
             {
                 return SqliteHostBindingValue.Null();
             }
+            RequireStorageClass(row, index, scalarType, sqlName);
             switch (scalarType)
             {
                 case HostScalarType.Int32:
@@ -57,46 +59,168 @@ namespace SqliteHost
             }
         }
 
+        /// <summary>
+        /// Refuses a column whose stored value contradicts the declared
+        /// scalar type, before any typed getter can coerce it.
+        ///
+        /// SQLite affinity is a hint: it converts a value only when the
+        /// conversion is lossless, so the text <c>'1,000'</c> stays TEXT in
+        /// an INTEGER-declared call column and <c>GetInt64</c> would report
+        /// <c>1</c> — a corrupted argument the run reports as Completed.
+        /// The declared type is already on the read path, so the check costs
+        /// one <c>sqlite3_column_type</c> per column read and stays in every
+        /// build: this is data loss, not a strict authoring check, the same
+        /// reasoning that keeps the undeclared-result-list gate outside
+        /// SQLITEHOST_SLIM.
+        ///
+        /// NULL is deliberately not this guard's business — the typed
+        /// getters' own NULL contract (docs/adapter-contract.md, "Value
+        /// fidelity") already refuses it, and optional fields ask
+        /// <c>IsNull</c> first.
+        /// </summary>
+        public static void RequireStorageClass(
+            ISqliteHostRow row, int index, HostScalarType scalarType, string sqlName)
+        {
+            SqliteHostStorageClass actual = row.GetStorageClass(index);
+            if (actual == SqliteHostStorageClass.Null || Accepts(scalarType, actual))
+            {
+                return;
+            }
+            throw new SqliteHostInputTypeMismatchException(
+                "Column '" + sqlName + "' is declared " + Describe(scalarType)
+                + " but the stored value is " + Describe(actual)
+                + "; SQLite affinity does not convert it, so reading it as "
+                + Describe(scalarType) + " would silently change the value.");
+        }
+
+        private static bool Accepts(HostScalarType scalarType, SqliteHostStorageClass actual)
+        {
+            switch (scalarType)
+            {
+                case HostScalarType.Int32:
+                case HostScalarType.Int64:
+                case HostScalarType.Boolean:
+                    return actual == SqliteHostStorageClass.Integer;
+                case HostScalarType.String:
+                    return actual == SqliteHostStorageClass.Text;
+                case HostScalarType.Bytes:
+                    return actual == SqliteHostStorageClass.Blob;
+                default:
+                    // REAL columns hold whole numbers as INTEGER, so a float
+                    // field accepts both without losing anything.
+                    return actual == SqliteHostStorageClass.Real
+                        || actual == SqliteHostStorageClass.Integer;
+            }
+        }
+
+        /// <summary>The declared type as docs/workspace-schema.md spells it.</summary>
+        private static string Describe(HostScalarType scalarType)
+        {
+            switch (scalarType)
+            {
+                case HostScalarType.Int32:
+                    return "int32";
+                case HostScalarType.Int64:
+                    return "int64";
+                case HostScalarType.Boolean:
+                    return "bool";
+                case HostScalarType.String:
+                    return "text";
+                case HostScalarType.Bytes:
+                    return "blob";
+                case HostScalarType.Float32:
+                    return "float32";
+                default:
+                    return "float64";
+            }
+        }
+
+        /// <summary>The storage class as SQLite's own typeof() spells it.</summary>
+        private static string Describe(SqliteHostStorageClass storageClass)
+        {
+            switch (storageClass)
+            {
+                case SqliteHostStorageClass.Integer:
+                    return "integer";
+                case SqliteHostStorageClass.Real:
+                    return "real";
+                case SqliteHostStorageClass.Text:
+                    return "text";
+                case SqliteHostStorageClass.Blob:
+                    return "blob";
+                default:
+                    return "null";
+            }
+        }
+
         public static ErasedReadField Int(string sqlName, Action<object, int> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Int32, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetInt32(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Int32, sqlName);
+                    setter(dto, row.GetInt32(index));
+                });
         }
 
         public static ErasedReadField Long(string sqlName, Action<object, long> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Int64, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetInt64(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Int64, sqlName);
+                    setter(dto, row.GetInt64(index));
+                });
         }
 
         public static ErasedReadField Bool(string sqlName, Action<object, bool> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Boolean, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetBool(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Boolean, sqlName);
+                    setter(dto, row.GetBool(index));
+                });
         }
 
         public static ErasedReadField Text(string sqlName, Action<object, string> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.String, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetText(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.String, sqlName);
+                    setter(dto, row.GetText(index));
+                });
         }
 
         public static ErasedReadField Blob(string sqlName, Action<object, byte[]> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Bytes, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetBlob(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Bytes, sqlName);
+                    setter(dto, row.GetBlob(index));
+                });
         }
 
         public static ErasedReadField Float(string sqlName, Action<object, float> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Float32, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat32(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Float32, sqlName);
+                    setter(dto, row.GetFloat32(index));
+                });
         }
 
         public static ErasedReadField Double(string sqlName, Action<object, double> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Float64, false,
-                delegate(object dto, ISqliteHostRow row, int index) { setter(dto, row.GetFloat64(index)); });
+                delegate(object dto, ISqliteHostRow row, int index)
+                {
+                    RequireStorageClass(row, index, HostScalarType.Float64, sqlName);
+                    setter(dto, row.GetFloat64(index));
+                });
         }
 
         public static ErasedReadField OptionalInt(string sqlName, Action<object, int?> setter)
@@ -104,7 +228,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Int32, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? (int?)null : row.GetInt32(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, (int?)null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Int32, sqlName);
+                    setter(dto, row.GetInt32(index));
                 });
         }
 
@@ -113,7 +243,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Int64, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? (long?)null : row.GetInt64(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, (long?)null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Int64, sqlName);
+                    setter(dto, row.GetInt64(index));
                 });
         }
 
@@ -122,7 +258,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Boolean, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? (bool?)null : row.GetBool(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, (bool?)null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Boolean, sqlName);
+                    setter(dto, row.GetBool(index));
                 });
         }
 
@@ -131,7 +273,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.String, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? null : row.GetText(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.String, sqlName);
+                    setter(dto, row.GetText(index));
                 });
         }
 
@@ -140,7 +288,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Bytes, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? null : row.GetBlob(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Bytes, sqlName);
+                    setter(dto, row.GetBlob(index));
                 });
         }
 
@@ -149,7 +303,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Float32, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? (float?)null : row.GetFloat32(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, (float?)null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Float32, sqlName);
+                    setter(dto, row.GetFloat32(index));
                 });
         }
 
@@ -158,7 +318,13 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, HostScalarType.Float64, true,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    setter(dto, row.IsNull(index) ? (double?)null : row.GetFloat64(index));
+                    if (row.IsNull(index))
+                    {
+                        setter(dto, (double?)null);
+                        return;
+                    }
+                    RequireStorageClass(row, index, HostScalarType.Float64, sqlName);
+                    setter(dto, row.GetFloat64(index));
                 });
         }
 

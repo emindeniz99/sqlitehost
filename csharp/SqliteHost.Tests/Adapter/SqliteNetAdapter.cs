@@ -414,6 +414,26 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => raw.sqlite3_column_type(_statement, index) == raw.SQLITE_NULL;
+
+        public SqliteHostStorageClass GetStorageClass(int index)
+        {
+            int columnType = raw.sqlite3_column_type(_statement, index);
+            if (columnType == raw.SQLITE_INTEGER)
+            {
+                return SqliteHostStorageClass.Integer;
+            }
+            if (columnType == raw.SQLITE_FLOAT)
+            {
+                return SqliteHostStorageClass.Real;
+            }
+            if (columnType == raw.SQLITE_TEXT)
+            {
+                return SqliteHostStorageClass.Text;
+            }
+            return columnType == raw.SQLITE_BLOB
+                ? SqliteHostStorageClass.Blob
+                : SqliteHostStorageClass.Null;
+        }
         public int GetInt32(int index) { RequireNotNull(index); return raw.sqlite3_column_int(_statement, index); }
         public long GetInt64(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index); }
         public bool GetBool(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index) != 0; }

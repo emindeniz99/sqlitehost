@@ -56,9 +56,12 @@ public sealed class SqliteHostBinding
 ### SQLite adapter interfaces
 
 ```csharp
+public enum SqliteHostStorageClass { Null, Integer, Real, Text, Blob }
+
 public interface ISqliteHostRow
 {
     bool IsNull(int index);
+    SqliteHostStorageClass GetStorageClass(int index);
     int GetInt32(int index);
     long GetInt64(int index);
     bool GetBool(int index);

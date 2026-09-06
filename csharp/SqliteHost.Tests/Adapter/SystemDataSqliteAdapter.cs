@@ -267,6 +267,29 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => _reader.IsDBNull(index);
+
+        /// <summary>
+        /// System.Data.SQLite's GetFieldType consults the DECLARED column
+        /// type, so it cannot answer this. GetFieldAffinity reports the
+        /// affinity of the value in the current row (it forwards to
+        /// sqlite3_column_type), which is the question.
+        /// </summary>
+        public SqliteHostStorageClass GetStorageClass(int index)
+        {
+            switch (_reader.GetFieldAffinity(index))
+            {
+                case TypeAffinity.Int64:
+                    return SqliteHostStorageClass.Integer;
+                case TypeAffinity.Double:
+                    return SqliteHostStorageClass.Real;
+                case TypeAffinity.Text:
+                    return SqliteHostStorageClass.Text;
+                case TypeAffinity.Blob:
+                    return SqliteHostStorageClass.Blob;
+                default:
+                    return SqliteHostStorageClass.Null;
+            }
+        }
         public int GetInt32(int index) { RequireNotNull(index); return _reader.GetInt32(index); }
         public long GetInt64(int index) { RequireNotNull(index); return _reader.GetInt64(index); }
         public bool GetBool(int index) { RequireNotNull(index); return _reader.GetInt64(index) != 0; }

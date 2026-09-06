@@ -717,6 +717,15 @@ namespace SqliteHost
                     return Failure(state, SqliteHostRunStatus.FailedSql, "call-row-missing",
                         ex.Message, stepId, call.Method);
                 }
+                catch (SqliteHostInputTypeMismatchException ex)
+                {
+                    // The call row carries a value the declared type cannot
+                    // hold. Reading it anyway would hand the handler a
+                    // silently coerced argument, so the call fails instead
+                    // (docs/errors.md input-type-mismatch).
+                    return Failure(state, SqliteHostRunStatus.FailedSql, "input-type-mismatch",
+                        ex.Message, stepId, call.Method);
+                }
                 catch (SqliteHostHandlerException ex)
                 {
                     return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-error",

@@ -239,6 +239,7 @@ namespace SqliteHost.Tests
 
             public string GetText(int index) => _text;
             public bool IsNull(int index) => false;
+            public SqliteHostStorageClass GetStorageClass(int index) => SqliteHostStorageClass.Text;
             public int GetInt32(int index) => throw new NotSupportedException();
             public long GetInt64(int index) => throw new NotSupportedException();
             public bool GetBool(int index) => throw new NotSupportedException();

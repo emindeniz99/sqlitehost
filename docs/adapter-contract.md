@@ -176,11 +176,27 @@ wrong without any test noticing:
 `EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray` in the conformance suite
 pin both.
 
+**A declared type is not a storage class.** Affinity converts a value
+only when the conversion is lossless, so an INTEGER-declared column
+keeps the text `'1,000'` as TEXT and a REAL as REAL — and an
+unconditional `GetInt64` would then report `1` for it. That is the same
+substitution the NULL rule above forbids, arriving through affinity
+instead of through NULL, so `GetStorageClass(index)` is part of the
+contract next to `IsNull`: it reports what `sqlite3_column_type` says
+is in *this row's* column, never the column's declared type. Wrappers
+without direct access to that call answer from whatever their reader
+exposes about the value — Microsoft.Data.Sqlite's `GetFieldType` is
+value-based, System.Data.SQLite's is not and its `GetFieldAffinity` is.
+`StorageClass_ReportsTheStoredValue_NotTheDeclaredType` pins it across
+all five classes. The runtime asks before every typed read and fails
+the call with `input-type-mismatch` (`docs/errors.md`) rather than hand
+a handler a coerced argument.
+
 ## Conformance suite
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (29 core
+`AdapterConformanceTestsBase` — the xunit contract suite (30 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

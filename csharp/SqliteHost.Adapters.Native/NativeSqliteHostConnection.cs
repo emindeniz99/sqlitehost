@@ -697,6 +697,23 @@ namespace SqliteHost.Adapters.Native
             public bool IsNull(int index)
                 => NativeMethods.sqlite3_column_type(Statement, index) == NativeMethods.SQLITE_NULL;
 
+            public SqliteHostStorageClass GetStorageClass(int index)
+            {
+                switch (NativeMethods.sqlite3_column_type(Statement, index))
+                {
+                    case NativeMethods.SQLITE_INTEGER:
+                        return SqliteHostStorageClass.Integer;
+                    case NativeMethods.SQLITE_FLOAT:
+                        return SqliteHostStorageClass.Real;
+                    case NativeMethods.SQLITE_TEXT:
+                        return SqliteHostStorageClass.Text;
+                    case NativeMethods.SQLITE_BLOB:
+                        return SqliteHostStorageClass.Blob;
+                    default:
+                        return SqliteHostStorageClass.Null;
+                }
+            }
+
             public int GetInt32(int index)
             {
                 RequireNotNull(index);
