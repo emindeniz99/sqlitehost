@@ -37,7 +37,7 @@ namespace SqliteHost
             switch (scalarType)
             {
                 case HostScalarType.Int32:
-                    return SqliteHostBindingValue.Int32(row.GetInt32(index));
+                    return SqliteHostBindingValue.Int32(ReadInt32(row, index, sqlName));
                 case HostScalarType.Int64:
                     return SqliteHostBindingValue.Int64(row.GetInt64(index));
                 case HostScalarType.Boolean:
@@ -91,6 +91,28 @@ namespace SqliteHost
                 + " but the stored value is " + Describe(actual)
                 + "; SQLite affinity does not convert it, so reading it as "
                 + Describe(scalarType) + " would silently change the value.");
+        }
+
+        /// <summary>
+        /// An int32 field read out of an INTEGER column, which holds any
+        /// int64. The value is read as int64 and range-checked here rather
+        /// than through GetInt32, so the failure is the runtime's
+        /// input-type-mismatch (naming the column) on every adapter instead
+        /// of whatever the wrapper happens to do — the shipped adapters now
+        /// refuse too, but an out-of-range value is a data problem in the
+        /// workspace, not an adapter fault.
+        /// </summary>
+        public static int ReadInt32(ISqliteHostRow row, int index, string sqlName)
+        {
+            long value = row.GetInt64(index);
+            if (value < int.MinValue || value > int.MaxValue)
+            {
+                throw new SqliteHostInputTypeMismatchException(
+                    "Column '" + sqlName + "' is declared int32 but holds " + value
+                    + ", which is outside the int32 range; reading it as int32 would"
+                    + " keep only its low 32 bits.");
+            }
+            return (int)value;
         }
 
         private static bool Accepts(HostScalarType scalarType, SqliteHostStorageClass actual)
@@ -159,7 +181,7 @@ namespace SqliteHost
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
                     RequireStorageClass(row, index, HostScalarType.Int32, sqlName);
-                    setter(dto, row.GetInt32(index));
+                    setter(dto, ReadInt32(row, index, sqlName));
                 });
         }
 
@@ -234,7 +256,7 @@ namespace SqliteHost
                         return;
                     }
                     RequireStorageClass(row, index, HostScalarType.Int32, sqlName);
-                    setter(dto, row.GetInt32(index));
+                    setter(dto, ReadInt32(row, index, sqlName));
                 });
         }
 

@@ -166,6 +166,14 @@ wrong without any test noticing:
   throws. `sqlite3_column_blob` returns a null pointer for *both*, so a
   P/Invoke adapter that infers NULL from the pointer conflates them —
   check `sqlite3_column_type` instead.
+- **The typed getters are range-checked, not truncating.** An INTEGER
+  column holds any int64, so `GetInt32` can be pointed at a value that
+  does not fit. `sqlite3_column_int` returns the low 32 bits — 2^32+7
+  reads back as 7 — and that substituted value cannot be told apart
+  from a stored 7, so a P/Invoke adapter must read int64 and refuse
+  what is out of range instead. `Int32Getter_OnAValueOutsideInt32Range_FailsLoud`
+  pins it at both boundaries; any exception satisfies it, since ADO.NET
+  wrappers throw their own `OverflowException` here.
 - **±Infinity and NaN are legitimate REAL values on the way out.** The
   finite-only rule is the JSON envelope's (`docs/script-envelope.md`),
   and a REAL column can hold an infinity — SQLite parses the literal
@@ -196,7 +204,7 @@ a handler a coerced argument.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (30 core
+`AdapterConformanceTestsBase` — the xunit contract suite (31 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

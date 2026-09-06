@@ -168,5 +168,45 @@ namespace SqliteHost.Tests
             Assert.Equal(1, handlers.LastInput.I32);
             Assert.Equal(2L, handlers.LastInput.I64);
         }
+
+        /// <summary>
+        /// The storage class is right and the value is still wrong: an
+        /// INTEGER column holds any int64, so an int32 field can be handed
+        /// one that does not fit. sqlite3_column_int returns the low 32
+        /// bits, so 2^32+7 arrived as 7 — a substituted value nothing can
+        /// tell apart from a stored 7, which is exactly what the NULL rule
+        /// in docs/adapter-contract.md forbids for the same reason. The
+        /// runtime reads int64 and range-checks instead.
+        /// </summary>
+        [SkippableTheory]
+        [InlineData("4294967303")]
+        [InlineData("2147483648")]
+        [InlineData("-2147483649")]
+        public void Int64OutsideInt32Range_InAnInt32Field_FailsInputTypeMismatch(string literal)
+        {
+            var handlers = new EchoEveryTypeHandlers();
+
+            SqliteHostRunResult result = RunEveryType(EveryTypeSql(i32: literal), handlers);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("input-type-mismatch", result.ErrorCode);
+            Assert.Equal("everyType", result.Method);
+            Assert.Contains("i32", result.ErrorMessage);
+            Assert.Contains(literal, result.ErrorMessage);
+            Assert.Null(handlers.LastInput);
+        }
+
+        [SkippableTheory]
+        [InlineData("2147483647")]
+        [InlineData("-2147483648")]
+        public void Int32BoundaryValues_StillReachTheHandler(string literal)
+        {
+            var handlers = new EchoEveryTypeHandlers();
+
+            SqliteHostRunResult result = RunEveryType(EveryTypeSql(i32: literal), handlers);
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.Equal(int.Parse(literal), handlers.LastInput.I32);
+        }
     }
 }

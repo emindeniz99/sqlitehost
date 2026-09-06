@@ -714,10 +714,25 @@ namespace SqliteHost.Adapters.Native
                 }
             }
 
+            /// <summary>
+            /// int64 plus a range check, never sqlite3_column_int: that call
+            /// is documented to return the low 32 bits, so 2^32+7 comes back
+            /// as 7 — a substituted value indistinguishable from a stored 7,
+            /// which is what docs/adapter-contract.md forbids for NULL and
+            /// for the same reason.
+            /// </summary>
             public int GetInt32(int index)
             {
                 RequireNotNull(index);
-                return NativeMethods.sqlite3_column_int(Statement, index);
+                long value = NativeMethods.sqlite3_column_int64(Statement, index);
+                if (value < int.MinValue || value > int.MaxValue)
+                {
+                    throw new SqliteHostAdapterException(
+                        "Column " + index + " holds " + value
+                        + ", which is outside the int32 range; read it with GetInt64.",
+                        0, null);
+                }
+                return (int)value;
             }
 
             public long GetInt64(int index)

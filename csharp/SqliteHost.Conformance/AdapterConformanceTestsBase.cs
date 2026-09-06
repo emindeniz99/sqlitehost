@@ -424,6 +424,33 @@ namespace SqliteHost.Conformance
         }
 
         [SkippableFact]
+        public void Int32Getter_OnAValueOutsideInt32Range_FailsLoud()
+        {
+            // An INTEGER column holds any int64, so GetInt32 can be pointed
+            // at a value that does not fit. sqlite3_column_int is documented
+            // to return the low 32 bits: 2^32+7 becomes 7 and -2^31-1 wraps
+            // to int.MaxValue, and neither is distinguishable from a stored
+            // value of the same number. That is the substitution the NULL
+            // rule forbids, so the getter refuses instead of truncating
+            // (docs/adapter-contract.md, "Value fidelity"). Both boundaries,
+            // because a check written against only one of them passes half
+            // the time.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (id INTEGER, a INTEGER)", null);
+            connection.Execute(
+                "INSERT INTO scratch (id, a) VALUES"
+                + " (1, 4294967303), (2, -2147483649), (3, 2147483647), (4, -2147483648)",
+                null);
+
+            var rows = connection.Query(
+                "SELECT a FROM scratch ORDER BY id", null, row => Rejected(() => row.GetInt32(0)));
+
+            Assert.Equal(
+                new[] { "rejected", "rejected", "returned 2147483647", "returned -2147483648" },
+                rows);
+        }
+
+        [SkippableFact]
         public void StorageClass_ReportsTheStoredValue_NotTheDeclaredType()
         {
             // Column affinity is a hint: SQLite converts a value only when
@@ -474,6 +501,27 @@ namespace SqliteHost.Conformance
             });
 
             Assert.Equal(new[] { "blob:0", "null:refused" }, rows);
+        }
+
+        /// <summary>
+        /// "rejected" when the read threw at all. The int32 range rule only
+        /// requires that no truncated value comes back, and wrappers differ
+        /// on the exception: the shipped adapters throw
+        /// SqliteHostAdapterException naming the column, ADO.NET readers
+        /// throw OverflowException from their own conversion. Either is
+        /// conformant; returning 7 for 2^32+7 is not.
+        /// </summary>
+        private static string Rejected(Func<object> read)
+        {
+            try
+            {
+                object value = read();
+                return "returned " + (value == null ? "<null>" : value.ToString());
+            }
+            catch (Exception)
+            {
+                return "rejected";
+            }
         }
 
         /// <summary>

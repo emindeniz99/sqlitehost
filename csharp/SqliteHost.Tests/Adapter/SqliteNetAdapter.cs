@@ -434,7 +434,25 @@ namespace SqliteHost.Tests.Adapter
                 ? SqliteHostStorageClass.Blob
                 : SqliteHostStorageClass.Null;
         }
-        public int GetInt32(int index) { RequireNotNull(index); return raw.sqlite3_column_int(_statement, index); }
+        /// <summary>
+        /// int64 plus a range check, never sqlite3_column_int: that call
+        /// returns the low 32 bits, and a silently truncated value is the
+        /// substitution docs/adapter-contract.md forbids. (Same guard, same
+        /// reason as SqliteHost.Adapters.Native.)
+        /// </summary>
+        public int GetInt32(int index)
+        {
+            RequireNotNull(index);
+            long value = raw.sqlite3_column_int64(_statement, index);
+            if (value < int.MinValue || value > int.MaxValue)
+            {
+                throw new SqliteHostAdapterException(
+                    "Column " + index + " holds " + value
+                    + ", which is outside the int32 range; read it with GetInt64.",
+                    0, null);
+            }
+            return (int)value;
+        }
         public long GetInt64(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index); }
         public bool GetBool(int index) { RequireNotNull(index); return raw.sqlite3_column_int64(_statement, index) != 0; }
         public string GetText(int index) { RequireNotNull(index); return raw.sqlite3_column_text(_statement, index).utf8_to_string(); }
