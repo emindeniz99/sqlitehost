@@ -14,11 +14,21 @@ input/output mapping incl. empty lists and `item_index` ordering,
 unsupported engine/API/feature/method clean skips, binding validation
 (missing/unused), statement/pending-call limits.
 
-Integration (real `Microsoft.Data.Sqlite` adapter, in-memory
-workspace): execute the parsed fixture scripts end-to-end with fake
-handlers — read → conditional write → read-after-write, list roundtrip,
-runtime inputs, blob roundtrip — verifying result rows feed later SQL
-and diagnostics are populated.
+Integration (all four adapters, in-memory workspace): execute the
+parsed fixture scripts end-to-end with fake handlers — read →
+conditional write → read-after-write, list roundtrip, runtime inputs,
+blob roundtrip — verifying result rows feed later SQL and diagnostics
+are populated.
+
+Fixture coverage is opt-**out**, not opt-in. `IntegrationFixtureTests`
+enumerates `fixtures/payloads/valid/` and runs every payload on every
+adapter; `InvalidFixtureEnvelopeTests` enumerates
+`fixtures/payloads/invalid/` and runs each fixture whose fault the
+envelope precheck is meant to catch, asserting both the `ErrorCode` and
+that no workspace was opened. `Fixtures/FixtureCoverage.cs` holds the
+tables: what is skipped, and why. Anything the envelope layer cannot
+see — an authoring lint, or a refusal that only happens once the
+workspace is open — is listed there with the reason instead.
 
 ## TypeSpec/codegen (`pnpm -r test`, node:test)
 
@@ -61,9 +71,19 @@ they read is sound: no fixture without an expectations entry and no
 entry without a fixture, one fault per `invalid/` case, a fixture for
 every code pinned in `docs/validation.md`, and the same code set spelled
 in all three places the codes live (the doc tables, Java's
-`ValidationCodes`, the TypeScript `LintCode` union). `--self-test` drives
-each of those checks against a mutated copy of the corpus in a temp
-directory. Both run in the goldens CI job.
+`ValidationCodes`, the TypeScript `LintCode` union).
+
+It also checks the corpus's **third consumer**. Java and TypeScript
+validate the payloads; the C# runtime has to *execute* them, and nothing
+compared the two — six valid payloads, both float ones among them, were
+validated twice and never run. The `csharp` checks read
+`csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs` as evidence and
+fail on a fixture no C# table decided, a table naming a fixture that is
+gone, an expected `ErrorCode` with no row in `docs/errors.md`, and a
+test that stopped enumerating the directory.
+
+`--self-test` drives each of those checks against a mutated copy of the
+corpus in a temp directory. Both run in the goldens CI job.
 
 ## Script delivery (`tests/delivery-golden`)
 
@@ -103,14 +123,20 @@ recorded delta, and the GVM probe delta, may move by
 gzipped; 3% of even the largest row is under the raw floor today, so in
 practice every row is judged against the flat floor. The deltas were
 measured on an ubuntu-latest runner, and a change that is supposed to move
-bytes re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a
-measurement rather than a numeric gate, but it is not off the pull-request
-path: `il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
-demand, and a 3-row subset on any pull request touching
-`csharp/SqliteHost.Runtime/`, `csharp/SqliteHost.Abstractions/`,
-`codegen/csharp-emitter/` or `tests/app-size-bench/`. That subset carries no
-`continue-on-error`, so a change to the runtime does wait for it.
-`ios-size-bench.yml` builds the same rows for iOS in two stages and
+bytes re-records them with `UPDATE_SIZE_BASELINE=1` on a runner.
+
+Two rows sit outside the baseline on purpose, because each exists to
+prove a claim compiles rather than to track a number:
+`compact50-noreflection` (`IlcDisableReflection=true`, the
+"reflection-free" guarantee) and `compact50-nano`, which imports
+`csharp/SqliteHost.Publish.Nano.props` the way that file tells a
+size-critical game to import it. Nothing compiled those flags before
+that row existed.
+
+The Unity IL2CPP half is a measurement rather than a numeric gate, and
+as of this round it is off the pull-request path entirely:
+`il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
+demand only. `ios-size-bench.yml` builds the same rows for iOS in two stages and
 publishes a second table whose bytes are not comparable to the Android one;
 it has run (run 33255105207, 48 of 48 legs green) and the numbers are in
 `docs/reports/ios-il2cpp-size-report.md`.
@@ -179,13 +205,14 @@ matrix, each at the cadence its cost justifies:
 | `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
 | `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
 | `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
-| `il2cpp-size-bench.yml` | monthly + on demand, plus a 3-row subset per-PR on the runtime and C# emitter paths | the Unity IL2CPP app-size matrix on Android (a measurement, not a numeric gate) |
+| `il2cpp-size-bench.yml` | monthly + on demand (**no per-PR trigger**) | the Unity IL2CPP app-size matrix on Android — a measurement, not a numeric gate. The per-PR 3-row subset was removed: ~22 minutes of Android builds that compared no number to anything, on the three least interesting rows. An IL2CPP baseline would need runner-to-runner variance nobody has measured; the numeric gate stays on the NativeAOT half |
 | `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement; first full run 33255105207, 48/48 green |
 
 So everything in `tests/end-to-end/run-all.sh` now runs in CI — but not
 all of it on every push. A change outside `csharp/` does not wait for the
-engine matrix, and only a change to the runtime, the abstractions, the C#
-emitter or the bench itself waits for the IL2CPP matrix.
+engine matrix, and nothing waits for the IL2CPP matrix: run it from the
+Actions tab before a change you expect to move IL2CPP size, and read the
+monthly run otherwise.
 
 One check deliberately stays out of pull-request CI:
 `scripts/check-npm-publishable.mjs` exits 1 today by design, because the

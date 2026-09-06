@@ -86,6 +86,20 @@ const ROWS = [
     expect: [bench(22231), ["104006", "22231", "0", "0"]],
     excludeFromBaseline: true,
   },
+  // csharp/SqliteHost.Publish.Nano.props, the whole-app size-trimming flags
+  // the docs tell a size-critical game to import — compiled here because
+  // nothing else compiled them anywhere. Its own project imports the file
+  // the way a consumer would, so a flag that stops being valid, or an
+  // interaction with the runtime, fails this row rather than a user's
+  // build. Out of the baseline like compact50-noreflection: it is a
+  // compatibility measurement, not a tracked profile, and its delta is
+  // whole-app rather than SqliteHost's.
+  {
+    name: "compact50-nano",
+    project: "out/nativeaot/compact50-nano/compact50-nano.csproj",
+    expect: bench(22231),
+    excludeFromBaseline: true,
+  },
   { name: "probe-gvm", project: "probes/gvm/gvm.csproj" },
   { name: "probe-nogvm", project: "probes/nogvm/nogvm.csproj" },
 ];

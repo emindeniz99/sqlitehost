@@ -9,11 +9,15 @@
       <Import Project="path/to/SqliteHost.Publish.Nano.props" />
 
     Measured effect (see docs/compatibility.md, App size): these flags cut
-    ~57 KB gzip off a real game binary's OWN code (exceptions metadata,
-    reflection tables, unshared method bodies). They shave only ~3 KB more
-    off SqliteHost's marginal contribution, because the runtime is already
+    around 60 KB gzip off a real game binary's OWN code (exceptions
+    metadata, reflection tables, unshared method bodies) and under 4 KB off
+    SqliteHost's marginal contribution, because the runtime is already
     reflection-free and lean — so the big win here is for YOUR app, and
     SqliteHost is simply fully compatible with maximal stripping.
+
+    This file is compiled on every CI run by the app-size bench's
+    `compact50-nano` row, which imports it the way the line below tells you
+    to. Before that row existed nothing compiled it at all.
 
     Trade-offs (all whole-app, not SqliteHost-specific):
       - StackTraceSupport=false removes managed exception stack traces

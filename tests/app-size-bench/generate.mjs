@@ -19,9 +19,12 @@
  *   out/gen/compact-fields/                       50-method compact with DTO
  *                                                 fields instead of
  *                                                 auto-properties (H-FIELDS)
- *   out/nativeaot/{gamebase,classic50,compact50,compact50-fields,ultra50,
+ *   out/nativeaot/{gamebase,classic50,compact50,compact50-nano,
+ *                  compact50-fields,ultra50,
  *                  classic5,compact5,ultra5}/     ready-to-publish .NET 8
  *                                                 NativeAOT console benches
+ *                                                 (-nano imports the shipped
+ *                                                 SqliteHost.Publish.Nano.props)
  *   out/unity-src/{profile}[-5]/                  the same sources arranged
  *                                                 for vendoring into a Unity
  *                                                 project (see protocol doc)
@@ -162,6 +165,21 @@ const csprojWithHost = `<Project Sdk="Microsoft.NET.Sdk">
 `;
 const csprojBare = csprojWithHost.replace(/  <ItemGroup>[\s\S]*<\/ItemGroup>\n/, "");
 
+// compact50-nano: the same project, plus the whole-app size-trimming flags
+// csharp/SqliteHost.Publish.Nano.props ships for size-critical games —
+// imported exactly the way that file's own comment tells a consumer to
+// import it. The file shipped for months with a size claim attached and
+// nothing anywhere compiled it: `grep -rn Nano csharp tests docs scripts`
+// found its own comment and one sentence in docs/compatibility.md. It is
+// not in the packed NuGet ids either, so even its reachability was
+// unverified. This row compiles it on every CI run and prints its size.
+const csprojNano = csprojWithHost.replace(
+  "</Project>",
+  `  <!-- The shipped consumer instruction, executed. -->
+  <Import Project="../../../../../csharp/SqliteHost.Publish.Nano.props" />
+</Project>`,
+);
+
 const mainCs = `static class Program
 {
     static void Main(string[] args)
@@ -219,11 +237,11 @@ execFileSync(node, [
 
 // ---------- assemble NativeAOT bench projects ----------
 
-function writeBench(name, genDir /* null for gamebase */, profile, methods) {
+function writeBench(name, genDir /* null for gamebase */, profile, methods, csproj) {
   const dir = join(OUT, "nativeaot", name);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "GameWork.cs"), gameWork);
-  writeFileSync(join(dir, `${name}.csproj`), genDir ? csprojWithHost : csprojBare);
+  writeFileSync(join(dir, `${name}.csproj`), csproj ?? (genDir ? csprojWithHost : csprojBare));
   if (genDir) {
     for (const f of readdirSync(genDir)) {
       if (f.endsWith(".g.cs")) cpSync(join(genDir, f), join(dir, f));
@@ -238,6 +256,7 @@ function writeBench(name, genDir /* null for gamebase */, profile, methods) {
 writeBench("gamebase", null);
 writeBench("classic50", join(OUT, "gen/classic"), "classic", 50);
 writeBench("compact50", join(OUT, "gen/compact"), "classic", 50);
+writeBench("compact50-nano", join(OUT, "gen/compact"), "classic", 50, csprojNano);
 writeBench("compact50-fields", join(OUT, "gen/compact-fields"), "classic", 50);
 writeBench("ultra50", join(OUT, "gen/ultra"), "ultra", 50);
 writeBench("classic5", join(OUT, "gen/classic-5"), "classic", 5);

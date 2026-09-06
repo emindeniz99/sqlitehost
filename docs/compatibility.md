@@ -342,14 +342,32 @@ Aggressive whole-app AOT flags (`StackTraceSupport=false`,
 `UseSystemResourceKeys=true`, `IlcOptimizationPreference=Size`,
 `IlcFoldIdenticalMethodBodies=true` — bundled in
 `csharp/SqliteHost.Publish.Nano.props` to import into your game's
-publish project) cut ~57 KB gzip off a real game binary — but only
-~3 KB of that is SqliteHost's delta (66 → 63.5 KB gzip ultra+slim,
-75 → 72 KB compact+slim). The rest is the game's own exception/reflection
-metadata. The takeaway is the honest one: **the runtime is already at
-its AOT floor** — it is reflection-free and lean enough that maximal
-stripping finds almost nothing more to remove from it. Those flags are
-worth setting for the whole app's sake, and SqliteHost is fully
-compatible with all of them; they are not a SqliteHost-specific win.
+publish project) cut a large slice off a whole binary and almost
+nothing off SqliteHost's own contribution.
+
+Measured **locally, osx-arm64, .NET 8 target** (the CI bench publishes
+linux-x64, so treat these as the shape rather than as the numbers to
+quote; the `compact50-nano` bench row prints the current pair on every
+run):
+
+| binary | gzip | with the Nano flags | saving |
+|---|---|---|---|
+| `gamebase` (no SqliteHost at all) | 765,654 | 704,557 | **−61,097 B** |
+| `compact50` | 865,042 | 800,135 | **−64,907 B** |
+| SqliteHost's own delta (compact50 − gamebase) | 99,388 | 95,578 | **−3,810 B** |
+
+So of ~60 KB gzip the flags remove, under 4 KB is SqliteHost's. The rest
+is the game's own exception and reflection metadata. The takeaway is the
+honest one: **the runtime is already at its AOT floor** — it is
+reflection-free and lean enough that maximal stripping finds almost
+nothing more to remove from it. Those flags are worth setting for the
+whole app's sake, and SqliteHost is fully compatible with all of them;
+they are not a SqliteHost-specific win.
+
+The props file is compiled by `tests/app-size-bench`'s `compact50-nano`
+row, which imports it exactly as a consumer would. Until that row
+existed nothing anywhere compiled the file, so the flag set's validity —
+and even its reachability — rested on a comment.
 
 ## Java — 17+
 

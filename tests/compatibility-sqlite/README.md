@@ -154,8 +154,8 @@ confirmed via the identity tests on both overridable adapters; full run
 
 | SQLite  | Tests | UPSERT (3.24) | RETURNING (3.35) | OVER (3.25) | iif() (3.32) | json_valid (build) | positive prepare |
 |---------|-------|---------------|------------------|-------------|--------------|--------------------|------------------|
-| 3.9.0   | PASS — 347 passed, 0 failed, 196 skipped (of 543, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.9.2   | PASS — 347 passed, 0 failed, 196 skipped (of 543, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.9.0   | PASS — 347 passed, 0 failed, 196 skipped (of 543 at that date; the skip budget below carries today's arithmetic) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.9.2   | PASS — 347 passed, 0 failed, 196 skipped (of 543 at that date; the skip budget below carries today's arithmetic) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
 | 3.19.3  | PASS — 449 passed, 0 failed, 110 skipped | threw | threw | threw | threw | threw (no JSON1) | all prepared |
 | 3.28.0  | PASS — 449 passed, 0 failed, 110 skipped | succeeded | threw | succeeded | threw | threw (no JSON1) | all prepared |
 | 3.53.3 (newest) | PASS — 449 passed, 0 failed, 110 skipped | succeeded | succeeded | succeeded | succeeded | succeeded (built-in) | all prepared |
@@ -206,10 +206,58 @@ same gate. Those rows are now meaningfully green instead:
   adapter-level sections that measurably pass on 3.9.x. Rather than lose
   that coverage, run-matrix.sh passes a `dotnet test --filter` excluding
   exactly those four methods in below-floor cells (16 test cases across
-  the four adapter mirrors — which is why those cells report 543 total
-  instead of 559).
+  the four adapter mirrors — which is why those cells report **752** total
+  instead of **768**).
 
 The script exits non-zero if **any** row fails, below-floor rows included.
+
+## The skip budget
+
+A leg that skips most of the suite and reports PASS tells you nothing,
+and until this budget existed nothing in the matrix looked at the skip
+count. An inverted skip predicate — `SkipUnderNativeOverride`,
+`SampleHostFloor.IsBelowFloor` — would have emptied a cell and left it
+green. run-matrix.sh now fails a leg whose `Skipped` exceeds a ceiling or
+whose `Passed` falls below a floor, and prints what to recompute.
+
+Where the skips come from (measured 2026-09-07, suite Total **768**;
+the counts are platform-independent because every skip below is a
+`Skip.If`, not a load failure):
+
+| leg | Passed | Skipped | = System.Data.SQLite | + sqlite-net | + engine-specific |
+|---|---|---|---|---|---|
+| 3.28.0 / newest (≥ 3.24) | 598 | 170 | 84 | 84 | 2 |
+| 3.19.3 (floor, < 3.24) | 596 | 172 | 84 | 84 | 4 |
+| 3.9.0 / 3.9.2 (below floor, Total 752) | 419 | 333 | 80 | 80 | 173 |
+
+- **System.Data.SQLite and sqlite-net skip whole.** Both bundle or load
+  their own SQLite, so `SQLITEHOST_NATIVE_SQLITE` never reaches them and
+  a cell that ran them would be measuring the wrong engine. That is 168
+  of the 170 baseline skips: two adapter mirrors out of four.
+- **2 more on every leg:** `FloorGateTests`' below-floor branch, on the
+  two overridable adapters. Its at/above-floor branch runs instead.
+- **2 more below 3.24:** `example-011-insert-alias` needs the UPSERT-era
+  `INSERT INTO t AS alias`, which 3.19.3 cannot parse
+  (`FixtureCoverage.ValidEngineFloors`).
+- **173 more below the floor:** every runtime-driven test on the two
+  overridable adapters, skipping itself through `SampleHostFloor` because
+  the `sqlite-version-too-low` gate would refuse the run anyway. 68 of
+  those are the fixture corpus (34 payload cases × 2 adapters).
+
+The ceilings are those numbers plus room for ordinary test growth, and
+they sit far below what an inversion produces — an at-floor leg that
+started skipping everything runtime-driven would land near the
+below-floor 333, past a ceiling of 220:
+
+| band | max Skipped | min Passed |
+|---|---|---|
+| at or above the floor | 220 | 520 |
+| below the floor | 400 | 360 |
+
+Adding adapter-parameterized tests moves the measured numbers. When a leg
+breaches, check that the skip predicates still say what they should, then
+update the four constants at the top of `run-matrix.sh` **and** this
+section together.
 
 ## Conclusion
 

@@ -62,7 +62,7 @@ does not hit it.
 
 **System.Data.SQLite has no arm64 macOS native.** `System.Data.SQLite.Core`
 ships `SQLite.Interop.dll` for `win-x86`, `win-x64`, `linux-x64` and
-`osx-x64` only, so on Apple Silicon 54 of the 56 `SystemDataSqlite*`
+`osx-x64` only, so on Apple Silicon 84 of the 86 `SystemDataSqlite*`
 tests die with `DllNotFoundException` before the first assertion (the two
 survivors are the `CleanSkip_*` inline-function cases, which never open a
 connection). That adapter is covered by the Linux and Windows CI jobs.
@@ -72,7 +72,7 @@ Locally, skip it:
 dotnet test --filter "FullyQualifiedName!~SystemDataSqlite"
 ```
 
-That leaves 503 tests: 497 pass, 6 skip.
+That leaves 682 tests: 676 pass, 6 skip.
 
 **No .NET 8 runtime installed?** The test assembly targets `net8.0` and
 will not start on a machine that only has newer runtimes. Roll it
@@ -126,8 +126,10 @@ builds, not a build output, and emission is deterministic.
 
 ## The validator conformance corpus
 
-`fixtures/payloads/` plus `expectations.json` is one corpus read by the
-Java and TypeScript conformance runners. Both assert an **exact** match:
+`fixtures/payloads/` plus `expectations.json` is one corpus with three
+consumers: the Java and TypeScript conformance runners, which validate
+every payload, and the C# runtime, which has to execute the valid ones.
+Both runners assert an **exact** match:
 the codes an implementation reports must equal the codes the case lists
 for it, sorted, with multiplicity. An extra finding fails the suite.
 
@@ -145,6 +147,17 @@ script: a code with no fixture, and the reason there is none. A code on
 that list that a fixture *does* cover fails the check and has to be
 removed — the same mechanic Protobuf's conformance runner uses for a
 test on its expected-failure list that starts passing.
+
+**The C# side is opt-out.** `IntegrationFixtureTests` enumerates
+`fixtures/payloads/valid/` and runs every payload on all four adapters;
+`InvalidFixtureEnvelopeTests` enumerates `fixtures/payloads/invalid/`
+and runs the ones whose fault the envelope precheck catches. A new
+payload therefore runs the moment it is committed. To stop it, add an
+entry to the matching table in
+`csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs` **with a reason**
+— the corpus check parses those tables and fails on a fixture no table
+decided. Most `invalid/` fixtures are there legitimately: their code is
+an authoring rule, and the runtime is not a validator.
 
 ## Commits
 
