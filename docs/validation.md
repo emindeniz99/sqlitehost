@@ -215,12 +215,22 @@ list lives in `docs/sqlite-surface.md`.
 
 | Code | Severity | Rule |
 |---|---|---|
+| `embedded-nul` | error | the `sql` field contains U+0000. SQLite's prepare takes a NUL-terminated string, so it compiles only the text before the first NUL and silently drops the rest — every other rule here reads the whole field, so the statement the validator judged is not the statement the device runs |
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
 | `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
 | `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
 
 Why these are errors rather than warnings:
 
+- **A NUL truncates the statement without a diagnostic.** Verified against
+  libsqlite3 3.51.0: `DELETE FROM t\u0000 WHERE name = :n` prepares
+  cleanly as `DELETE FROM t` with zero bind parameters — an unrestricted
+  delete where the author wrote a filtered one. Nothing in the engine
+  reports it, prepare-only validation compiles the truncated form and
+  passes, and the binding scan sees a `:n` the compiled statement does not
+  have. The shipped native adapter rejects an embedded NUL at run time,
+  which makes this an authoring-time error there and a silent rewrite on
+  any adapter that does not.
 - **One statement per `sql` field is the contract, and a second statement
   is a denylist bypass.** Adapters disagree about the tail: the shipped
   native adapter rejects a trailing statement outright and steps nothing

@@ -66,6 +66,7 @@ export type LintCode =
   | "nondeterministic-function"
   | "sqlite-version-too-low-for-function"
   | "nonportable-function"
+  | "embedded-nul"
   | "multiple-statements"
   | "forbidden-statement"
   | "protocol-table-write"
@@ -340,6 +341,24 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   script.steps.forEach((step, stepIndex) => {
     step.statements.forEach((statement, statementIndex) => {
       const at = { stepId: step.id, statementIndex };
+
+      // SQLite's prepare takes a NUL-terminated string, so everything from
+      // the first U+0000 onwards is dropped before the parser ever sees it.
+      // Verified against libsqlite3 3.51.0: "DELETE FROM t\u0000 WHERE name
+      // = :n" compiles to "DELETE FROM t" with zero bind parameters. Every
+      // other rule here reads the whole `sql` field, so without this check
+      // the lint analyses one statement and the device runs a different,
+      // shorter one.
+      const nulIndex = statement.sql.indexOf("\u0000");
+      if (nulIndex >= 0) {
+        findings.push({
+          code: "embedded-nul",
+          severity: "error",
+          message: `statement sql contains U+0000 at index ${nulIndex}; SQLite compiles only the text before it`,
+          ...at,
+        });
+      }
+
       const bindings: Record<string, BindingValue> = statement.bindings ?? {};
       const bindingNames = Object.keys(bindings);
       const parameters = scanNamedParameters(statement.sql);

@@ -45,6 +45,7 @@ public final class ValidationCodes {
     public static final String NONPORTABLE_FUNCTION = "nonportable-function";
 
     // Statement denylist
+    public static final String EMBEDDED_NUL = "embedded-nul";
     public static final String MULTIPLE_STATEMENTS = "multiple-statements";
     public static final String FORBIDDEN_STATEMENT = "forbidden-statement";
     public static final String PROTOCOL_TABLE_WRITE = "protocol-table-write";

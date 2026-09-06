@@ -184,6 +184,21 @@ public final class ValidationEngine {
             SchemaIndex schema, Script script, Statement statement,
             int stepIndex, String stepId, int statementIndex,
             Analysis analysis, List<ValidationFinding> findings) {
+        // embedded-nul: SQLite's prepare takes a NUL-terminated string, so
+        // everything from the first U+0000 onwards is dropped before the
+        // parser ever sees it. Verified against libsqlite3 3.51.0:
+        // "DELETE FROM t\u0000 WHERE name = :n" compiles to "DELETE FROM t"
+        // with zero bind parameters. Every other rule here reads the whole
+        // `sql` field, so without this check the validator analyses one
+        // statement and the device runs a different, shorter one.
+        if (statement.sql().indexOf('\0') >= 0) {
+            findings.add(ValidationFinding.error(ValidationCodes.EMBEDDED_NUL,
+                    stepId, statementIndex,
+                    "statement sql contains U+0000 at index "
+                            + statement.sql().indexOf('\0')
+                            + "; SQLite compiles only the text before it"));
+        }
+
         List<SqlToken> tokens = SqlTokenizer.tokenize(statement.sql());
         Map<String, BindingValue> bindings = statement.bindings();
 
