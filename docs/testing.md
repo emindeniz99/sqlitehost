@@ -53,6 +53,18 @@ Identical manifest, identical DDL, identical envelope contract,
 identical table/column names, identical optional/required semantics,
 identical API-level metadata.
 
+## Fixture corpus (`scripts/check-fixture-corpus.mjs`)
+
+The Java and TypeScript conformance runners prove each implementation
+reports exactly the codes a case expects. This script proves the corpus
+they read is sound: no fixture without an expectations entry and no
+entry without a fixture, one fault per `invalid/` case, a fixture for
+every code pinned in `docs/validation.md`, and the same code set spelled
+in all three places the codes live (the doc tables, Java's
+`ValidationCodes`, the TypeScript `LintCode` union). `--self-test` drives
+each of those checks against a mutated copy of the corpus in a temp
+directory. Both run in the goldens CI job.
+
 ## Script delivery (`tests/delivery-golden`)
 
 Envelopes signed by the TypeScript signer are verified byte-for-byte by

@@ -63,7 +63,11 @@ TypeScript artifacts are tested against the same committed fixtures
 Opens an in-memory SQLite database, creates the generated schema,
 **prepares** every script statement (compile only — catches grammar
 errors, missing tables/columns, unsupported functions), and finalizes
-without stepping. Reported as `sql-prepare-error`.
+without stepping.
+
+| Code | Severity | Rule |
+|---|---|---|
+| `sql-prepare-error` | error | a statement failed to compile against the schema generated from the manifest. Java-only: the TypeScript authoring lint has no engine. It is the sole finding for a fault only a compiler can see (`invalid/unknown-column.json`) and a second, corroborating one wherever a lint-rejected statement is also uncompilable |
 
 ### Prepare-only is not a floor check — and cannot become one
 

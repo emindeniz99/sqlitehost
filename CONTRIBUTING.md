@@ -36,6 +36,8 @@ cd java   && mvn -q test                    # model, validator, prepare-only JDB
 pnpm install && pnpm -r run test            # typespec library, emitters, TS SDKs
 node tests/cross-language-golden/run.mjs    # emitters vs committed sources
 node tests/delivery-golden/run.mjs          # TS signer bytes verify under .NET
+node scripts/check-fixture-corpus.mjs       # the payload corpus is sound
+node scripts/check-fixture-corpus.mjs --self-test   # ...and the check works
 node unity/sync.mjs --check                 # UPM copies match csharp/
 node tests/vendor-trim/run.mjs              # each vendoring profile compiles alone
 bash tests/compatibility-sqlite/run-matrix.sh   # real SQLite 3.9.0 to newest (Linux)
@@ -118,6 +120,28 @@ builds, not a build output, and emission is deterministic.
 - **The cross-language runner has no update mode on purpose.** If its
   bytes differ, either the emitter changed and you re-emit, or something
   drifted and you fix it.
+
+## The validator conformance corpus
+
+`fixtures/payloads/` plus `expectations.json` is one corpus read by the
+Java and TypeScript conformance runners. Both assert an **exact** match:
+the codes an implementation reports must equal the codes the case lists
+for it, sorted, with multiplicity. An extra finding fails the suite.
+
+`scripts/check-fixture-corpus.mjs` guards the corpus itself, and CI runs
+it in the goldens job. It refuses an orphan in either direction (a
+fixture with no entry, an entry with no fixture), an invalid case that
+carries more than one fault, a code that no fixture exercises, and a
+code spelled differently in `docs/validation.md`, Java's
+`ValidationCodes` and the TypeScript `LintCode` union — those three are
+checked against each other, since the codes are pinned in three places
+and nothing else compares them.
+
+The one escape hatch is the `knownUncovered` list at the top of the
+script: a code with no fixture, and the reason there is none. A code on
+that list that a fixture *does* cover fails the check and has to be
+removed — the same mechanic Protobuf's conformance runner uses for a
+test on its expected-failure list that starts passing.
 
 ## Commits
 
