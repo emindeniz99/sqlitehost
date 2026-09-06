@@ -213,7 +213,7 @@ jobs:
           echo "::notice title=Unity EditMode tests skipped::Pull requests from a fork cannot read the repository's Unity licence secrets, so the editor job does not run here. A maintainer runs it on this branch before merging."
 
   edit-mode-tests:
-    name: EditMode tests (Unity ${{ matrix.unity-version }})
+    name: EditMode tests (Unity ${{ matrix.unity-version }}, ${{ matrix.build }} build)
     needs: scaffold-guard
     # Same-repo events only. A fork pull request gets empty secrets no
     # matter what, so running the job there can only produce a red check
@@ -253,6 +253,22 @@ jobs:
       # failure names one leg instead of poisoning all of them. 1.4.6 is
       # the registry's latest and is unverified on these editors until the
       # first run of this matrix.
+      #
+      # `build:` says which of the two vendoring builds the leg compiles.
+      # SQLITEHOST_SLIM is the build the package's size claims rest on, and
+      # before this field no Unity editor had ever compiled it: the CI
+      # project has no committed ProjectSettings.asset to hold a scripting
+      # define, SqliteHost.asmdef carries no versionDefines, and the editor
+      # command line has no flag for one. Eight legs bought eight compiles
+      # of the same half.
+      #
+      # Alternating costs nothing — same eight legs, same ~45 minutes, four
+      # editors on each build. The two legs that most need to prove the
+      # SHIPPING default stay `full`: the 2021.3.45f2 floor (the only leg
+      # that can prove package.json's "unity": "2021.3") and 6000.3.22f1
+      # (the LTS most consumers will land on). 2022.3.62f3 takes `slim`
+      # because it is the editor both size benches measure, so that is the
+      # editor where the slim build's behaviour is worth having.
       matrix:
         include:
           # The package's declared floor, and the only leg that can prove
@@ -261,18 +277,21 @@ jobs:
           - unity-version: 2021.3.45f2
             editor-image: unityci/editor@sha256:903ced48a1d4f415b597280b76c4f01f1bd38f66c654805fb3ffd16874d7d2ee
             test-framework: 1.1.33
+            build: full
           # 2022.3 LTS. Newest patch a personal licence can activate —
           # .63f1 onward is Extended LTS, even though Docker Hub publishes
           # an image as far as 2022.3.76f1.
           - unity-version: 2022.3.62f3
             editor-image: unityci/editor@sha256:13aff281d283f6e7ce4a61d1444e057dfb0b9aa8667ac033fbd212d3eeed0b26
             test-framework: 1.4.6
+            build: slim
           # Unity 6.0 LTS, supported through October 2026. Still actively
           # patched, so the newest patch is public; see the header note
           # about freezing this pin once support lapses.
           - unity-version: 6000.0.82f1
             editor-image: unityci/editor@sha256:a88298650cc7bfb1ef1b7ca63b6b82f434ac592c07c3e13f0b24e59f6231fd0b
             test-framework: 1.4.6
+            build: full
           # Unity 6.1 — a Supported Update release, not LTS, and out of
           # support (last patch 6000.1.17f1, October 2025). Fully
           # activatable: Supported Update lines get no Extended-LTS
@@ -280,29 +299,34 @@ jobs:
           - unity-version: 6000.1.17f1
             editor-image: unityci/editor@sha256:5dcf7433f491c1cc2994389bfc1f6b51a6f70f07770ba83e9d457a0f5b435b6c
             test-framework: 1.4.6
+            build: slim
           # Unity 6.2 — Supported Update release, explicitly no longer
           # supported by Unity (last patch December 2025). Activatable,
           # same reasoning as 6.1.
           - unity-version: 6000.2.15f1
             editor-image: unityci/editor@sha256:a3e0e7c61add8a284c096a9fbded6023d72da19a2bcb8592183f3b61c0e8dd51
             test-framework: 1.4.6
+            build: slim
           # Unity 6.3 LTS, supported until December 2027 — the
           # longest-lived line available and the one most consumers will
           # land on. The most valuable leg after the floor.
           - unity-version: 6000.3.22f1
             editor-image: unityci/editor@sha256:bd9f0c77473bc842423236ec1498f180380f734dde521397e0fac2319865e87a
             test-framework: 1.4.6
+            build: full
           # Unity 6.4 — Supported Update release, already superseded by
           # 6.5. Activatable; kept for completeness of the 6000 lines.
           - unity-version: 6000.4.12f1
             editor-image: unityci/editor@sha256:9c87358957e7820ec9913d5403dae0b8f78fdd401d6201d6e2d735da655e129c
             test-framework: 1.4.6
+            build: full
           # Unity 6.5 — current Supported Update release. Forward
           # coverage: it is the early warning for whatever becomes the
           # next LTS.
           - unity-version: 6000.5.9f1
             editor-image: unityci/editor@sha256:e4199b3ebec810002ed106e8251f9e7d14d2468d4fdd503a6c4b7cc262c57445
             test-framework: 1.4.6
+            build: slim
     steps:
       # First step on purpose: a missing secret should cost seconds, not a
       # cryptic activation failure after the editor image has been pulled.
@@ -373,6 +397,37 @@ jobs:
           cp -R 'unity/com.sqlitehost.runtime/Samples~/GeneratedSample' \
                 unity/ci-project/Assets/Samples/GeneratedSample
           find unity/ci-project/Assets/Samples -type f | sort
+
+      # Which of the two vendoring builds this leg compiles (see the
+      # matrix comment). A csc.rsp next to an .asmdef is how Unity takes
+      # per-assembly compiler options, and it is the only lever available
+      # here: the CI project's ProjectSettings.asset is not committed, so
+      # there is nowhere to put scriptingDefineSymbols, and the editor
+      # command line has no flag for a define.
+      #
+      # A mechanism that silently stopped working would leave the slim legs
+      # compiling the full build and passing — the exact green-by-omission
+      # this field exists to end. So the leg also records what it ASKED
+      # for, and VendoringModeTests.cs reflects over the compiled package
+      # assembly to check what it GOT. Neither file is committed; both are
+      # gitignored.
+      - name: Select the vendoring build for this leg
+        env:
+          BUILD: ${{ matrix.build }}
+        run: |
+          set -eu
+          rsp=unity/com.sqlitehost.runtime/Runtime/csc.rsp
+          rm -f "$rsp"
+          case "$BUILD" in
+            full) ;;
+            slim) echo "-define:SQLITEHOST_SLIM" > "$rsp" ;;
+            *)
+              echo "::error title=Unknown vendoring build::matrix.build=$BUILD (expected full or slim)"
+              exit 1
+              ;;
+          esac
+          printf '%s\n' "$BUILD" > unity/ci-project/Assets/sqlitehost-build.txt
+          echo "leg compiles the $BUILD vendoring build"
 
       - name: Run EditMode tests
         uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4.3.1

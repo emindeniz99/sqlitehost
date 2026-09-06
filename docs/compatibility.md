@@ -71,23 +71,30 @@ and that floor is the contract. `.github/workflows/unity-ci.yml` puts the
 package in front of a real editor and runs its EditMode tests on every
 editor version a free personal Unity licence can activate:
 
-| Editor | Line | Why this patch |
-|---|---|---|
-| 2021.3.45f2 | 2021 LTS | the declared floor, and the newest 2021.3 patch a personal licence activates |
-| 2022.3.62f3 | 2022 LTS | newest publicly activatable 2022.3 patch |
-| 6000.0.82f1 | Unity 6.0 LTS | Unity supports this line through October 2026 |
-| 6000.1.17f1 | Unity 6.1 | Supported Update release, last patched October 2025 |
-| 6000.2.15f1 | Unity 6.2 | Supported Update release, retired by Unity |
-| 6000.3.22f1 | Unity 6.3 LTS | supported until December 2027, so most consumers land here |
-| 6000.4.12f1 | Unity 6.4 | Supported Update release, superseded by 6.5 |
-| 6000.5.9f1 | Unity 6.5 | current Supported Update release, forward warning for the next LTS |
+| Editor | Line | Build | Why this patch |
+|---|---|---|---|
+| 2021.3.45f2 | 2021 LTS | full | the declared floor, and the newest 2021.3 patch a personal licence activates |
+| 2022.3.62f3 | 2022 LTS | slim | newest publicly activatable 2022.3 patch |
+| 6000.0.82f1 | Unity 6.0 LTS | full | Unity supports this line through October 2026 |
+| 6000.1.17f1 | Unity 6.1 | slim | Supported Update release, last patched October 2025 |
+| 6000.2.15f1 | Unity 6.2 | slim | Supported Update release, retired by Unity |
+| 6000.3.22f1 | Unity 6.3 LTS | full | supported until December 2027, so most consumers land here |
+| 6000.4.12f1 | Unity 6.4 | full | Supported Update release, superseded by 6.5 |
+| 6000.5.9f1 | Unity 6.5 | slim | current Supported Update release, forward warning for the next LTS |
 
 Read that table as exactly one claim: on each of those editors, the UPM
-package compiles and its EditMode tests pass, headless, on a Linux x64
-runner. Play mode, IL2CPP player builds, the macOS and Windows editors
-and the mobile players are not covered there. For those, see the manual
-spike (`docs/guides/unity-2021-spike.md`) and the measured IL2CPP report
-(`docs/reports/il2cpp-size-report.md`).
+package compiles in the build named there and its EditMode tests pass,
+headless, on a Linux x64 runner. Play mode, IL2CPP player builds, the
+macOS and Windows editors and the mobile players are not covered there.
+For those, see the manual spike (`docs/guides/unity-2021-spike.md`) and
+the measured IL2CPP report (`docs/reports/il2cpp-size-report.md`).
+
+**Build** is the vendoring build the leg compiles: `slim` is
+`SQLITEHOST_SLIM` (the size-critical build the trimming numbers below rest
+on), `full` is the shipping default. Half the legs take each, so both get
+editor coverage for the same wall clock — but no single editor proves
+both, and the floor leg is deliberately `full`, so "2021.3 compiles"
+remains a claim about the shipping build only.
 
 Three gaps CI cannot close, so you know they are gaps and not oversights:
 
