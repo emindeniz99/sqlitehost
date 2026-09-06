@@ -325,13 +325,29 @@ function fieldBlock(
   return lines;
 }
 
+/**
+ * Arguments of the generated `.Inline(...)` call: the resolved function
+ * name plus the IR's arity. The arity is a manifest value (frontend.ts
+ * derives it once from the declared input fields), and the Java and
+ * TypeScript emitters already carry it into their generated specs;
+ * emitting it here stops the C# runtime from re-deriving a second copy of
+ * the same rule for generated hosts.
+ */
+function inlineArgs(method: HostMethodIr): string {
+  const inline = method.inline;
+  if (inline === null) {
+    throw new Error("inlineArgs called for a method with no inline exposure");
+  }
+  return `${csharpString(inline.functionName)}, ${inline.minArgs}, ${inline.maxArgs}`;
+}
+
 function specMethod(method: HostMethodIr): string {
   // Inline scalar-function exposure sits between .Results and .Handler
   // (docs/csharp-api.md); non-inline methods emit nothing.
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   const lines = [
     `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${method.operationName}Spec()`,
     "        {",
@@ -468,7 +484,7 @@ function compactSpecMembers(
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   members.push(
     [
       `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,
@@ -665,7 +681,7 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
   const inline =
     method.inline === null
       ? []
-      : [`                .Inline(${csharpString(method.inline.functionName)})`];
+      : [`                .Inline(${inlineArgs(method)})`];
   members.push(
     [
       `        private static IHostMethodSpec<IGeneratedHostHandlers> Build${op}Spec()`,

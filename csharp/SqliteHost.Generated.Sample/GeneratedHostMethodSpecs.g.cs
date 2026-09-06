@@ -28,7 +28,7 @@ namespace Example.Game.Generated
                     .Text("key", (x, v) => x.Key = v))
                 .Results(r => r
                     .Long("value", x => x.Value))
-                .Inline("fn_get_value")
+                .Inline("fn_get_value", 1, 1)
                 .Handler((handlers, input) => handlers.GetValue(input))
                 .Build();
         }

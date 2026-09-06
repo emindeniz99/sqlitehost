@@ -532,9 +532,13 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
 test("smoke IR: inline methods emit .Inline between .Results and .Handler, others nothing", () => {
   const specs = smokeFile("GeneratedHostMethodSpecs.g.cs");
   // The inline method's spec carries the custom-prefix function name.
+  // The arity travels with the name: it is an IR value, and a generated
+  // spec that omitted it left the C# runtime re-deriving the rule from
+  // the field shapes — a second copy of frontend.ts's arity rule that no
+  // golden could catch drifting.
   assert.match(
     specs,
-    /\.Double\("score", x => x\.Score\)\)\n\s+\.Inline\("udf_lookup_score"\)\n\s+\.Handler\(\(handlers, input\) => handlers\.LookupScore\(input\)\)/,
+    /\.Double\("score", x => x\.Score\)\)\n\s+\.Inline\("udf_lookup_score", 1, 2\)\n\s+\.Handler\(\(handlers, input\) => handlers\.LookupScore\(input\)\)/,
   );
   // The ineligible (mutating, list-carrying) method emits no .Inline.
   const archiveSpec = specs.slice(

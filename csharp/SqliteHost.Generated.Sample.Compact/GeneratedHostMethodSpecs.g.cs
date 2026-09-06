@@ -27,7 +27,7 @@ namespace Example.Game.Generated.Compact
                 .CreateInput(CreateGetValueInput)
                 .InputText("key", SetGetValueKey)
                 .ResultLong("value", ReadGetValueValue)
-                .Inline("fn_get_value")
+                .Inline("fn_get_value", 1, 1)
                 .Handler(InvokeGetValue)
                 .Build();
         }

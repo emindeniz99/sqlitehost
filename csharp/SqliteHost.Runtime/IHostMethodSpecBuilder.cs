@@ -25,6 +25,14 @@ namespace SqliteHost
         /// generator's duty.
         /// </summary>
         IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(string functionName);
+        /// <summary>
+        /// Same, with the arity the manifest already carries. Generated
+        /// code uses this overload; the one-argument form derives the
+        /// arity from the declared input fields instead, which is what a
+        /// hand-written definition needs.
+        /// </summary>
+        IHostMethodSpecBuilder<THandlers, TInput, TResult> Inline(
+            string functionName, int minArgs, int maxArgs);
 
         IHostMethodSpec<THandlers> Build();
     }
