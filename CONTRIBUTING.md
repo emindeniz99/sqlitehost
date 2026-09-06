@@ -126,8 +126,10 @@ builds, not a build output, and emission is deterministic.
 
 ## The validator conformance corpus
 
-`fixtures/payloads/` plus `expectations.json` is one corpus read by the
-Java and TypeScript conformance runners. Both assert an **exact** match:
+`fixtures/payloads/` plus `expectations.json` is one corpus with three
+consumers: the Java and TypeScript conformance runners, which validate
+every payload, and the C# runtime, which has to execute the valid ones.
+Both runners assert an **exact** match:
 the codes an implementation reports must equal the codes the case lists
 for it, sorted, with multiplicity. An extra finding fails the suite.
 
@@ -145,6 +147,17 @@ script: a code with no fixture, and the reason there is none. A code on
 that list that a fixture *does* cover fails the check and has to be
 removed — the same mechanic Protobuf's conformance runner uses for a
 test on its expected-failure list that starts passing.
+
+**The C# side is opt-out.** `IntegrationFixtureTests` enumerates
+`fixtures/payloads/valid/` and runs every payload on all four adapters;
+`InvalidFixtureEnvelopeTests` enumerates `fixtures/payloads/invalid/`
+and runs the ones whose fault the envelope precheck catches. A new
+payload therefore runs the moment it is committed. To stop it, add an
+entry to the matching table in
+`csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs` **with a reason**
+— the corpus check parses those tables and fails on a fixture no table
+decided. Most `invalid/` fixtures are there legitimately: their code is
+an authoring rule, and the runtime is not a validator.
 
 ## Commits
 

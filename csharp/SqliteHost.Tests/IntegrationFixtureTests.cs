@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Example.Game.Generated;
 using Microsoft.Data.Sqlite;
 using SqliteHost.Adapters.Native;
@@ -54,6 +55,13 @@ namespace SqliteHost.Tests
             FakeGameHandlers handlers,
             SqliteHostRuntimeOptions options = null,
             AdapterWorkspaceFactory factory = null)
+            => RunFixture(ScriptEnvelopeJson.LoadPayload(payload), handlers, options, factory);
+
+        private SqliteHostRunResult RunFixture(
+            SqliteHostScript script,
+            FakeGameHandlers handlers,
+            SqliteHostRuntimeOptions options = null,
+            AdapterWorkspaceFactory factory = null)
         {
             Skip.If(
                 SkipUnderNativeOverride && NativeSqliteOverride.IsActive,
@@ -67,7 +75,56 @@ namespace SqliteHost.Tests
                 hostDefinition: GeneratedHostDefinition.Build(),
                 handlers: handlers,
                 options: options);
-            return runtime.Run(ScriptEnvelopeJson.LoadPayload(payload));
+            return runtime.Run(script);
+        }
+
+        /// <summary>
+        /// Every payload in <c>fixtures/payloads/valid/</c> that
+        /// <see cref="FixtureCoverage.UnrunValid"/> does not excuse. The
+        /// listing is the test data on purpose: the hand-written cases below
+        /// name the payloads they assert BEHAVIOUR for, and naming was the
+        /// only thing making a payload run, so six valid fixtures — both
+        /// float ones among them — were validated by Java and TypeScript and
+        /// never executed by the runtime. A new fixture now runs here the
+        /// moment it is committed, on all four adapters, and only an entry
+        /// in the skip table with a reason can stop it.
+        /// </summary>
+        public static TheoryData<string> RunnableValidPayloads()
+        {
+            var data = new TheoryData<string>();
+            foreach (string name in FixtureCoverage.ListPayloads("valid"))
+            {
+                if (!FixtureCoverage.UnrunValid.ContainsKey(name))
+                {
+                    data.Add(name);
+                }
+            }
+            return data;
+        }
+
+        [SkippableTheory]
+        [MemberData(nameof(RunnableValidPayloads))]
+        public void EveryValidFixture_RunsToCompletion(string fixtureName)
+        {
+            SqliteHostScript script = ScriptEnvelopeJson.LoadPayload("valid/" + fixtureName);
+            // example-010 is the one payload that asks for inline functions;
+            // the capability marker is a factory property, not a runtime one.
+            bool needsInlineFunctions = script.RequiredFeatures != null
+                && script.RequiredFeatures.Contains("inlineFunctions");
+
+            SqliteHostRunResult result = RunFixture(
+                script,
+                new FakeGameHandlers(),
+                factory: needsInlineFunctions ? CreateCapableFactory() : CreateFactory());
+
+            // Deliberately weak on purpose: this suite proves the payload is
+            // EXECUTABLE by the runtime on this adapter, which is what the
+            // corpus never checked. What each script means is asserted by the
+            // named cases below and by the validators' own conformance runs.
+            Assert.True(
+                result.Status == SqliteHostRunStatus.Completed,
+                fixtureName + " ended " + result.Status + " (" + (result.ErrorCode ?? "no code")
+                    + "): " + result.ErrorMessage);
         }
 
         [SkippableFact]

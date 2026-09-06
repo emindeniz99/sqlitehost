@@ -42,7 +42,17 @@ const javaOnlyCodes = {
     "authoring SDK has no engine (docs/validation.md)",
 };
 
+/**
+ * Who reads the corpus. `expectations.json` names the two VALIDATORS on
+ * each finding, because a finding is a validator verdict — the C# runtime
+ * is not a validator and reports no codes. But it IS a consumer, and the
+ * consumer nobody was counting: before the csharp checks below, a payload
+ * added for a contract change was validated twice and executed zero times
+ * unless someone remembered to name it in a C# test. Six valid payloads
+ * had accumulated that way, both float ones among them.
+ */
 const VALIDATOR_IDS = ["java", "typescript"];
+const CONSUMER_IDS = [...VALIDATOR_IDS, "csharp"];
 const CASE_KEYS = new Set(["payload", "valid", "errors", "warnings", "manifest"]);
 const REQUIRED_CASE_KEYS = ["payload", "valid", "errors", "warnings"];
 const FINDING_KEYS = new Set(["code", "validators"]);
@@ -85,6 +95,11 @@ export function checkCorpus({
     "java/sqlite-host-validator/src/main/java/io/sqlitehost/validator/ValidationCodes.java",
   ),
   typescriptFile = join(REPO_ROOT, "typescript/authoring-sdk/src/lint.ts"),
+  csharpCoverageFile = join(REPO_ROOT, "csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs"),
+  csharpRunnerFiles = [
+    join(REPO_ROOT, "csharp/SqliteHost.Tests/IntegrationFixtureTests.cs"),
+    join(REPO_ROOT, "csharp/SqliteHost.Tests/InvalidFixtureEnvelopeTests.cs"),
+  ],
 } = {}) {
   const violations = [];
   const fail = (message) => violations.push(message);
@@ -273,7 +288,136 @@ export function checkCorpus({
     }
   }
 
+  // ---- 5. The runtime consumer. -----------------------------------------
+  checkRuntimeConsumer({ fail, payloadsDir, csharpCoverageFile, csharpRunnerFiles });
+
   return violations;
+}
+
+/**
+ * `csharp`, the third consumer: does the runtime that has to EXECUTE these
+ * payloads actually see each one?
+ *
+ * The evidence is the C# test source, because that is where the decision
+ * lives. `FixtureCoverage.cs` holds marker-delimited tables and the two
+ * suites enumerate the fixture directories, so coverage is opt-OUT: a new
+ * payload runs unless a table excuses it. This function reads the tables
+ * back and refuses the two ways that can rot — a fixture no table decided,
+ * and a table naming a fixture that is gone — plus the way the whole
+ * mechanic can be quietly undone, a runner that stopped reading the
+ * directory.
+ */
+function parseCsharpTable(source, marker, where, fail) {
+  const open = source.indexOf(`>>> ${marker}`);
+  const close = source.indexOf(`<<< ${marker}`);
+  if (open === -1 || close === -1 || close < open) {
+    fail(`${where}: the '${marker}' table markers are missing or out of order`);
+    return null;
+  }
+  const body = source.slice(open, close);
+  const entries = new Map();
+  for (const m of body.matchAll(/\{\s*"([\w.-]+\.json)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\}/g)) {
+    if (entries.has(m[1])) fail(`${where}: '${marker}' names ${m[1]} twice`);
+    entries.set(m[1], m[2]);
+  }
+  return entries;
+}
+
+function checkRuntimeConsumer({ fail, payloadsDir, csharpCoverageFile, csharpRunnerFiles }) {
+  let source;
+  try {
+    source = readFileSync(csharpCoverageFile, "utf8");
+  } catch (e) {
+    fail(`csharp coverage: ${csharpCoverageFile} does not resolve (${e.message})`);
+    return;
+  }
+
+  const tables = {
+    "valid-skip-list": parseCsharpTable(source, "valid-skip-list", csharpCoverageFile, fail),
+    "invalid-envelope-refusals": parseCsharpTable(source, "invalid-envelope-refusals", csharpCoverageFile, fail),
+    "invalid-reader-refusals": parseCsharpTable(source, "invalid-reader-refusals", csharpCoverageFile, fail),
+    "invalid-not-envelope": parseCsharpTable(source, "invalid-not-envelope", csharpCoverageFile, fail),
+  };
+  if (Object.values(tables).some((t) => t === null)) return;
+
+  const listing = (dir) => {
+    try {
+      return new Set(readdirSync(join(payloadsDir, dir)).filter((f) => f.endsWith(".json")));
+    } catch {
+      return null;
+    }
+  };
+
+  // valid/: running it is the default, so the only rot is a stale excuse.
+  const validFiles = listing("valid");
+  if (validFiles) {
+    for (const name of [...tables["valid-skip-list"].keys()].sort()) {
+      if (!validFiles.has(name)) {
+        fail(`csharp coverage: valid-skip-list names '${name}', which no longer exists in fixtures/payloads/valid/`);
+      }
+    }
+    if (tables["valid-skip-list"].size >= validFiles.size) {
+      fail("csharp coverage: the valid skip list excuses every valid fixture — the runtime executes none of them");
+    }
+  }
+
+  // invalid/: every fixture needs a decision, in exactly one table.
+  const invalidFiles = listing("invalid");
+  if (invalidFiles) {
+    const decided = new Map();
+    for (const key of ["invalid-envelope-refusals", "invalid-reader-refusals", "invalid-not-envelope"]) {
+      for (const [name, reason] of tables[key]) {
+        if (decided.has(name)) {
+          fail(`csharp coverage: '${name}' appears in both ${decided.get(name)} and ${key}`);
+          continue;
+        }
+        decided.set(name, key);
+        if (!invalidFiles.has(name)) {
+          fail(`csharp coverage: ${key} names '${name}', which no longer exists in fixtures/payloads/invalid/`);
+        }
+        if (!reason.trim()) fail(`csharp coverage: '${name}' in ${key} has a blank reason`);
+      }
+    }
+    for (const name of [...invalidFiles].sort()) {
+      if (!decided.has(name)) {
+        fail(
+          `csharp coverage: invalid/${name} has no entry in csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs — ` +
+            `add it to EnvelopeRefusals with the ErrorCode the runtime reports, or to NotEnvelopeFaults ` +
+            `with the reason the envelope layer cannot see the fault`,
+        );
+      }
+    }
+    // An envelope refusal names a runtime error code, which docs/errors.md
+    // pins. A typo there would make the C# test assert a code nothing emits.
+    const runtimeCodes = new Set(
+      [...readFileSync(join(REPO_ROOT, "docs/errors.md"), "utf8").matchAll(
+        /^\|\s*`([a-z0-9-]+)`\s*\|\s*(?:Completed|Skipped\w+|Failed\w+)\s*\|/gm,
+      )].map((m) => m[1]),
+    );
+    for (const [name, code] of tables["invalid-envelope-refusals"]) {
+      if (!runtimeCodes.has(code)) {
+        fail(`csharp coverage: '${name}' expects ErrorCode '${code}', which has no row in docs/errors.md`);
+      }
+    }
+  }
+
+  // The mechanic itself: a runner that stopped enumerating the directory
+  // would keep every check above green while covering nothing new.
+  for (const file of csharpRunnerFiles) {
+    let runner;
+    try {
+      runner = readFileSync(file, "utf8");
+    } catch (e) {
+      fail(`csharp coverage: ${file} does not resolve (${e.message})`);
+      continue;
+    }
+    if (!runner.includes("FixtureCoverage.ListPayloads(")) {
+      fail(
+        `csharp coverage: ${file} no longer enumerates the fixture directory ` +
+          `(FixtureCoverage.ListPayloads) — coverage would be opt-in again`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +503,78 @@ function selfTest() {
     if (!hit) console.log(`     got: ${JSON.stringify(violations, null, 2)}`);
   }
 
+  // ---- 5. the runtime consumer ------------------------------------------
+  // These need a mutated COPY of the C# sources rather than of
+  // expectations.json, so they build their own scenario.
+  const coverageFile = join(REPO_ROOT, "csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs");
+  const runnerFiles = [
+    join(REPO_ROOT, "csharp/SqliteHost.Tests/IntegrationFixtureTests.cs"),
+    join(REPO_ROOT, "csharp/SqliteHost.Tests/InvalidFixtureEnvelopeTests.cs"),
+  ];
+  const csharpScenario = (name, { fixtures, coverage, runner }, expectFragment) => {
+    const dir = join(scratch, name.replace(/[^\w.-]+/g, "_"));
+    mkdirSync(dir, { recursive: true });
+    cpSync(join(REPO_ROOT, "fixtures"), dir, { recursive: true });
+    if (fixtures) fixtures(dir);
+    const coveragePath = join(dir, "FixtureCoverage.cs");
+    writeFileSync(coveragePath, (coverage ?? ((t) => t))(readFileSync(coverageFile, "utf8")));
+    const runnerPaths = runnerFiles.map((f, i) => {
+      const out = join(dir, `runner-${i}.cs`);
+      writeFileSync(out, (runner ?? ((t) => t))(readFileSync(f, "utf8")));
+      return out;
+    });
+    const violations = checkCorpus({
+      fixturesDir: dir,
+      csharpCoverageFile: coveragePath,
+      csharpRunnerFiles: runnerPaths,
+    });
+    const hit = violations.some((v) => v.includes(expectFragment));
+    results.push({ name, hit, violations });
+    console.log(`${hit ? "ok  " : "FAIL"} ${name}`);
+    if (!hit) {
+      console.log(`     expected a violation containing: ${expectFragment}\n     got: ${JSON.stringify(violations, null, 2)}`);
+    }
+  };
+
+  csharpScenario(
+    "5. csharp: a new invalid fixture no C# table decided",
+    {
+      fixtures: (dir) => {
+        // Orphan-safe: give it an expectations entry, so the ONLY thing
+        // missing is the runtime decision.
+        const p = join(dir, "payloads/expectations.json");
+        const e = JSON.parse(readFileSync(p, "utf8"));
+        e.cases.push({
+          payload: "invalid/brand-new-rule.json",
+          valid: false,
+          errors: [{ code: "duplicate-step-id", validators: ["java", "typescript"] }],
+          warnings: [],
+        });
+        writeFileSync(p, JSON.stringify(e, null, 2) + "\n");
+        writeFileSync(join(dir, "payloads/invalid/brand-new-rule.json"), "{}\n");
+      },
+    },
+    "invalid/brand-new-rule.json has no entry",
+  );
+
+  csharpScenario(
+    "5. csharp: a table naming a fixture that is gone",
+    { coverage: (t) => t.replace('"empty-statements.json"', '"deleted-long-ago.json"') },
+    "names 'deleted-long-ago.json', which no longer exists",
+  );
+
+  csharpScenario(
+    "5. csharp: an envelope refusal expecting a code docs/errors.md does not pin",
+    { coverage: (t) => t.replace('{ "empty-statements.json", "invalid-script" }', '{ "empty-statements.json", "invalid-scrpt" }') },
+    "which has no row in docs/errors.md",
+  );
+
+  csharpScenario(
+    "5. csharp: a runner that stopped enumerating the directory",
+    { runner: (t) => t.replace(/FixtureCoverage\.ListPayloads\(/g, "HardCodedList(") },
+    "no longer enumerates the fixture directory",
+  );
+
   rmSync(scratch, { recursive: true, force: true });
 
   const failed = results.filter((r) => !r.hit);
@@ -384,5 +600,5 @@ if (args.includes("--self-test")) {
     console.error(`\n${violations.length} violation(s).`);
     process.exit(1);
   }
-  console.log("FIXTURE CORPUS OK");
+  console.log(`FIXTURE CORPUS OK (consumers: ${CONSUMER_IDS.join(", ")})`);
 }

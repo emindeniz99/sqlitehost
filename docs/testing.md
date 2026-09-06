@@ -14,11 +14,21 @@ input/output mapping incl. empty lists and `item_index` ordering,
 unsupported engine/API/feature/method clean skips, binding validation
 (missing/unused), statement/pending-call limits.
 
-Integration (real `Microsoft.Data.Sqlite` adapter, in-memory
-workspace): execute the parsed fixture scripts end-to-end with fake
-handlers — read → conditional write → read-after-write, list roundtrip,
-runtime inputs, blob roundtrip — verifying result rows feed later SQL
-and diagnostics are populated.
+Integration (all four adapters, in-memory workspace): execute the
+parsed fixture scripts end-to-end with fake handlers — read →
+conditional write → read-after-write, list roundtrip, runtime inputs,
+blob roundtrip — verifying result rows feed later SQL and diagnostics
+are populated.
+
+Fixture coverage is opt-**out**, not opt-in. `IntegrationFixtureTests`
+enumerates `fixtures/payloads/valid/` and runs every payload on every
+adapter; `InvalidFixtureEnvelopeTests` enumerates
+`fixtures/payloads/invalid/` and runs each fixture whose fault the
+envelope precheck is meant to catch, asserting both the `ErrorCode` and
+that no workspace was opened. `Fixtures/FixtureCoverage.cs` holds the
+tables: what is skipped, and why. Anything the envelope layer cannot
+see — an authoring lint, or a refusal that only happens once the
+workspace is open — is listed there with the reason instead.
 
 ## TypeSpec/codegen (`pnpm -r test`, node:test)
 
@@ -61,9 +71,19 @@ they read is sound: no fixture without an expectations entry and no
 entry without a fixture, one fault per `invalid/` case, a fixture for
 every code pinned in `docs/validation.md`, and the same code set spelled
 in all three places the codes live (the doc tables, Java's
-`ValidationCodes`, the TypeScript `LintCode` union). `--self-test` drives
-each of those checks against a mutated copy of the corpus in a temp
-directory. Both run in the goldens CI job.
+`ValidationCodes`, the TypeScript `LintCode` union).
+
+It also checks the corpus's **third consumer**. Java and TypeScript
+validate the payloads; the C# runtime has to *execute* them, and nothing
+compared the two — six valid payloads, both float ones among them, were
+validated twice and never run. The `csharp` checks read
+`csharp/SqliteHost.Tests/Fixtures/FixtureCoverage.cs` as evidence and
+fail on a fixture no C# table decided, a table naming a fixture that is
+gone, an expected `ErrorCode` with no row in `docs/errors.md`, and a
+test that stopped enumerating the directory.
+
+`--self-test` drives each of those checks against a mutated copy of the
+corpus in a temp directory. Both run in the goldens CI job.
 
 ## Script delivery (`tests/delivery-golden`)
 

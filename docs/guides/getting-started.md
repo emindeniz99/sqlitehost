@@ -670,10 +670,14 @@ Note the read lives in a **separate step**: results are written when
 a step's drain runs, so read-after-write is always an explicit next
 step (this is exactly what the `result-read-not-after-call` lint
 enforces). The same pattern at larger scale is
-`csharp/SqliteHost.Tests/IntegrationFixtureTests.cs` running every
-`fixtures/payloads/valid/` payload across three adapters.
+`csharp/SqliteHost.Tests/IntegrationFixtureTests.cs`, which enumerates
+`fixtures/payloads/valid/` and runs every payload in it across four
+adapters (20 payloads today). Its companion
+`InvalidFixtureEnvelopeTests.cs` does the same for the `invalid/` half,
+running the ones whose fault the runtime's envelope precheck is
+supposed to catch.
 
-**5. Prove the adapter too** — one subclass, 31 inherited tests:
+**5. Prove the adapter too** — one subclass, 40 inherited tests:
 
 ```csharp
 public class NotesAdapterConformanceTests : AdapterConformanceTestsBase
@@ -683,8 +687,10 @@ public class NotesAdapterConformanceTests : AdapterConformanceTestsBase
 }
 ```
 
-**6. Run** — `dotnet test` → **32 passed** (1 integration + 31
-conformance). And close the loop with Path D: the same script as a
+**6. Run** — `dotnet test` → **41 tests** (1 integration + 40
+conformance); 7 of the 40 are the optional scalar-function section and
+skip themselves unless the adapter implements
+`ISqliteHostScalarFunctionConnection`. And close the loop with Path D: the same script as a
 JSON payload passes both gates —
 
 ```sh
