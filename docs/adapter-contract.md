@@ -65,6 +65,18 @@ failures:
   (`MultiStatementSql_NeverRunsTheFirstStatementAlone`), and tests that
   a trailing terminator or comment is *not* treated as a second
   statement.
+- **SQL that compiles to no program is a no-op, not an error.** A
+  statement whose text is only a comment or only whitespace prepares
+  successfully with no statement handle, and `Execute`/`QueryRows` must
+  treat that as a completed statement with no rows. Commenting a
+  statement out is the most ordinary thing a script author does, and
+  nothing rejects such a payload earlier: `invalid-envelope` covers
+  blank fields, and a comment is not blank. The alternative — the state
+  before `CommentOnlySql_IsANoOp` was added to the suite — was a script
+  that ran on one host and hard-failed on two others. It is the same
+  reading as "a trailing comment is not a second statement" below.
+  `Prepare` is the exception: it exists to report a statement's
+  parameters and has nothing to describe, so it throws.
 - SQL text carrying an embedded NUL must be rejected before anything is
   compiled. SQLite reads SQL as a C string and stops at the first NUL
   byte, so the NUL truncates the statement: `DELETE FROM t\0 WHERE k =
@@ -204,7 +216,7 @@ a handler a coerced argument.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (31 core
+`AdapterConformanceTestsBase` — the xunit contract suite (32 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

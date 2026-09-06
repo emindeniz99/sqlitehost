@@ -49,6 +49,10 @@ namespace SqliteHost.Tests.Adapter
         public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             using sqlite3_stmt statement = PrepareCore(sql, bindings);
+            if (statement == null)
+            {
+                return;   // comment-only / whitespace-only SQL: a completed no-op
+            }
             // SQLite evaluates a row-producing statement only as it is
             // stepped: drain to SQLITE_DONE (discarding rows) so later-row
             // evaluation — errors and inline function invocations — is
@@ -69,6 +73,10 @@ namespace SqliteHost.Tests.Adapter
             Func<ISqliteHostRow, object> mapper)
         {
             using sqlite3_stmt statement = PrepareCore(sql, bindings);
+            if (statement == null)
+            {
+                return new List<object>();   // no program, so no rows
+            }
             var row = new SqliteNetRow(statement);
             var results = new List<object>();
             while (true)
@@ -89,7 +97,16 @@ namespace SqliteHost.Tests.Adapter
 
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
-            return new SqliteNetPreparedStatement(PrepareOnly(sql));
+            sqlite3_stmt statement = PrepareOnly(sql);
+            if (statement == null)
+            {
+                // A no-op statement has no parameters to describe; see the
+                // same guard in SqliteHost.Adapters.Native.
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
+                    0, null);
+            }
+            return new SqliteNetPreparedStatement(statement);
         }
 
         /// <summary>
@@ -221,6 +238,14 @@ namespace SqliteHost.Tests.Adapter
             {
                 throw Error("sqlite3_prepare_v2", rc);
             }
+            if (statement == null || statement.IsInvalid)
+            {
+                // Whitespace/comment-only SQL compiles to no VDBE program.
+                // Null means "a no-op" here; the callers decide what that is
+                // (docs/adapter-contract.md).
+                statement?.Dispose();
+                return null;
+            }
             RejectSqlAfterFirstStatement(statement, tail);
             return statement;
         }
@@ -282,6 +307,10 @@ namespace SqliteHost.Tests.Adapter
         private sqlite3_stmt PrepareCore(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             sqlite3_stmt statement = PrepareOnly(sql);
+            if (statement == null)
+            {
+                return null;   // nothing to bind against
+            }
             try
             {
                 if (bindings != null)

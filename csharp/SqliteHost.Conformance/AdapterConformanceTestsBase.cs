@@ -704,6 +704,29 @@ namespace SqliteHost.Conformance
         }
 
         [SkippableFact]
+        public void CommentOnlySql_IsANoOp()
+        {
+            // SQL that compiles to no VDBE program — a commented-out
+            // statement, whitespace — is a no-op, not an error. It is the
+            // same reading as "a trailing comment is not a second
+            // statement" below, and commenting a statement out is the most
+            // ordinary thing a script author does; a script that ran on one
+            // host and hard-failed on another was the alternative
+            // (docs/adapter-contract.md). Nothing may be swallowed on
+            // either side of it, so the connection keeps working.
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (a INTEGER)", null);
+
+            connection.Execute("-- nothing at all", null);
+            connection.Execute("   ", null);
+            connection.Execute("/* nothing */", null);
+            Assert.Empty(connection.Query("-- nothing at all", null, row => row.GetInt64(0)));
+
+            connection.Execute("INSERT INTO scratch (a) VALUES (1)", null);
+            AssertSingleRow(connection, "SELECT a FROM scratch", row => row.GetInt64(0).ToString(), "1");
+        }
+
+        [SkippableFact]
         public void TrailingTerminatorAndComment_AreNotMultiStatement()
         {
             // The other half of the tail rule: a trailing terminator or

@@ -98,6 +98,10 @@ namespace SqliteHost.Adapters.Native
         {
             ThrowIfDisposed();
             IntPtr statement = PrepareAndBind(sql, bindings);
+            if (statement == IntPtr.Zero)
+            {
+                return;   // comment-only / whitespace-only SQL: a completed no-op
+            }
             try
             {
                 // SQLite evaluates a row-producing statement only as it is
@@ -127,6 +131,10 @@ namespace SqliteHost.Adapters.Native
         {
             ThrowIfDisposed();
             IntPtr statement = PrepareAndBind(sql, bindings);
+            if (statement == IntPtr.Zero)
+            {
+                return new List<object>();   // no program, so no rows
+            }
             var row = new NativeRow(statement);
             try
             {
@@ -156,7 +164,18 @@ namespace SqliteHost.Adapters.Native
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
             ThrowIfDisposed();
-            var statement = new NativePreparedStatement(this, PrepareOnly(sql));
+            IntPtr handle = PrepareOnly(sql);
+            if (handle == IntPtr.Zero)
+            {
+                // Executing such SQL is a no-op; describing its parameters
+                // is not a question with an answer, and returning a
+                // statement wrapping a null handle would postpone the
+                // failure into the caller's first read.
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
+                    0, null);
+            }
+            var statement = new NativePreparedStatement(this, handle);
             _liveStatements.Add(statement);
             return statement;
         }
@@ -418,12 +437,13 @@ namespace SqliteHost.Adapters.Native
             }
             if (statement == IntPtr.Zero)
             {
-                // Whitespace/comment-only SQL prepares "successfully" with no
-                // statement; stepping a null handle would crash, and treating
-                // it as success would mask an authoring error. Fail loud.
-                throw new SqliteHostAdapterException(
-                    "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
-                    0, null);
+                // Whitespace/comment-only SQL prepares "successfully" with
+                // no statement. That compiles to no VDBE program, so it is a
+                // no-op, not an error (docs/adapter-contract.md): Execute
+                // and QueryRows below skip it and stay usable. Only Prepare,
+                // which exists to report a statement's parameters, has
+                // nothing to hand back and says so.
+                return IntPtr.Zero;
             }
             RejectSqlAfterFirstStatement(statement, sqlUtf8, tailOffset);
             return statement;
@@ -507,6 +527,10 @@ namespace SqliteHost.Adapters.Native
         private IntPtr PrepareAndBind(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             IntPtr statement = PrepareOnly(sql);
+            if (statement == IntPtr.Zero)
+            {
+                return IntPtr.Zero;   // nothing to bind against
+            }
             try
             {
                 if (bindings != null)
