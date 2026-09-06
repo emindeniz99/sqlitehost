@@ -22,6 +22,7 @@ import {
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
+  SYNTAX_MIN_VERSION,
   SYSTEM_TABLES,
   type ScalarTypeIr,
 } from "@sqlite-host/codegen-core";
@@ -120,6 +121,26 @@ export function emitProtocol(): string {
       "Version floors for whole function families, keyed by name prefix — " +
         "the LONGEST matching prefix wins. Covers the JSON surface, too " +
         "large to enumerate by hand without drift.",
+    ),
+    `${docComment(
+      "One version-gated SQL syntax construct: the SQLITE_VERSION_NUMBER " +
+        "that introduced it, and a description phrased to drop into \"SQL " +
+        'uses <description>, which requires SQLite ...".',
+    )}\nexport interface SyntaxFeature {\n  readonly minVersionNumber: number;\n  readonly description: string;\n}`,
+    constant(
+      "SYNTAX_MIN_VERSION",
+      "Readonly<Record<string, SyntaxFeature>>",
+      Object.fromEntries(
+        Object.entries(SYNTAX_MIN_VERSION).map(([id, feature]) => [
+          id,
+          { minVersionNumber: feature.minVersionNumber, description: feature.description },
+        ]),
+      ),
+      "SQL syntax introduced above the default contract floor, keyed by a " +
+        "stable feature id — the sibling of FUNCTION_MIN_VERSION for the " +
+        "half of the surface that is grammar rather than a call. Detection " +
+        "is hand-written per language (one token pattern per id); only the " +
+        "version and the wording live here.",
     ),
     constant(
       "NONPORTABLE_FUNCTIONS",

@@ -110,6 +110,64 @@ export const FUNCTION_PREFIX_MIN_VERSION: Readonly<Record<string, number>> = {
 };
 
 /**
+ * One version-gated SQL syntax construct: the SQLITE_VERSION_NUMBER
+ * that introduced it, and a description phrased to drop into "SQL uses
+ * <description>, which requires SQLite ...".
+ */
+export interface SyntaxFeature {
+  readonly minVersionNumber: number;
+  readonly description: string;
+}
+
+/**
+ * SQL syntax introduced above the default contract floor, keyed by a
+ * stable feature id — the sibling of FUNCTION_MIN_VERSION for the half
+ * of the surface that is grammar rather than a call. Detection is
+ * hand-written per language (one token pattern per id); only the
+ * version and the wording live here.
+ */
+export const SYNTAX_MIN_VERSION: Readonly<Record<string, SyntaxFeature>> = {
+  "insert-alias": {
+    minVersionNumber: 3024000,
+    description: "the INSERT table alias (INSERT INTO t AS alias)",
+  },
+  upsert: {
+    minVersionNumber: 3024000,
+    description: "UPSERT (ON CONFLICT ... DO NOTHING/UPDATE)",
+  },
+  "window-functions": {
+    minVersionNumber: 3025000,
+    description: "the OVER window clause",
+  },
+  "aggregate-filter": {
+    minVersionNumber: 3030000,
+    description: "the FILTER clause on an aggregate",
+  },
+  "nulls-first-last": {
+    minVersionNumber: 3030000,
+    description: "NULLS FIRST / NULLS LAST in ORDER BY",
+  },
+  "update-from": { minVersionNumber: 3033000, description: "UPDATE ... FROM" },
+  returning: { minVersionNumber: 3035000, description: "the RETURNING clause" },
+  "materialized-cte": {
+    minVersionNumber: 3035000,
+    description: "the MATERIALIZED / NOT MATERIALIZED CTE hint",
+  },
+  "json-arrow-operators": {
+    minVersionNumber: 3038000,
+    description: "the -> and ->> JSON operators",
+  },
+  "right-full-join": {
+    minVersionNumber: 3039000,
+    description: "RIGHT JOIN / FULL JOIN",
+  },
+  "is-distinct-from": {
+    minVersionNumber: 3039000,
+    description: "IS [NOT] DISTINCT FROM",
+  },
+};
+
+/**
  * Built-ins whose presence is decided by the device engine's compile
  * options rather than its version, so no version floor can make them
  * safe.

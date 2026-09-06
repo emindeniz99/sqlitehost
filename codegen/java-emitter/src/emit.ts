@@ -21,6 +21,7 @@ import {
   FORBIDDEN_LEADING_KEYWORDS,
   FUNCTION_MIN_VERSION,
   FUNCTION_PREFIX_MIN_VERSION,
+  SYNTAX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONDETERMINISTIC_TIME_KEYWORDS,
@@ -109,6 +110,13 @@ export function emitJavaProtocolConstants(): EmittedFile {
     .join(",\n");
   const prefixVersionEntries = Object.entries(FUNCTION_PREFIX_MIN_VERSION)
     .map(([prefix, version]) => `            ${javaString(prefix)}, ${version}`)
+    .join(",\n");
+  const syntaxVersionEntries = Object.entries(SYNTAX_MIN_VERSION)
+    .map(
+      ([id, feature]) =>
+        `            Map.entry(${javaString(id)}, new SyntaxFeature(\n` +
+        `                    ${feature.minVersionNumber}, ${javaString(feature.description)}))`,
+    )
     .join(",\n");
   const nonportableNames = wrapJavaArgs(
     NONPORTABLE_FUNCTIONS.map(javaString),
@@ -202,6 +210,25 @@ ${minVersionEntries});
      */
     public static final Map<String, Integer> FUNCTION_PREFIX_MIN_VERSION = Map.of(
 ${prefixVersionEntries});
+
+    /**
+     * One version-gated SQL SYNTAX construct ({@code ir.ts SyntaxFeatureIr}):
+     * the SQLITE_VERSION_NUMBER that introduced it and a description phrased
+     * to drop into "SQL uses &lt;description&gt;, which requires SQLite ...".
+     */
+    public record SyntaxFeature(int minVersionNumber, String description) {
+    }
+
+    /**
+     * SQL syntax introduced above the default floor
+     * ({@code ir.ts SYNTAX_MIN_VERSION}), keyed by a stable feature id — the
+     * sibling of {@link #FUNCTION_MIN_VERSION} for the half of the surface
+     * that is grammar rather than a call. Detection is hand-written per
+     * language (one token pattern per id); only the version and the wording
+     * live here.
+     */
+    public static final Map<String, SyntaxFeature> SYNTAX_MIN_VERSION = Map.ofEntries(
+${syntaxVersionEntries});
 
     /**
      * Built-ins whose presence is decided by the device engine's compile
