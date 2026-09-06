@@ -14,38 +14,35 @@
 #
 # Cost and cadence. A full 12-row run is a few hours of runner time, so:
 #   schedule          monthly, full matrix
-#   workflow_dispatch full matrix, and the only sane way to test a change
-#                     to this workflow
-#   pull_request      a 3-row subset (baseline / compact50 / ultra50), and
-#                     only for changes to the runtime or the C# emitter —
-#                     the inputs whose size this measures
+#   workflow_dispatch full matrix, on demand, and the only sane way to test
+#                     a change to this workflow
+#
+# NO pull_request trigger, removed deliberately. It used to run a 3-row
+# subset on any change to the runtime, the abstractions, the C# emitter or
+# the bench — about 22 minutes of Android IL2CPP builds per pull request —
+# and gated NOTHING: nothing in this workflow compares a byte count to
+# anything. measure-il2cpp.mjs exits non-zero only on a missing APK or an
+# unreadable validate log, and summarize-il2cpp.mjs only on incoherent
+# input. The subset also excluded every row worth watching: both SLIM rows,
+# both GVM probes, classic, fields and all three 5-method rows.
+#
+# A baseline was considered and rejected: Android IL2CPP byte counts move
+# with the editor patch, the NDK and the engine, and the variance across
+# runners has never been measured here, so any tolerance would be a guess.
+# The numeric gate stays on the NativeAOT half (ci.yml's `app-size` job).
+# Run this by hand from the Actions tab before a change you expect to move
+# IL2CPP size, and read the monthly run otherwise.
 #
 # Disk, not licence, is the binding constraint: the android IL2CPP editor
 # image is around 10 GB and a GitHub-hosted runner starts with roughly 14 GB
 # free, hence the reclaim step before the build.
 #
-# Fork pull requests cannot read secrets, so they cannot activate a Unity
-# licence. They skip with a notice rather than failing red — same pattern
-# unity-ci.yml uses.
+# The licence guard and the fork condition below are kept: a
+# workflow_dispatch from a fork's branch still cannot read the secrets, and
+# an explanation beats a red X.
 name: il2cpp-size-bench
 
 on:
-  pull_request:
-    # The inputs whose size this measures. This workflow file is
-    # deliberately NOT in the list, which buys less than it looks like:
-    # for a pull_request, GitHub matches these paths against the WHOLE
-    # pull request diff, not the latest push. Measured here — a push
-    # touching only this file still started a run, because the pull
-    # request as a whole touched tests/app-size-bench/. So the exclusion
-    # only spares a pull request that changes nothing else, which is the
-    # rarer case; the concurrency rule below is what actually stops the
-    # hours from piling up. Test a change to this file with
-    # workflow_dispatch on the branch.
-    paths:
-      - "csharp/SqliteHost.Runtime/**"
-      - "csharp/SqliteHost.Abstractions/**"
-      - "codegen/csharp-emitter/**"
-      - "tests/app-size-bench/**"
   schedule:
     # 02:23 UTC on the 3rd of each month.
     - cron: "23 2 3 * *"
@@ -54,14 +51,12 @@ on:
 permissions:
   contents: read
 
-# A scheduled run IS the measurement, so it is never cancelled: a
-# half-finished matrix is worse than a late one, and these runs are hours
-# long. On a pull request the opposite holds — a superseded run measures
-# code nobody will merge, and without this every push queues another hour
-# of Android IL2CPP builds behind the last one.
+# A run IS the measurement, so it is never cancelled: a half-finished
+# matrix is worse than a late one, and these runs are hours long. Two
+# dispatches on one ref still queue rather than race.
 concurrency:
   group: il2cpp-size-bench-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   # The floor+1 line unity-ci.yml also exercises. One version, because this
@@ -87,7 +82,9 @@ env:
   ANDROID_EDITOR_IMAGE: unityci/editor@sha256:fece0382433aa05547d8118c578594bd1a38a5f27f00278f627456817d6c41e3
 
 jobs:
-  # Fork pull requests get an explanation instead of a red X.
+  # Fork pull requests get an explanation instead of a red X. Kept while
+  # the pull_request trigger is off, so restoring it stays a one-line
+  # change — the same reason ios-size-bench.yml keeps its copy.
   licence-guard:
     name: licence availability
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
@@ -116,9 +113,12 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          # The pull_request arm is unreachable while that trigger is off
+          # (see the header). It is kept with the guards above so putting
+          # the trigger back is one line — but it would need better rows
+          # than these first: [0,2,4] excluded both SLIM rows, both GVM
+          # probes, classic, fields and all three 5-method rows.
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            # Baseline, the default profile and the smallest profile: enough
-            # to see a regression in shape, three rows instead of twelve.
             echo 'rows=[0,2,4]' >> "$GITHUB_OUTPUT"
           else
             echo 'rows=[0,1,2,3,4,5,6,7,8,9,10,11]' >> "$GITHUB_OUTPUT"

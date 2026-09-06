@@ -199,13 +199,14 @@ matrix, each at the cadence its cost justifies:
 | `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
 | `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
 | `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
-| `il2cpp-size-bench.yml` | monthly + on demand, plus a 3-row subset per-PR on the runtime and C# emitter paths | the Unity IL2CPP app-size matrix on Android (a measurement, not a numeric gate) |
+| `il2cpp-size-bench.yml` | monthly + on demand (**no per-PR trigger**) | the Unity IL2CPP app-size matrix on Android — a measurement, not a numeric gate. The per-PR 3-row subset was removed: ~22 minutes of Android builds that compared no number to anything, on the three least interesting rows. An IL2CPP baseline would need runner-to-runner variance nobody has measured; the numeric gate stays on the NativeAOT half |
 | `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement; first full run 33255105207, 48/48 green |
 
 So everything in `tests/end-to-end/run-all.sh` now runs in CI — but not
 all of it on every push. A change outside `csharp/` does not wait for the
-engine matrix, and only a change to the runtime, the abstractions, the C#
-emitter or the bench itself waits for the IL2CPP matrix.
+engine matrix, and nothing waits for the IL2CPP matrix: run it from the
+Actions tab before a change you expect to move IL2CPP size, and read the
+monthly run otherwise.
 
 One check deliberately stays out of pull-request CI:
 `scripts/check-npm-publishable.mjs` exits 1 today by design, because the
