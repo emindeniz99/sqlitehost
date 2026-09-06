@@ -474,9 +474,10 @@ pipeline passes, what has been proven": structural envelope errors,
 binding errors (`missing-binding`, `unused-binding`,
 `binding-type-mismatch`, `mixed-prefix-binding`), host-call usage
 (`implicit-column-list`, `undeclared-method-use`,
-`duplicate-call-id`, list child colocation) and — Java only —
-result-read lineage (`result-read-unknown-call`,
-`result-read-not-after-call`) and `sql-prepare-error`.
+`duplicate-call-id`, list child colocation), result-read lineage
+(`result-read-unknown-call`, `result-read-not-after-call` — both
+validators, except the bracket-quoted case) and — Java only —
+`sql-prepare-error`.
 
 The publishability rule (`docs/validation.md`): **zero errors =
 publishable; warnings don't block.**

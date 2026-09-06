@@ -67,11 +67,14 @@ without stepping. Reported as `sql-prepare-error`.
 
 ### Prepare-only is not a floor check — and cannot become one
 
-This layer runs on whatever engine `org.xerial:sqlite-jdbc` bundles
-(pinned in `java/pom.xml`), currently **3.45.3**, while the
-default contract floor is **3.19.3**. Everything added across those 26
-minor versions therefore *compiles clean here* and fails on a device at
-the floor. Pinning the driver down was considered and rejected, on three
+This layer runs on whatever engine `org.xerial:sqlite-jdbc` bundles, while
+the default contract floor is **3.19.3**. Read
+`<sqlite-jdbc.version>` in `java/pom.xml` for the pin — xerial's first
+three components are the bundled SQLite version, so the pin tells you the
+top of the gap and the floor tells you the bottom. Every minor release
+between the two adds syntax and functions that *compile clean here* and
+fail on a device at the floor, and the gap only widens as the driver is
+bumped. Pinning the driver down was considered and rejected, on three
 counts:
 
 1. **The floor is per-host data, the driver is one build constant.**
@@ -280,12 +283,18 @@ resolves targets only for `INSERT`/`REPLACE`/`UPDATE`/`DELETE`, which is
 now sound rather than a gap, because no statement that changes the schema
 can reach it.
 
-### Result-read lineage (java validator only in v1)
+### Result-read lineage (both validators)
 
 | Code | Severity | Rule |
 |---|---|---|
 | `result-read-unknown-call` | error | a statement reads `result_<method>` (or its child tables) filtered on a `call_id` that no statement emits for that method |
 | `result-read-not-after-call` | error | the read happens in the same or an earlier step than the emitting insert — results only exist after the emitting step's drain |
+
+Both codes carry `"validators": ["java", "typescript"]` in
+`fixtures/payloads/expectations.json`, and the TypeScript rule lives in
+`typescript/authoring-sdk/src/lint.ts`. The two tokenizers are not
+identical: only the Java one resolves a bracket-quoted result table, which
+is why `invalid/result-read-unknown-call-bracket.json` expects Java alone.
 
 Static `call_id` resolution covers literals and bindings with text
 values (`call_id = :x` where `x` is bound); computed ids (e.g.
