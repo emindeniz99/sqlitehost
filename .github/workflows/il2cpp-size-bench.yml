@@ -186,13 +186,31 @@ jobs:
           ROW: ${{ matrix.row }}
         run: |
           set -euo pipefail
+          rows=tests/app-size-bench/il2cpp-rows.json
+          validate=$(jq -er --argjson r "$ROW" '.[] | select(.row == $r) | .validate' "$rows")
+          defines=$(jq -er --argjson r "$ROW" '.[] | select(.row == $r) | .defines' "$rows")
+          # Both values are written to GITHUB_OUTPUT and then interpolated
+          # into `customParameters:` for the unity-builder step below, which
+          # is the step holding the Unity licence secrets. A newline in
+          # either would close the `params=` line and inject further step
+          # outputs. Only a pull request with write access can change
+          # il2cpp-rows.json, so this is a structural guard rather than a
+          # live hole — but it is four lines and the blast radius is the
+          # credentials. Keep the patterns as narrow as the real values.
+          validate_re='^[A-Za-z0-9._-]+$'
+          defines_re='^[A-Za-z0-9_]*(;[A-Za-z0-9_]+)*$'
+          if [[ ! "$validate" =~ $validate_re ]]; then
+            echo "::error title=Bad bench row::row $ROW validate=$(printf '%q' "$validate") is outside $validate_re"
+            exit 1
+          fi
+          if [[ ! "$defines" =~ $defines_re ]]; then
+            echo "::error title=Bad bench row::row $ROW defines=$(printf '%q' "$defines") is outside $defines_re"
+            exit 1
+          fi
           # An empty -sbDefines would be dropped by the argument parser, so
           # the flag is only emitted when the row actually sets defines.
-          params=$(jq -er --argjson r "$ROW" '
-            .[] | select(.row == $r)
-              | "-sbOutput Builds/row\(.row).apk -sbValidate \(.validate)"
-                + (if .defines == "" then "" else " -sbDefines \(.defines)" end)
-          ' tests/app-size-bench/il2cpp-rows.json)
+          params="-sbOutput Builds/row$ROW.apk -sbValidate $validate"
+          [ -z "$defines" ] || params="$params -sbDefines $defines"
           echo "params=$params" >> "$GITHUB_OUTPUT"
           echo "row $ROW -> $params"
 

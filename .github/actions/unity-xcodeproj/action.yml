@@ -157,6 +157,26 @@ runs:
             console.error("unknown row " + process.env.ROW);
             process.exit(1);
           }
+          // What comes out of here is written to GITHUB_OUTPUT and then
+          // interpolated into `customParameters:` for the unity-builder
+          // step below — the step holding the Unity licence secrets. A
+          // newline in either field would close the `params=` line and
+          // inject further step outputs. Only a pull request with write
+          // access can change il2cpp-rows.json, so this is a structural
+          // guard rather than a live hole; it is six lines and the blast
+          // radius is the credentials. Keep the patterns as narrow as the
+          // real values.
+          const reject = (field, value, pattern) => {
+            if (typeof value !== "string" || !pattern.test(value)) {
+              console.error(
+                "row " + row + ": " + field + "=" + JSON.stringify(value) +
+                  " is outside " + pattern + " — refusing to write it to GITHUB_OUTPUT",
+              );
+              process.exit(1);
+            }
+          };
+          reject("validate", spec.validate, /^[A-Za-z0-9._-]+$/);
+          reject("defines", spec.defines, /^[A-Za-z0-9_]*(;[A-Za-z0-9_]+)*$/);
           const parts = ["-sbTarget ios", "-sbOutput Builds/row" + row, "-sbValidate " + spec.validate];
           // An empty -sbDefines would be dropped by the argument parser,
           // so the flag is only emitted when the row actually sets defines.
