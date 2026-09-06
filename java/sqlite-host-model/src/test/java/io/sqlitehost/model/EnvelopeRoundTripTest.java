@@ -1,6 +1,5 @@
 package io.sqlitehost.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sqlitehost.model.envelope.Script;
 import io.sqlitehost.model.json.JsonReadException;
 import io.sqlitehost.model.json.ScriptJsonReader;
@@ -24,13 +23,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Envelope JSON round-trip over every committed payload fixture:
  * parse → write → parse must preserve the model, and the re-written
- * JSON must be semantically identical to the original document. This
- * pins the reader/writer pair to the cross-language contract, not just
- * to each other.
+ * JSON must reproduce the fixture <em>bytes</em>. This pins the
+ * reader/writer pair to the cross-language contract, not just to each
+ * other.
+ *
+ * <p>Bytes, not a tree comparison. An envelope is signed bytes, so
+ * "parses to the same document" is not the property anyone relies on —
+ * and comparing trees is what let the writer emit Java's own float
+ * grammar and Jackson's own layout for as long as it did, while
+ * {@code typescript/runtime-types} tested the string next door.
  */
 class EnvelopeRoundTripTest {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
      * Payloads carrying a {@code float32} the wire spelling cannot
@@ -111,12 +114,11 @@ class EnvelopeRoundTripTest {
 
         assertEquals(parsed, reparsed, "model must survive write→read");
         if (NON_SINGLE_REPRESENTABLE_FLOAT32.contains(file.getFileName().toString())) {
-            assertEquals(MAPPER.readTree(written),
-                    MAPPER.readTree(ScriptJsonWriter.write(reparsed)),
+            assertEquals(written, ScriptJsonWriter.write(reparsed),
                     "the normalized document must be stable under further round-trips");
         } else {
-            assertEquals(MAPPER.readTree(original), MAPPER.readTree(written),
-                    "re-written JSON must be semantically identical to the fixture");
+            assertEquals(original, written,
+                    "re-written JSON must reproduce the fixture bytes");
         }
     }
 }

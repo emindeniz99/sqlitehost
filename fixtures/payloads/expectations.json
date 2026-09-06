@@ -69,6 +69,12 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-018-float-text.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-007-mixed-prefix.json",
       "valid": true,
       "errors": [],

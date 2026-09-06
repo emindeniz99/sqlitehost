@@ -1,14 +1,21 @@
 package io.sqlitehost.model.json;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.util.RawValue;
 import io.sqlitehost.model.envelope.BindingValue;
 import io.sqlitehost.model.envelope.RuntimeInput;
 import io.sqlitehost.model.envelope.Script;
 import io.sqlitehost.model.envelope.Statement;
 import io.sqlitehost.model.envelope.Step;
 
+import java.io.IOException;
 import java.util.Base64;
 import java.util.Map;
 
@@ -17,26 +24,94 @@ import java.util.Map;
  * {@link ScriptJsonReader}. Wire rules per docs/script-envelope.md:
  * {@code int64} is written as a JSON number when |v| &le; 2^53−1 and as
  * a decimal string otherwise; {@code blob} as standard padded base64;
- * the {@code null} binding carries no value. Optional envelope fields
- * are omitted when null/empty; {@code bindings} is always written
- * (possibly empty) to match the fixture payloads.
+ * floats in the canonical text {@link CanonicalFloatText} defines; the
+ * {@code null} binding carries no value. Optional envelope fields are
+ * omitted when null/empty; {@code bindings} is always written (possibly
+ * empty) to match the fixture payloads.
+ *
+ * <p>The output is <em>canonical bytes</em>, not merely equivalent JSON:
+ * pinned key order, two-space indentation, LF newlines and a trailing
+ * one, exactly what {@code JSON.stringify(script, null, 2) + "\n"}
+ * produces in {@code @sqlite-host/runtime-types}. An envelope is signed
+ * bytes, so re-writing a canonical payload has to reproduce it verbatim
+ * rather than something a parser would call the same document.
  */
 public final class ScriptJsonWriter {
 
     /** Largest int64 magnitude representable exactly as a JSON number (2^53−1). */
     private static final long MAX_SAFE_JSON_INTEGER = 9007199254740991L;
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Lower-case {@code \}{@code u000b} escapes, the spelling
+     * {@code JSON.stringify} emits; Jackson defaults to upper case.
+     */
+    private static final ObjectMapper MAPPER = new ObjectMapper(
+            JsonFactory.builder()
+                    .disable(JsonWriteFeature.WRITE_HEX_UPPER_CASE)
+                    .build());
 
     private ScriptJsonWriter() {
     }
 
     public static String write(Script script) {
         try {
-            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(toTree(script));
+            return MAPPER.writer(new CanonicalPrettyPrinter())
+                    .writeValueAsString(toTree(script)) + "\n";
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             // Building from an in-memory tree cannot fail to serialize.
             throw new IllegalStateException("failed to serialize script envelope", e);
+        }
+    }
+
+    /**
+     * {@code JSON.stringify(value, null, 2)} layout: two-space indent on
+     * objects <em>and</em> arrays, LF, {@code ": "} between key and
+     * value, and empty containers kept on one line as {@code {}} /
+     * {@code []}. Jackson's own default printer differs on every one of
+     * those points, which is why this exists.
+     */
+    private static final class CanonicalPrettyPrinter extends DefaultPrettyPrinter {
+
+        private static final long serialVersionUID = 1L;
+
+        CanonicalPrettyPrinter() {
+            DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+            indentObjectsWith(indenter);
+            indentArraysWith(indenter);
+        }
+
+        @Override
+        public DefaultPrettyPrinter createInstance() {
+            return new CanonicalPrettyPrinter();
+        }
+
+        @Override
+        public void writeObjectFieldValueSeparator(JsonGenerator gen) throws IOException {
+            gen.writeRaw(": ");
+        }
+
+        @Override
+        public void writeEndObject(JsonGenerator gen, int nrOfEntries) throws IOException {
+            if (nrOfEntries == 0) {
+                // Jackson would write "{ }"; JSON.stringify writes "{}".
+                // The depth still has to come back down, as it does in
+                // the superclass — skipping it indents the rest of the
+                // document one level too deep.
+                --_nesting;
+                gen.writeRaw('}');
+                return;
+            }
+            super.writeEndObject(gen, nrOfEntries);
+        }
+
+        @Override
+        public void writeEndArray(JsonGenerator gen, int nrOfValues) throws IOException {
+            if (nrOfValues == 0) {
+                --_nesting;
+                gen.writeRaw(']');
+                return;
+            }
+            super.writeEndArray(gen, nrOfValues);
         }
     }
 
@@ -114,13 +189,23 @@ public final class ScriptJsonWriter {
             case FLOAT32:
                 // Floats are always JSON numbers (no string form); a
                 // float32 is written via its exact double value.
-                node.put("value", (double) value.asFloat32());
+                putFloat(node, (double) value.asFloat32());
                 break;
             case FLOAT64:
-                node.put("value", value.asFloat64());
+                putFloat(node, value.asFloat64());
                 break;
         }
         return node;
+    }
+
+    /**
+     * Writes the number as raw canonical text. A {@code DoubleNode}
+     * would go through {@code Double.toString}, whose digits differ from
+     * the contract's and from one JDK to the next — see
+     * {@link CanonicalFloatText}.
+     */
+    private static void putFloat(ObjectNode node, double value) {
+        node.putRawValue("value", new RawValue(CanonicalFloatText.of(value)));
     }
 
     private static void putStringArray(ObjectNode parent, String field, Iterable<String> values) {
