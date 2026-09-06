@@ -123,14 +123,20 @@ recorded delta, and the GVM probe delta, may move by
 gzipped; 3% of even the largest row is under the raw floor today, so in
 practice every row is judged against the flat floor. The deltas were
 measured on an ubuntu-latest runner, and a change that is supposed to move
-bytes re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a
-measurement rather than a numeric gate, but it is not off the pull-request
-path: `il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
-demand, and a 3-row subset on any pull request touching
-`csharp/SqliteHost.Runtime/`, `csharp/SqliteHost.Abstractions/`,
-`codegen/csharp-emitter/` or `tests/app-size-bench/`. That subset carries no
-`continue-on-error`, so a change to the runtime does wait for it.
-`ios-size-bench.yml` builds the same rows for iOS in two stages and
+bytes re-records them with `UPDATE_SIZE_BASELINE=1` on a runner.
+
+Two rows sit outside the baseline on purpose, because each exists to
+prove a claim compiles rather than to track a number:
+`compact50-noreflection` (`IlcDisableReflection=true`, the
+"reflection-free" guarantee) and `compact50-nano`, which imports
+`csharp/SqliteHost.Publish.Nano.props` the way that file tells a
+size-critical game to import it. Nothing compiled those flags before
+that row existed.
+
+The Unity IL2CPP half is a measurement rather than a numeric gate, and
+as of this round it is off the pull-request path entirely:
+`il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
+demand only. `ios-size-bench.yml` builds the same rows for iOS in two stages and
 publishes a second table whose bytes are not comparable to the Android one;
 it has run (run 33255105207, 48 of 48 legs green) and the numbers are in
 `docs/reports/ios-il2cpp-size-report.md`.
