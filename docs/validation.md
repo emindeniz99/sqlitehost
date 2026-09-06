@@ -223,15 +223,28 @@ instead of on a player's device.
 | Code | Severity | Rule |
 |---|---|---|
 | `sqlite-version-too-low-for-function` | error | the SQL calls a built-in introduced *after* the host's `minSqliteVersionNumber`. Resolved from an exact-name table first, then the longest matching family prefix, both single-sourced in `codegen/core/src/ir.ts` (`FUNCTION_MIN_VERSION`, `FUNCTION_PREFIX_MIN_VERSION`). Fix by raising the host's `minSqliteVersion` or dropping the function. One finding per distinct name per statement |
-| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
+| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in; `soundex` needs `-DSQLITE_SOUNDEX` and `sqlite_offset` needs `-DSQLITE_ENABLE_OFFSET_SQL_FUNC`, neither of which stock builds set. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
 
 Every version in the table is sourced from the sqlite.org changelog for
-that release: window functions 3.25.0, `iif` 3.32.0, `format` and
-`unixepoch` 3.38.0, `octet_length` and `timediff` 3.43.0, `concat`,
-`concat_ws` and `string_agg` 3.44.0. Functions at or below the floor are
+that release: window functions 3.25.0, `pragma_table_xinfo` 3.26.0,
+`pragma_function_list` and `pragma_module_list` 3.30.0, `iif` 3.32.0,
+`substring` 3.34.0, `pragma_table_list` 3.37.0, `format` and
+`unixepoch` 3.38.0, `unhex` 3.41.0, `octet_length` and `timediff`
+3.43.0, `concat`, `concat_ws` and `string_agg` 3.44.0, `if` 3.48.0,
+`unistr` and `unistr_quote` 3.50.0. Functions at or below the floor are
 deliberately absent and never flagged — `printf` is the one to watch,
 since `format()` is its 3.38 rename but `printf` itself (3.8.3) stays
 legal forever.
+
+Two spellings, not one. The `pragma_*` table-valued wrappers are
+ordinarily written *without* an argument list (`SELECT * FROM
+pragma_table_list`), so a scan that only recognises `name(` sees none
+of them. Both validators therefore also check bare identifiers whose
+name begins `pragma_`, which is narrow enough that an ordinary column
+reference cannot be caught by it. `if` is the same trap from the other
+side: it is the MySQL-compatible alias for `iif` added in 3.48, so
+until it was listed the identical expression was an error under one
+spelling and invisible under the other.
 
 `json_*` is treated as **3.38.0**, which is not its introduction
 version: JSON1 existed long before, but until 3.38 it was compile-gated

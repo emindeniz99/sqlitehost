@@ -76,14 +76,23 @@ public final class Protocol {
             Map.entry("first_value", 3025000),
             Map.entry("last_value", 3025000),
             Map.entry("nth_value", 3025000),
+            Map.entry("pragma_table_xinfo", 3026000),
+            Map.entry("pragma_function_list", 3030000),
+            Map.entry("pragma_module_list", 3030000),
             Map.entry("iif", 3032000),
+            Map.entry("substring", 3034000),
+            Map.entry("pragma_table_list", 3037000),
             Map.entry("format", 3038000),
             Map.entry("unixepoch", 3038000),
+            Map.entry("unhex", 3041000),
             Map.entry("octet_length", 3043000),
             Map.entry("timediff", 3043000),
             Map.entry("concat", 3044000),
             Map.entry("concat_ws", 3044000),
-            Map.entry("string_agg", 3044000));
+            Map.entry("string_agg", 3044000),
+            Map.entry("if", 3048000),
+            Map.entry("unistr", 3050000),
+            Map.entry("unistr_quote", 3050000));
 
     /**
      * Version floors for whole function families, keyed by name prefix
@@ -103,7 +112,8 @@ public final class Protocol {
             "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "ceil",
             "ceiling", "cos", "cosh", "degrees", "exp", "floor", "ln",
             "load_extension", "log", "log10", "log2", "mod", "pi", "pow",
-            "power", "radians", "sin", "sinh", "sqrt", "tan", "tanh", "trunc");
+            "power", "radians", "sin", "sinh", "soundex", "sqlite_offset",
+            "sqrt", "tan", "tanh", "trunc");
 
     /**
      * Statement kinds a script may not use, matched on the statement's first

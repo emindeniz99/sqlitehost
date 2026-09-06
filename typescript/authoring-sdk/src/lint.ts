@@ -159,6 +159,18 @@ function nonportableReason(nameLc: string): string {
       " surface, so the host must register what it needs"
     );
   }
+  if (nameLc === "soundex") {
+    return (
+      "is only present when the device's SQLite was compiled with -DSQLITE_SOUNDEX," +
+      " which stock builds do not set; compute the value in the host and bind it instead"
+    );
+  }
+  if (nameLc === "sqlite_offset") {
+    return (
+      "is only present when the device's SQLite was compiled with" +
+      " -DSQLITE_ENABLE_OFFSET_SQL_FUNC, which stock builds do not set"
+    );
+  }
   return (
     "is only present when the device's SQLite was compiled with" +
     " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host and bind it instead"
@@ -605,37 +617,41 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
 
       const reportedFunctions = new Set<string>();
       const reportedPortability = new Set<string>();
+      // Engine portability is only meaningful for SQLite's own built-ins: a
+      // manifest inline function is supplied by the host adapter through
+      // sqlite3_create_function, so neither the engine version nor its
+      // compile options decide whether it exists. One finding per distinct
+      // name per statement (mirrors the Java engine).
+      const checkPortability = (name: string): void => {
+        const nameLc = name.toLowerCase();
+        if (inlineFunctions.has(nameLc) || reportedPortability.has(nameLc)) return;
+        // nonportable-function is checked FIRST: a compile-gated built-in
+        // must not be reported as a mere version problem, because raising
+        // the floor would not fix it.
+        if (NONPORTABLE_FUNCTIONS.includes(nameLc)) {
+          reportedPortability.add(nameLc);
+          findings.push({
+            code: "nonportable-function",
+            severity: "error",
+            message: `"${name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
+            ...at,
+          });
+          return;
+        }
+        const minVersion = minVersionFor(nameLc);
+        if (minVersion > minSqliteVersionNumber) {
+          reportedPortability.add(nameLc);
+          findings.push({
+            code: "sqlite-version-too-low-for-function",
+            severity: "error",
+            message: `built-in "${name}" requires SQLite ${formatVersion(minVersion)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the function`,
+            ...at,
+          });
+        }
+      };
       for (const call of functionCalls(tokens)) {
         const nameLc = call.name.toLowerCase();
-        // Engine portability is only meaningful for SQLite's own built-ins:
-        // a manifest inline function is supplied by the host adapter through
-        // sqlite3_create_function, so neither the engine version nor its
-        // compile options decide whether it exists.
-        if (!inlineFunctions.has(nameLc) && !reportedPortability.has(nameLc)) {
-          // nonportable-function is checked FIRST: a compile-gated built-in
-          // must not be reported as a mere version problem, because raising
-          // the floor would not fix it.
-          if (NONPORTABLE_FUNCTIONS.includes(nameLc)) {
-            reportedPortability.add(nameLc);
-            findings.push({
-              code: "nonportable-function",
-              severity: "error",
-              message: `"${call.name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
-              ...at,
-            });
-          } else {
-            const minVersion = minVersionFor(nameLc);
-            if (minVersion > minSqliteVersionNumber) {
-              reportedPortability.add(nameLc);
-              findings.push({
-                code: "sqlite-version-too-low-for-function",
-                severity: "error",
-                message: `built-in "${call.name}" requires SQLite ${formatVersion(minVersion)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the function`,
-                ...at,
-              });
-            }
-          }
-        }
+        checkPortability(call.name);
         if (isNondeterministic(call)) {
           findings.push({
             code: "nondeterministic-function",
@@ -699,6 +715,17 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
             ...at,
           });
         }
+      }
+
+      // The pragma_* table-valued functions are version-gated exactly like
+      // the pragmas they wrap (pragma_table_list 3.37, pragma_function_list
+      // and pragma_module_list 3.30, pragma_table_xinfo 3.26), and they are
+      // routinely written WITHOUT an argument list — `FROM pragma_table_list`
+      // — which functionCalls never saw. Restricted to the prefix on
+      // purpose: an ordinary column named `iif` must not be read as the
+      // built-in, and only these names carry a version in the table.
+      for (const name of bareIdentifiers(tokens)) {
+        if (name.toLowerCase().startsWith("pragma_")) checkPortability(name);
       }
 
       // Result-read lineage collection: result tables referenced +

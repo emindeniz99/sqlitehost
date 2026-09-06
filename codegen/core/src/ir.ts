@@ -335,12 +335,28 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   first_value: 3025000,
   last_value: 3025000,
   nth_value: 3025000,
+  // 3.26.0 "Added PRAGMA table_xinfo". The pragma_* table-valued functions
+  // are version-gated exactly like the pragmas they wrap, and appear in SQL
+  // as an identifier in table position — with or without an argument list,
+  // so the lint scans bare identifiers as well as identifier(…) calls.
+  pragma_table_xinfo: 3026000,
+  // 3.30.0 "Added PRAGMA function_list" / "PRAGMA module_list".
+  pragma_function_list: 3030000,
+  pragma_module_list: 3030000,
   // 3.32.0 (2020-05-22) "Added the iif() SQL function".
   iif: 3032000,
+  // 3.34.0 "The substring() function is an alias for substr()". Same
+  // function under a second spelling: flagging one and not the other made
+  // the rule look arbitrary and left the alias a device-side crash.
+  substring: 3034000,
+  // 3.37.0 "Added PRAGMA table_list".
+  pragma_table_list: 3037000,
   // 3.38.0 "Rename the printf() SQL function to format()" and "Added the
   // unixepoch() function". `printf` itself stays legal — it is pre-floor.
   format: 3038000,
   unixepoch: 3038000,
+  // 3.41.0 (2023-02-21) "Added the unhex() SQL function".
+  unhex: 3041000,
   // 3.43.0 "Added the octet_length(X) SQL function" / "Added the timediff()
   // SQL function".
   octet_length: 3043000,
@@ -350,6 +366,15 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   concat: 3044000,
   concat_ws: 3044000,
   string_agg: 3044000,
+  // 3.48.0 "Added the if() SQL function as an alias for iif()". The
+  // sharpest gap the table had: the identical function was an error under
+  // one spelling and invisible under the other.
+  if: 3048000,
+  // 3.50.0 (2025-05-29) "Added the unistr() and unistr_quote() SQL
+  // functions". Both, because a table that carried only one of a pair
+  // released together is how every other gap in this list started.
+  unistr: 3050000,
+  unistr_quote: 3050000,
 };
 
 /**
@@ -424,6 +449,12 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
   "radians",
   "sin",
   "sinh",
+  // Not math: compile-gated the same way, and for the same reason kept out
+  // of FUNCTION_MIN_VERSION. `soundex` needs -DSQLITE_SOUNDEX (absent from
+  // xerial's build and from macOS's system sqlite3); `sqlite_offset` needs
+  // -DSQLITE_ENABLE_OFFSET_SQL_FUNC. Neither is fixable by raising a floor.
+  "soundex",
+  "sqlite_offset",
   "sqrt",
   "tan",
   "tanh",

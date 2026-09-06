@@ -34,27 +34,36 @@ the floor and fine.
 | 3.23.0 | `TRUE` / `FALSE` keyword literals | **The trap nobody expects.** `WHERE flag = TRUE` is idiomatic modern SQL and simply is not a 3.19.3 construct. Write `= 1` / `= 0` |
 | 3.24.0 | **UPSERT** — `ON CONFLICT … DO UPDATE` / `DO NOTHING` | The most-reached-for missing construct. Use `INSERT OR REPLACE` / `INSERT OR IGNORE`, which are inside the floor |
 | 3.25.0 | **Window functions** (`OVER`, `PARTITION BY`, named `WINDOW`); `ALTER TABLE RENAME COLUMN` | |
+| 3.26.0 | `pragma_table_xinfo()` | The table-valued pragma wrappers are version-gated exactly like the pragmas themselves |
 | 3.27.0 | `VACUUM INTO` | |
 | 3.28.0 | Extended window frames (`RANGE BETWEEN <value>`, `GROUPS`, `EXCLUDE`) | |
-| 3.30.0 | `FILTER` on aggregates; `NULLS FIRST` / `NULLS LAST` | |
+| 3.30.0 | `FILTER` on aggregates; `NULLS FIRST` / `NULLS LAST`; `pragma_function_list()`, `pragma_module_list()` | |
 | 3.31.0 | **Generated columns** (`VIRTUAL` and `STORED`) | |
 | 3.32.0 | `iif()` | Use `CASE WHEN` |
 | 3.33.0 | `UPDATE … FROM`; the `sqlite_schema` alias | Portable introspection must still say `sqlite_master` |
+| 3.34.0 | `substring()` | The `substr()` alias; `substr` itself is inside the floor |
 | 3.35.0 | **`RETURNING`**; **math functions** (`ceil`, `floor`, `pow`, `log`, …); `ALTER TABLE DROP COLUMN`; CTE `MATERIALIZED` / `NOT MATERIALIZED` | Math functions are *doubly* gated — see §2 |
-| 3.37.0 | **`STRICT` tables**; `PRAGMA table_list` | |
+| 3.37.0 | **`STRICT` tables**; `PRAGMA table_list` and `pragma_table_list()` | |
 | 3.38.0 | JSON functions built in by default; `->` and `->>`; **`unixepoch()`**; `format()` | Before 3.38, JSON needs a compile option — see §2 |
 | 3.39.0 | **`RIGHT JOIN`** and **`FULL OUTER JOIN`**; `IS [NOT] DISTINCT FROM` | `LEFT JOIN` is inside the floor; the other two are not |
 | 3.43.0 | `octet_length()`, `timediff()` | |
 | 3.44.0 | `concat()`, `concat_ws()`, `string_agg()`; `ORDER BY` inside aggregates | Use `||` and `group_concat()` |
+| 3.41.0 | `unhex()` | |
 | 3.45.0 | **JSONB** and the `jsonb_*` family | |
+| 3.48.0 | `if()` | The MySQL-compatible alias for `iif()`, and four releases newer than it |
+| 3.50.0 | `unistr()`, `unistr_quote()` | |
 
 **The function rows are caught at authoring time; the syntax rows are
 not.** Both validators compare every function call against the host's
 declared floor and report `sqlite-version-too-low-for-function`
 (`docs/validation.md`), driven by the generated `FUNCTION_MIN_VERSION`
 and `FUNCTION_PREFIX_MIN_VERSION` tables — the window-function names,
-`iif`, `format`, `unixepoch`, `octet_length`, `timediff`, `concat`,
-`concat_ws`, `string_agg` and the whole `json*` / `jsonb*` surface.
+`iif`, `if`, `format`, `unixepoch`, `substring`, `unhex`, `unistr`,
+`octet_length`, `timediff`, `concat`, `concat_ws`, `string_agg`, the
+`pragma_*` table-valued wrappers and the whole `json*` / `jsonb*`
+surface. The `pragma_*` names are checked in both spellings, because
+the documented one omits the argument list: `FROM pragma_table_list`
+is a call even though no `(` follows it.
 
 Everything above that is *syntax* rather than a call is still uncaught:
 `TRUE` / `FALSE`, UPSERT, the `OVER` and `WINDOW` clauses themselves,

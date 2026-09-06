@@ -525,7 +525,7 @@ public final class ValidationEngine {
             // adapter through sqlite3_create_function, so neither the engine
             // version nor its compile options decide whether it exists.
             if (!schema.inlineFunctions.containsKey(nameLc)) {
-                checkFunctionPortability(schema, nameLc, call, stepId, statementIndex,
+                checkFunctionPortability(schema, call.name(), stepId, statementIndex,
                         reportedPortability, findings);
             }
             if (isNondeterministic(nameLc, call)) {
@@ -591,6 +591,21 @@ public final class ValidationEngine {
                                         ? "" : ".." + inline.maxArgs())));
             }
         }
+
+        // The pragma_* table-valued functions are version-gated exactly like
+        // the pragmas they wrap (pragma_table_list 3.37, pragma_function_list
+        // and pragma_module_list 3.30, pragma_table_xinfo 3.26), and they are
+        // routinely written WITHOUT an argument list —
+        // `FROM pragma_table_list` — which functionCalls never saw.
+        // Restricted to the prefix on purpose: an ordinary column named
+        // `iif` must not be read as the built-in, and only these names carry
+        // a version in the table.
+        for (String name : SqlAnalyzer.bareIdentifiers(tokens)) {
+            if (lower(name).startsWith("pragma_")) {
+                checkFunctionPortability(schema, name, stepId, statementIndex,
+                        reportedPortability, findings);
+            }
+        }
     }
 
     /**
@@ -612,14 +627,15 @@ public final class ValidationEngine {
      * <p>One finding per distinct function name per statement.</p>
      */
     private static void checkFunctionPortability(
-            SchemaIndex schema, String nameLc, FunctionCall call,
+            SchemaIndex schema, String name,
             String stepId, int statementIndex,
             Set<String> reported, List<ValidationFinding> findings) {
+        String nameLc = lower(name);
         if (Protocol.NONPORTABLE_FUNCTIONS.contains(nameLc)) {
             if (reported.add(nameLc)) {
                 findings.add(ValidationFinding.error(ValidationCodes.NONPORTABLE_FUNCTION,
                         stepId, statementIndex,
-                        "'" + call.name() + "' " + nonportableReason(nameLc)
+                        "'" + name + "' " + nonportableReason(nameLc)
                                 + " — its availability is a compile option, not a version,"
                                 + " so raising minSqliteVersion cannot make it safe"));
             }
@@ -630,7 +646,7 @@ public final class ValidationEngine {
             findings.add(ValidationFinding.error(
                     ValidationCodes.SQLITE_VERSION_TOO_LOW_FOR_FUNCTION,
                     stepId, statementIndex,
-                    "built-in '" + call.name() + "' requires SQLite "
+                    "built-in '" + name + "' requires SQLite "
                             + formatVersion(minVersion) + " but the host declares a floor of "
                             + formatVersion(schema.minSqliteVersionNumber)
                             + " — raise the host's minSqliteVersion or avoid the function"));
@@ -654,6 +670,15 @@ public final class ValidationEngine {
             return "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled"
                     + " per connection even where it is compiled in; a script cannot bring"
                     + " its own SQL surface, so the host must register what it needs";
+        }
+        if ("soundex".equals(nameLc)) {
+            return "is only present when the device's SQLite was compiled with"
+                    + " -DSQLITE_SOUNDEX, which stock builds do not set; compute the value"
+                    + " in the host and bind it instead";
+        }
+        if ("sqlite_offset".equals(nameLc)) {
+            return "is only present when the device's SQLite was compiled with"
+                    + " -DSQLITE_ENABLE_OFFSET_SQL_FUNC, which stock builds do not set";
         }
         return "is only present when the device's SQLite was compiled with"
                 + " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host"

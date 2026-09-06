@@ -995,6 +995,54 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function-if.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function-pragma-table-list.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/nonportable-soundex.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "nonportable-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }
