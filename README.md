@@ -46,10 +46,11 @@ Highlights beyond the core loop:
 - **Inline host functions**: eligible read-only methods double as SQL
   scalar functions (`fn_*`) inside script statements.
 - **App-size profiles** (measured under NativeAOT *and* real Unity
-  IL2CPP — `docs/reports/il2cpp-size-report.md`): `--profile
-  classic|compact|ultra` + `SQLITEHOST_SLIM` + `--dto-fields` take a
-  50-method host down to ~84 KB of *added* compressed download under
-  IL2CPP (marginal cost on top of an already-linked SQLite).
+  IL2CPP — `docs/reports/il2cpp-size-report.md`): `--profile ultra`
+  plus `SQLITEHOST_SLIM` takes a 50-method host down to ~84 KB of
+  *added* compressed download on Android IL2CPP, ~79 KB on iOS
+  (marginal cost on top of an already-linked SQLite). `--dto-fields` is
+  a further IL2CPP-only saving on top, worth ~12 KB gzipped.
 
 ## How to run
 
@@ -78,7 +79,7 @@ node tests/cross-language-golden/run.mjs # emitters vs committed sources
 | [docs/workspace-schema.md](./docs/workspace-schema.md) | call/result/queue tables, triggers, DDL canon |
 | [docs/naming.md](./docs/naming.md) | host-level naming conventions + snake_case rules |
 | [docs/manifest.md](./docs/manifest.md) | canonical manifest (serialized IR) |
-| [docs/csharp-api.md](./docs/csharp-api.md) | pinned C# public surface |
+| [docs/csharp-api.md](./docs/csharp-api.md) | pinned C# public surface of `SqliteHost.Abstractions` + `SqliteHost.Runtime` (the two the emitter targets) |
 | [docs/errors.md](./docs/errors.md) | runtime statuses + error codes |
 | [docs/validation.md](./docs/validation.md) | validation layers + lint codes |
 | [docs/api-levels.md](./docs/api-levels.md) | compatibility / clean-skip rules |

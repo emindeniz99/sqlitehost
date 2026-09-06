@@ -24,7 +24,7 @@ accepts while silently disabling those checks.
 
 ## Shared workspace table names (configurable per host)
 
-The three runtime-managed tables are host-level naming too — their
+The four runtime-managed tables are host-level naming too — their
 names appear inside script SQL, so they flow from `@hostLibrary`
 through the manifest into every language, exactly like the prefixes:
 

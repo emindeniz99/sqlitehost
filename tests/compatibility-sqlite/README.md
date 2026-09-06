@@ -89,11 +89,11 @@ provider) and SqliteHost.Adapters.Native (DllImportResolver). The
 System.Data.SQLite adapter has its own interop + bundled native and never
 sees either mechanism; the sqlite-net adapter technically shares the
 SQLitePCLRaw provider but is skipped too so each matrix cell exercises the
-overridable adapters against exactly one known native build. Those 98
-tests (14 fixture scenarios + 29 conformance tests + 6 inline-function
+overridable adapters against exactly one known native build. Those 108
+tests (14 fixture scenarios + 34 conformance tests + 6 inline-function
 scenarios, x 2 excluded adapters) report as *skipped* with an explicit
-reason — hence 291 passed / 100 skipped per supported-floor cell, versus
-385 passed / 6 skipped in a normal `dotnet test` run (the normal-run skips
+reason — hence 449 passed / 110 skipped per supported-floor cell, versus
+553 passed / 6 skipped in a normal `dotnet test` run (the normal-run skips
 are the override-only version-identity tests, two per overridable adapter,
 plus the two below-floor-direction `FloorGateTests` that only run on
 engines older than the sample floor).
@@ -154,20 +154,20 @@ confirmed via the identity tests on both overridable adapters; full run
 
 | SQLite  | Tests | UPSERT (3.24) | RETURNING (3.35) | OVER (3.25) | iif() (3.32) | json_valid (build) | positive prepare |
 |---------|-------|---------------|------------------|-------------|--------------|--------------------|------------------|
-| 3.9.0   | PASS — 200 passed, 0 failed, 175 skipped (of 375, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.9.2   | PASS — 200 passed, 0 failed, 175 skipped (of 375, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.19.3  | PASS — 291 passed, 0 failed, 100 skipped | threw | threw | threw | threw | threw (no JSON1) | all prepared |
-| 3.28.0  | PASS — 291 passed, 0 failed, 100 skipped | succeeded | threw | succeeded | threw | threw (no JSON1) | all prepared |
-| 3.53.3 (newest) | PASS — 291 passed, 0 failed, 100 skipped | succeeded | succeeded | succeeded | succeeded | succeeded (built-in) | all prepared |
+| 3.9.0   | PASS — 347 passed, 0 failed, 196 skipped (of 543, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.9.2   | PASS — 347 passed, 0 failed, 196 skipped (of 543, see below) | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.19.3  | PASS — 449 passed, 0 failed, 110 skipped | threw | threw | threw | threw | threw (no JSON1) | all prepared |
+| 3.28.0  | PASS — 449 passed, 0 failed, 110 skipped | succeeded | threw | succeeded | threw | threw (no JSON1) | all prepared |
+| 3.53.3 (newest) | PASS — 449 passed, 0 failed, 110 skipped | succeeded | succeeded | succeeded | succeeded | succeeded (built-in) | all prepared |
 
 ### Below-floor rows: skip policy + FloorGateTests
 
 The sample host definition pins `MinSqliteVersion(3019003)`, so on an
 engine older than 3.19.3 the runtime's workspace version gate
 (`sqlite-version-too-low`, docs/errors.md) refuses every run before any
-DDL. That is designed behavior, and it used to surface as 91 informational
-failures per 3.9.x cell — every runtime-driven test tripping the same
-gate. Those rows are now meaningfully green instead:
+DDL. That is designed behavior, and it used to surface as an informational
+failure in every runtime-driven test of a 3.9.x cell, all tripping the
+same gate. Those rows are now meaningfully green instead:
 
 - **Runtime-driven tests skip with a reason.** The integration fixtures,
   the drain/mapping/float/list/control/validation/naming/columns suites,
@@ -183,7 +183,7 @@ gate. Those rows are now meaningfully green instead:
   - *Sample floor:* below the floor, a run against the real engine must
     return `FailedSchema`/`sqlite-version-too-low` with zero handler calls
     and an empty workspace (no DDL ran) — the one intentional assertion
-    that stands in for the 91 accidental failures. At/above the floor the
+    that stands in for that pile of accidental failures. At/above the floor the
     same script must instead complete end to end.
   - *Lowered floor:* a definition built from the same sample method specs
     with `.MinSqliteVersion(3009000)` runs a real
@@ -206,8 +206,8 @@ gate. Those rows are now meaningfully green instead:
   adapter-level sections that measurably pass on 3.9.x. Rather than lose
   that coverage, run-matrix.sh passes a `dotnet test --filter` excluding
   exactly those four methods in below-floor cells (16 test cases across
-  the four adapter mirrors — which is why those cells report 375 total
-  instead of 391).
+  the four adapter mirrors — which is why those cells report 543 total
+  instead of 559).
 
 The script exits non-zero if **any** row fails, below-floor rows included.
 

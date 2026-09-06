@@ -32,6 +32,7 @@ splitResultTables    per-method result_<method> tables with status column
 scriptInputs         runtime inputs via the script_inputs table
 scriptVars           script-managed variable scratch table (script_vars)
 scriptControl        early halt/abort via the script_control table
+inlineFunctions      eligible read-only methods exposed as SQL scalar functions
 ```
 
 ## Breaking method contract changes
