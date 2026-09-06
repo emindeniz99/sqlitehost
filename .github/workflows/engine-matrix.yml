@@ -16,10 +16,20 @@
 # compiling sqlite3.c.
 #
 # Security posture matches ci.yml: actions pinned by SHA, least privilege,
-# no credentials persisted, no event field interpolated into a `run:`. The
-# amalgamation downloads are SHA-256 pinned inside run-matrix.sh — this job
-# compiles and executes C it fetched over the network, so the bytes are
-# pinned too, not just the URL.
+# no credentials persisted, no event field interpolated into a `run:`. This
+# job compiles and executes C it fetched over the network, so the download
+# pinning matters and is deliberately not uniform:
+#
+#   * the FOUR PINNED legs (3.9.0, 3.9.2, 3.19.3, 3.28.0) carry a SHA-256
+#     in run-matrix.sh's version list and the archive is re-checked on
+#     every run — the bytes are pinned, not just the URL;
+#   * the ADVISORY `latest` leg is NOT pinned. Its version is resolved from
+#     sqlite.org/download.html at run time and its checksum entry is the
+#     sentinel "-" (run-matrix.sh's FALLBACK_LATEST), so the archive it
+#     compiles and loads has been verified against nothing. That is the
+#     price of testing an engine nobody has released yet, and it is why the
+#     leg is advisory, cacheless and secret-free — see the matrix comment
+#     below for the whole argument.
 name: engine-matrix
 
 on:
@@ -52,7 +62,12 @@ concurrency:
 
 jobs:
   engine:
-    name: sqlite ${{ matrix.version }}
+    # The advisory suffix is in the NAME because the name is all a reader of
+    # the checks list gets: `continue-on-error` below makes this leg
+    # non-blocking, and without the suffix a red `sqlite latest` reads as a
+    # gate that failed. Derived from `matrix.advisory` so the flag stays the
+    # single source of truth.
+    name: sqlite ${{ matrix.version }}${{ matrix.advisory && ' (advisory)' || '' }}
     runs-on: ubuntu-latest
     # An advisory leg must not fail the workflow.
     continue-on-error: ${{ matrix.advisory }}
