@@ -46,13 +46,22 @@ unsupported top-level method shapes (input/output must be objects),
 unsupported scalar types, nested objects, nested lists, unions/maps,
 duplicate method names, duplicate SQL names, a property whose SQL name
 is *derived* (no `@sqlName`) into something that is not snake_case,
-duplicate derived
-table/column names, duplicate DTO/model simple names across namespaces,
-non-snake_case or case-colliding column names, a doneStatusValue equal
-to the reserved `pending` queue sentinel, missing/invalid api level, a
-method apiLevel exceeding the library apiLevel, invalid handler names,
-invalid or empty list item shapes, host interfaces declared outside
-any namespace.
+duplicate derived table/column names, two libraries whose names derive
+the same artifact base name, duplicate DTO/model simple names across
+namespaces, non-snake_case or case-colliding column names, a
+doneStatusValue equal to the reserved `pending` queue sentinel,
+missing/invalid api level, a method apiLevel exceeding the library
+apiLevel, invalid handler names, a handler name or namespace segment
+that is a C# or Java keyword, a `functionName` that is not snake_case or
+that collides with a name SQLite already owns, invalid or empty list
+item shapes, host interfaces declared outside any namespace.
+
+Manifests are checked too, on the way back in: `parseManifest`
+(`codegen/core/src/manifest.ts`) validates structure, types, ranges and
+uniqueness before any emitter sees an IR, so a hand-edited or
+merge-conflicted manifest fails with every problem listed at once rather
+than emitting code no compiler accepts. `docs/manifest.md` says what is
+checked and what deliberately is not.
 
 ## 2. Cross-language golden validation
 
