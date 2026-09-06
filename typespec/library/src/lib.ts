@@ -73,7 +73,7 @@ export const $lib = createTypeSpecLibrary({
     "duplicate-host-library-name": {
       severity: "error",
       messages: {
-        default: paramMessage`Duplicate @hostLibrary interface name "${"name"}"; interface names must be unique within a compilation because they name the emitted artifacts.`,
+        default: paramMessage`@hostLibrary interfaces "${"first"}" and "${"second"}" both derive the artifact base name "${"baseName"}"; base names must be unique within a compilation because they name the emitted manifest and DDL files, and the second library would overwrite the first.`,
       },
     },
     "missing-namespace": {

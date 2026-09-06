@@ -1253,3 +1253,92 @@ test("accepts a namespace segment that only resembles a keyword", async () => {
   `);
   assert.equal(result.ir?.library.namespace, "Newer.Thing");
 });
+
+// ---------------------------------------------------------------------------
+// Artifact base-name collisions (round-3 audit finding 3)
+// ---------------------------------------------------------------------------
+
+test("rejects two libraries whose names differ only by case", async () => {
+  // The artifact base name is kebab-case(interfaceName), so `Foo` and
+  // `foo` both write foo.manifest.json / foo.ddl.sql — the second run
+  // of the write loop silently overwrote the first.
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Foo {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface foo {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+test("rejects two libraries whose names kebab-case to the same base name", async () => {
+  // No case difference needed: FooBar and Foo_bar both derive foo-bar.
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBar {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface Foo_bar {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+test("accepts two libraries whose kebab base names differ", async () => {
+  const result = await compileSourceAll(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+
+    namespace Multi.Probe {
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBar {
+        @SqliteHost.hostMethod({ name: "alpha", handler: "Alpha" })
+        op Alpha(input: AInput): AResult;
+      }
+
+      @SqliteHost.hostLibrary({ apiLevel: 1 })
+      interface FooBaz {
+        @SqliteHost.hostMethod({ name: "beta", handler: "Beta" })
+        op Beta(input: BInput): BResult;
+      }
+
+      model AInput { a: string; }
+      model AResult { r: boolean; }
+      model BInput { b: string; }
+      model BResult { s: boolean; }
+    }
+  `);
+  assert.equal(result.irs?.length, 2);
+});
