@@ -838,8 +838,32 @@ public final class ValidationEngine {
         return null;
     }
 
+    /**
+     * A required string that carries nothing: null, empty, or only the
+     * pinned whitespace set — space, {@code \t}, {@code \n}, {@code U+000B},
+     * {@code \f}, {@code \r} (C's {@code isspace()}, the same set the SQL
+     * scanners already agree on).
+     *
+     * <p>The set is enumerated rather than delegated to
+     * {@link String#isBlank()} for the same reason the scanners enumerate
+     * theirs: {@code isBlank} and JavaScript's {@code String.prototype.trim}
+     * disagree on eight code points ({@code isBlank} counts
+     * {@code U+001C..U+001F}; {@code trim} counts {@code U+00A0},
+     * {@code U+2007}, {@code U+202F} and {@code U+FEFF}), so delegating on
+     * each side would trade one parity bug for a narrower one. Whether a
+     * step id is "empty" must not depend on which SDK is asking.</p>
+     */
     private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        if (value == null) {
+            return true;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c != ' ' && c != '\t' && c != '\n' && c != 0x0b && c != '\f' && c != '\r') {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String lower(String value) {

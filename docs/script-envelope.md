@@ -42,7 +42,7 @@ golden tests keep the three projections in sync.
 | `requiredFeatures` | no | subset of the host's supported features, else clean skip |
 | `requiredMethods` | no | methods the script uses; missing method → clean skip |
 | `inputs` | no | runtime inputs inserted into `script_inputs` before step 1; names must be unique (`duplicate-input-name`); SqliteHost never computes or injects runtime facts itself — the caller places them in `inputs` before `Run(script)` |
-| `steps` | yes | ordered; step `id`s must be unique and non-empty |
+| `steps` | yes | ordered; step `id`s must be unique and non-blank |
 | `steps[].statements` | yes | ordered, non-empty; each has `sql` and optional `bindings` |
 
 ## Binding values
@@ -71,6 +71,12 @@ byte are padding and must be zero. Several spellings of one blob would
 force a reader to choose which to re-emit, and an envelope is signed
 bytes — normalizing after verification produces a different artifact from
 the one that was signed.
+
+A required string must be **non-blank**, not merely non-empty: `"   "` is
+rejected wherever `""` is (step `id`, statement `sql`, input `name`).
+Blankness is decided on one pinned character set — space, `\t`, `\n`,
+`\v`, `\f`, `\r`, C's `isspace()`, the same set the SQL scanners share —
+rather than each language's own idea of whitespace, which differ.
 
 An **explicit JSON `null` is not an absent field.** Every optional field
 above is absent by being missing from the object; spelling it `null`

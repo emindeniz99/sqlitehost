@@ -39,6 +39,30 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 const DECIMAL_STRING = /^-?[0-9]+$/;
 
+/**
+ * A required string that carries nothing: empty, or only the pinned
+ * whitespace set — space, `\t`, `\n`, `\v`, `\f`, `\r` (C's `isspace()`,
+ * the same set the SQL scanners already agree on).
+ *
+ * The set is enumerated rather than delegated to `String.prototype.trim`
+ * for the same reason the scanners enumerate theirs: `trim` and Java's
+ * `String.isBlank` disagree on eight code points (`trim` counts U+00A0,
+ * U+2007, U+202F and U+FEFF; `isBlank` counts U+001C..U+001F), so
+ * delegating would trade one parity bug for a narrower one. Whether a
+ * step id is "empty" must not depend on which SDK is asking.
+ */
+function isBlank(value: string): boolean {
+  for (const ch of value) {
+    if (
+      ch !== " " && ch !== "\t" && ch !== "\n" &&
+      ch !== "\v" && ch !== "\f" && ch !== "\r"
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Validate one binding value node; returns findings (empty = valid). */
 export function validateBindingValue(value: unknown, path: string): EnvelopeFinding[] {
   if (!isPlainObject(value)) {
@@ -132,8 +156,8 @@ export function validateRuntimeInput(value: unknown, path: string): EnvelopeFind
     return [invalid(path, "input must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["name"] !== "string" || value["name"] === "") {
-    findings.push(invalid(`${path}.name`, "input name must be a non-empty string"));
+  if (typeof value["name"] !== "string" || isBlank(value["name"])) {
+    findings.push(invalid(`${path}.name`, "input name must be a non-blank string"));
   }
   findings.push(...validateBindingValue(value["value"], `${path}.value`));
   return findings;
@@ -145,8 +169,8 @@ export function validateStatement(value: unknown, path: string): EnvelopeFinding
     return [invalid(path, "statement must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["sql"] !== "string" || value["sql"] === "") {
-    findings.push(invalid(`${path}.sql`, "statement sql must be a non-empty string"));
+  if (typeof value["sql"] !== "string" || isBlank(value["sql"])) {
+    findings.push(invalid(`${path}.sql`, "statement sql must be a non-blank string"));
   }
   const bindings = value["bindings"];
   if (bindings !== undefined) {
@@ -170,8 +194,8 @@ export function validateStep(value: unknown, path: string): EnvelopeFinding[] {
     return [invalid(path, "step must be an object")];
   }
   const findings: EnvelopeFinding[] = [];
-  if (typeof value["id"] !== "string" || value["id"] === "") {
-    findings.push(invalid(`${path}.id`, "step id must be a non-empty string"));
+  if (typeof value["id"] !== "string" || isBlank(value["id"])) {
+    findings.push(invalid(`${path}.id`, "step id must be a non-blank string"));
   }
   const statements = value["statements"];
   if (!Array.isArray(statements) || statements.length === 0) {
@@ -246,7 +270,7 @@ export function validateScript(value: unknown): EnvelopeFinding[] {
   const seenIds = new Set<string>();
   steps.forEach((step, index) => {
     findings.push(...validateStep(step, `steps[${index}]`));
-    if (isPlainObject(step) && typeof step["id"] === "string" && step["id"] !== "") {
+    if (isPlainObject(step) && typeof step["id"] === "string" && !isBlank(step["id"])) {
       const id = step["id"];
       if (seenIds.has(id)) {
         findings.push({

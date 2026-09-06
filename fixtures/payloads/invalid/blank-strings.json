@@ -1,0 +1,20 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-blank-strings",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "steps": [
+    {
+      "id": "  ",
+      "statements": [
+        {
+          "sql": "   ",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

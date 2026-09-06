@@ -548,6 +548,20 @@
       "warnings": []
     },
     {
+      "payload": "invalid/blank-strings.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/unknown-engine.json",
       "valid": false,
       "errors": [
