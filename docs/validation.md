@@ -118,6 +118,19 @@ that manifest can put a method above the script. It is covered by unit
 tests in both languages; closing the gap needs a per-case manifest
 override in both conformance runners.
 
+One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
+whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader
+sees the token and rejects it; TypeScript's lint runs on a value that
+`JSON.parse` already produced, and `JSON.parse` collapses both spellings
+to the integer 1 and 1000 before any check can look. Recovering the
+distinction would mean parsing the JSON text a second time in the
+authoring SDK, which buys nothing the publication gate does not already
+have — Java is the gate, and `invalid/non-integral-int.json` carries
+`"validators": ["java"]` for that reason. Note the consequence for the
+CLI's exit code: a payload the strict reader refuses prints an
+`invalid-envelope` finding and exits **1**, not 2. Exit 2 means no
+verdict was reached (bad arguments, an unreadable file).
+
 ### Structural
 
 | Code | Severity | Rule |

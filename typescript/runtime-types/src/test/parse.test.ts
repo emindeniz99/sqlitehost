@@ -96,6 +96,21 @@ test("empty or missing statements list is invalid-envelope (pinned fixture)", ()
   expectFindings(s, "invalid-envelope", "steps[0].statements");
 });
 
+test("known limit: JSON.parse hides a non-integral int32/int64 literal", () => {
+  // Pinned so nobody "fixes" this the wrong way. The wire spellings 1.0
+  // and 1e3 violate the envelope contract, and Java's reader rejects them
+  // because it sees the token. Here JSON.parse has already collapsed both
+  // to plain integers before any check can run, so the value under test is
+  // indistinguishable from a conforming one. docs/validation.md records
+  // Java as authoritative for this rule; the fixture carries
+  // "validators": ["java"] for the same reason.
+  assert.equal(JSON.parse("1.0"), 1);
+  assert.equal(JSON.parse("1e3"), 1000);
+  const fixture = readFixture("payloads/invalid/non-integral-int.json");
+  assert.match(fixture, /"value": 1\.0/);
+  assert.deepStrictEqual(validateScript(JSON.parse(fixture)), []);
+});
+
 test("statement without sql is invalid-envelope", () => {
   const s = baseScript();
   const statements = (s["steps"] as Array<Record<string, unknown>>)[0][

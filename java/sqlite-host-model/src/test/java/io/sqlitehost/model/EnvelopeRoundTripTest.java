@@ -2,6 +2,7 @@ package io.sqlitehost.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sqlitehost.model.envelope.Script;
+import io.sqlitehost.model.json.JsonReadException;
 import io.sqlitehost.model.json.ScriptJsonReader;
 import io.sqlitehost.model.json.ScriptJsonWriter;
 import org.junit.jupiter.api.DynamicTest;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,6 +44,15 @@ class EnvelopeRoundTripTest {
      */
     private static final Set<String> NON_SINGLE_REPRESENTABLE_FLOAT32 =
             Set.of("example-017-float32-rounding.json");
+
+    /**
+     * Fixtures whose whole point is that the strict reader refuses them:
+     * they violate the envelope contract in a way only the JSON text shows,
+     * so there is no model to round-trip. The round trip asserts the
+     * refusal instead, which is the stronger statement.
+     */
+    private static final Set<String> READER_REJECTS =
+            Set.of("non-integral-int.json");
 
     @TestFactory
     Stream<DynamicTest> everyPayloadFixtureRoundTrips() throws IOException {
@@ -88,6 +99,11 @@ class EnvelopeRoundTripTest {
 
     private void assertRoundTrips(Path file) throws IOException {
         String original = Files.readString(file);
+        if (READER_REJECTS.contains(file.getFileName().toString())) {
+            assertThrows(JsonReadException.class, () -> ScriptJsonReader.read(original),
+                    file.getFileName() + ": the strict reader must refuse this payload");
+            return;
+        }
         Script parsed = ScriptJsonReader.read(original);
         String written = ScriptJsonWriter.write(parsed);
         Script reparsed = ScriptJsonReader.read(written);

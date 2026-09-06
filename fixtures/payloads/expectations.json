@@ -548,6 +548,19 @@
       "warnings": []
     },
     {
+      "payload": "invalid/non-integral-int.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/embedded-nul.json",
       "valid": false,
       "errors": [
