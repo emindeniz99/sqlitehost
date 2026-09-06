@@ -9,7 +9,8 @@ MANUAL-ONLY list first, then the per-registry sections.
 Intended artifacts (see `docs/packaging.md`):
 
 ```text
-NuGet: SqliteHost.Runtime, SqliteHost.Abstractions
+NuGet: SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance,
+       SqliteHost.Adapters.Native, SqliteHost.Delivery
 Maven: io.github.emindeniz99:sqlite-host-model / -validator / -jdbc
 npm:   @sqlite-host/typespec, @sqlite-host/authoring, @sqlite-host/runtime-types
 UPM:   com.sqlitehost.runtime
@@ -209,7 +210,7 @@ Dist-tags: `latest` for releases. Use `next` for pre-releases
 (`pnpm publish --tag next`) so `pnpm add @sqlite-host/typespec` never
 resolves to a pre-release by accident.
 
-## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance, SqliteHost.Adapters.Native
+## d. NuGet — SqliteHost.Abstractions, SqliteHost.Runtime, SqliteHost.Conformance, SqliteHost.Adapters.Native, SqliteHost.Delivery
 
 The csproj packing metadata (`PackageId`, `Version`, `Description`,
 `PackageLicenseExpression`, `PackageReadmeFile`, repo/source-link
@@ -230,8 +231,11 @@ metadata here.
    Pack `SqliteHost.Abstractions`, `SqliteHost.Runtime`,
    `SqliteHost.Conformance` (the adapter conformance suite consumers
    reference from their test projects — see docs/adapter-contract.md),
-   and `SqliteHost.Adapters.Native` (the DllImport adapter);
-   the sample and tests never publish.
+   `SqliteHost.Adapters.Native` (the DllImport adapter), and
+   `SqliteHost.Delivery` (the optional signed-envelope script-delivery
+   trust layer — no dependency on Runtime or Abstractions, see
+   docs/proposals/script-delivery.md); the sample and tests never
+   publish.
 3. **Symbols:** enable snupkg in the csproj metadata
    (`IncludeSymbols=true`, `SymbolPackageFormat=snupkg`) — `dotnet
    nuget push` uploads the `.snupkg` alongside automatically.
@@ -244,9 +248,16 @@ metadata here.
      --api-key <KEY> --source https://api.nuget.org/v3/index.json
    dotnet nuget push bin/Release/SqliteHost.Conformance.<version>.nupkg \
      --api-key <KEY> --source https://api.nuget.org/v3/index.json
+   dotnet nuget push bin/Release/SqliteHost.Adapters.Native.<version>.nupkg \
+     --api-key <KEY> --source https://api.nuget.org/v3/index.json
+   dotnet nuget push bin/Release/SqliteHost.Delivery.<version>.nupkg \
+     --api-key <KEY> --source https://api.nuget.org/v3/index.json
    ```
 
-   Push Abstractions first (Runtime depends on it). nuget.org
+   Push Abstractions first — Runtime, Conformance and Adapters.Native
+   all depend on it. Delivery has no dependency on any other SqliteHost
+   package (see §d step 2); it is pushed last only to match the order
+   `release.yml` and `scripts/check-nupkg-shape.sh` use. nuget.org
    publishes are **immutable** — you can unlist, never replace.
 5. **Package README:** nuget.org renders `PackageReadmeFile`; give
    each package a short README (same content guidance as §c).
@@ -399,7 +410,7 @@ Two independent version axes — do not conflate them:
   (`docs/api-levels.md`). Bumps only on contract changes, never on a
   routine release.
 - **Packages**: one release version shared by **all** ecosystems
-  (npm trio, both NuGet packages, the Maven trio, the UPM package) —
+  (npm trio, the five NuGet packages, the Maven trio, the UPM package) —
   fixed 0.x lockstep. A release of anything is a release of
   everything; consumers reason about "SqliteHost 0.2.0", not a matrix.
 
