@@ -158,7 +158,12 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
-          cache: pnpm
+          # No dependency cache in a job that later hands the Unity licence
+          # secrets to a container: a poisoned restore would be running in
+          # the same job as the credentials. Same rule release.yml applies to
+          # publishing jobs, for the same reason. This is a monthly job and
+          # the pnpm restore saves seconds against a ~10 GB image pull.
+          package-manager-cache: false
 
       - name: Generate the bench sources
         env:
