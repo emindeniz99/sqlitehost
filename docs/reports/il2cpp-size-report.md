@@ -60,9 +60,13 @@ protocol asks for (**marginal = (Δ₅₀ − Δ₅) / 45**, fixed = Δ₅ − 5
 
 | Profile | avg raw/method (50) | **marginal raw/method** | **fixed raw** | marginal gz/method | fixed gz | NativeAOT marginal (ref) |
 |---|---|---|---|---|---|---|
-| classic | 14.28 KB | **9.09 KB** | **259 KB** | 1.49 KB | 78 KB | ≈10 KB |
-| compact | 9.52 KB | **4.88 KB** | **232 KB** | 1.02 KB | 70 KB | ≈1.2 KB |
-| ultra | 7.30 KB | **1.80 KB** | **275 KB** | 0.25 KB | 86 KB | ≈0.7 KB |
+| classic | 14.28 KB | **9.09 KB** | **259 KB** | 1.49 KB | 78 KB | ≈3.3 KB |
+| compact | 9.52 KB | **4.88 KB** | **232 KB** | 1.02 KB | 70 KB | ≈1.8 KB |
+| ultra | 7.30 KB | **1.80 KB** | **275 KB** | 0.25 KB | 86 KB | ≈0.8 KB |
+
+The reference column applies the same (Δ₅₀ − Δ₅)/45 formula to the
+NativeAOT deltas in `tests/app-size-bench/baseline.json`, which is the file
+`ci.yml`'s `app size (NativeAOT)` job gates on.
 
 ## 3. Hypothesis verdicts
 
@@ -70,7 +74,7 @@ protocol asks for (**marginal = (Δ₅₀ − Δ₅) / 45**, fixed = Δ₅ − 5
 
 **One generic virtual method costs +2,880 bytes of `libil2cpp.so`,
 +64 bytes of metadata, +5,451 bytes gzipped (so+md) —
-~1% of the NativeAOT cost** (283 KB raw / 128 KB gz). The §1 prediction
+~1% of the NativeAOT cost** (283 KB raw / 132 KB gz). The §1 prediction
 held: IL2CPP ships its generic-sharing + metadata machinery in every
 build, so the *marginal* cost of the first GVM is noise-level. Survival
 check passed: `IFace`/`Impl`/`Get` are present in both probes'
@@ -104,7 +108,7 @@ separates what the averages blur:
 - **Marginal per-method slope**: classic **9.09 KB** → compact
   **4.88 KB** → ultra **1.80 KB** raw (gz: 1.49 / 1.02 / 0.25 KB).
   The mechanism ("unique-type count drives cost") is identical to
-  NativeAOT; compact's marginal cost is ~4× its NativeAOT value
+  NativeAOT; compact's marginal cost is ~3× its NativeAOT value
   because IL2CPP materializes per-instantiation C++ + metadata that
   NativeAOT folds away.
 - **Fixed intercept**: classic 259 KB / compact 232 KB / **ultra
@@ -121,7 +125,7 @@ Unity-specific guidance nuance (now footnoted in
 
 `SQLITEHOST_SLIM` removes 32,468 bytes raw / 12,951 gz on
 compact50 and 43,140 bytes raw / 14,728 gz on ultra50
-(NativeAOT: −28 KB raw / −12 KB gz on compact50 — same order).
+(NativeAOT: −37 KB raw / −19 KB gz on compact50 — same order).
 
 ### Optional rows not re-run
 
