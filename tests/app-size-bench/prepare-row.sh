@@ -8,6 +8,10 @@
 # a scratch dir outside the repo, and rows 9-11 (the 5-method profiles the
 # protocol needs for the per-method slope) are implemented.
 #
+# Row 2 (compact50) vendors the runtime from the shipped UPM package
+# rather than from csharp/ — see vendor_runtime_upm below. Every other row
+# stays on csharp/ so the cross-row comparison is like for like.
+#
 # Usage: bash tests/app-size-bench/prepare-row.sh <row 0..11>
 set -euo pipefail
 
@@ -30,6 +34,28 @@ vendor_runtime() {
   mkdir -p "$SRC/Abstractions" "$SRC/Runtime"
   cp "$CS/SqliteHost.Abstractions/"*.cs "$SRC/Abstractions/"
   cp "$CS/SqliteHost.Runtime/"*.cs "$SRC/Runtime/"
+}
+
+# Row 2 only (compact50): vendor from the SHIPPED UPM package instead of
+# from csharp/.
+#
+# Nothing else IL2CPP-compiles or player-builds unity/com.sqlitehost.runtime
+# — vendor-trim compiles it and runs nothing, unity-ci compiles it inside
+# real editors but never builds a player, and every row here used to copy
+# csharp/. So the artefact a consumer installs was never put through the
+# toolchain the package exists for. One row closes that.
+#
+# ONE row, not all of them, because the matrix's whole output is a
+# comparison between rows: mixing sources would make a delta between two
+# rows partly a delta between two source trees. unity/sync.mjs --check
+# gates byte-equality with csharp/ modulo the InternalsVisibleTo strip, so
+# this row's numbers stay comparable with the rest — and if they ever
+# diverge, this row is where an IL2CPP-visible difference would show up.
+UPM="$REPO/unity/com.sqlitehost.runtime/Runtime"
+vendor_runtime_upm() {
+  mkdir -p "$SRC/Abstractions" "$SRC/Runtime"
+  cp "$UPM/Abstractions/"*.cs "$SRC/Abstractions/"
+  cp "$UPM/Runtime/"*.cs "$SRC/Runtime/"
 }
 
 runner_bench() { cat > "$SRC/Runner.cs" <<'R'
@@ -67,7 +93,7 @@ vendor_probe() { # $1 = gvm|nogvm — identical transform for both (drop Main, e
 case "$ROW" in
   0) cp "$BENCH/out/unity-src/classic/GameWork.cs" "$SRC/"; runner_game ;;
   1) vendor_runtime; cp "$BENCH/out/unity-src/classic/"*.cs "$SRC/"; runner_bench ;;
-  2) vendor_runtime; cp "$BENCH/out/unity-src/compact/"*.cs "$SRC/"; runner_bench ;;
+  2) vendor_runtime_upm; cp "$BENCH/out/unity-src/compact/"*.cs "$SRC/"; runner_bench ;;
   3) vendor_runtime; cp "$BENCH/out/unity-src/compact/"*.cs "$SRC/"; runner_bench ;;
   4) vendor_runtime; cp "$BENCH/out/unity-src/ultra/"*.cs "$SRC/"; runner_bench ;;
   5) vendor_runtime; cp "$BENCH/out/unity-src/ultra/"*.cs "$SRC/"; runner_bench ;;

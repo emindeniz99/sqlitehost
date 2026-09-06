@@ -1,7 +1,7 @@
 [
   { "row": 0, "label": "baseline", "sources": "GameWork only", "defines": "", "validate": "game", "ddl": null },
   { "row": 1, "label": "classic50", "sources": "unity-src/classic", "defines": "", "validate": "bench", "ddl": 22231 },
-  { "row": 2, "label": "compact50", "sources": "unity-src/compact", "defines": "", "validate": "bench", "ddl": 22231 },
+  { "row": 2, "label": "compact50", "sources": "unity-src/compact + runtime from the shipped UPM package", "defines": "", "validate": "bench", "ddl": 22231 },
   { "row": 3, "label": "compact50-slim", "sources": "unity-src/compact", "defines": "SQLITEHOST_SLIM", "validate": "bench", "ddl": 22231 },
   { "row": 4, "label": "ultra50", "sources": "unity-src/ultra", "defines": "", "validate": "bench", "ddl": 22231 },
   { "row": 5, "label": "ultra50-slim", "sources": "unity-src/ultra", "defines": "SQLITEHOST_SLIM", "validate": "bench", "ddl": 22231 },

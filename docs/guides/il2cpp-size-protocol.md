@@ -18,15 +18,14 @@ driven by `tests/app-size-bench/measure-nativeaot.mjs`. The Unity matrix
 (§4) is `il2cpp-size-bench.yml`, driven by
 `tests/app-size-bench/unity-project/` plus `prepare-row.sh`,
 `measure-il2cpp.mjs` and `summarize-il2cpp.mjs`. It runs the full matrix
-monthly and on demand, and a 3-row subset (baseline / compact50 / ultra50)
-on any pull request touching `csharp/SqliteHost.Runtime/`,
-`csharp/SqliteHost.Abstractions/`, `codegen/csharp-emitter/` or
-`tests/app-size-bench/` — that subset has no `continue-on-error`, so a
-runtime change waits for it. What it is not is a *numeric* gate: IL2CPP
-byte counts move with the editor patch, the NDK and the engine, so it
-publishes a table and an artifact rather than failing on a byte move. The
-hand-run instructions below still work unchanged, and are what you want
-when you are investigating rather than monitoring.
+monthly and on demand, and **not on pull requests**: it is not a numeric
+gate — IL2CPP byte counts move with the editor patch, the NDK and the
+engine, so it publishes a table and an artifact rather than failing on a
+byte move — and a 22-minute per-PR subset that compares no number to
+anything was paying for nothing. Run it from the Actions tab before a
+change you expect to move IL2CPP size. The hand-run instructions below
+still work unchanged, and are what you want when you are investigating
+rather than monitoring.
 
 The iOS matrix is a third workflow, `ios-size-bench.yml`, monthly and on
 demand, driven by the same rows and the same `SizeBench` entry point plus
@@ -150,7 +149,7 @@ with only `GameWork.cs` + a MonoBehaviour logging
 |---|---|---|
 | 0 baseline | GameWork only | — |
 | 1 classic50 | unity-src/classic | — |
-| 2 compact50 | unity-src/compact | — |
+| 2 compact50 | unity-src/compact, runtime vendored from **`unity/com.sqlitehost.runtime/`** rather than `csharp/` | — |
 | 3 compact50-slim | unity-src/compact | Scripting Define Symbols += `SQLITEHOST_SLIM` |
 | 4 ultra50 | unity-src/ultra | — |
 | 5 ultra50-slim | unity-src/ultra | Scripting Define Symbols += `SQLITEHOST_SLIM` |
@@ -160,6 +159,18 @@ with only `GameWork.cs` + a MonoBehaviour logging
 | 9 classic5 | unity-src/classic-5 | — |
 | 10 compact5 | unity-src/compact-5 | — |
 | 11 ultra5 | unity-src/ultra-5 | — |
+
+Row 2 is the one asymmetry, and it is deliberate. Every other row
+vendors `csharp/SqliteHost.Abstractions/` + `csharp/SqliteHost.Runtime/`;
+row 2 vendors the same files out of the shipped UPM package, because
+otherwise nothing anywhere IL2CPP-compiles or player-builds the artefact
+a consumer actually installs — `tests/vendor-trim/` compiles the package
+and runs nothing, and `unity-ci.yml` compiles it in real editors but
+never builds a player. Only one row, so the cross-row deltas stay a
+comparison of profiles rather than of source trees; `unity/sync.mjs
+--check` gates the two trees byte-equal (modulo the `InternalsVisibleTo`
+strip), so row 2's numbers stay comparable — and if that ever stops
+holding in a way IL2CPP can see, row 2 is where it shows.
 
 Rows 9–11 exist to separate fixed cost from per-method cost:
 **marginal per-method = (Δ₅₀ − Δ₅) / 45** per profile — without them
