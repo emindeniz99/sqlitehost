@@ -78,17 +78,39 @@ function isDigit(ch: string): boolean {
  * so a byte one validator skips and the other does not makes the whole
  * statement analysis (the denylist included) diverge between them.
  *
- * It is deliberately one character wider than SQLite's own `sqlite3Isspace`,
- * which omits U+000B — verified against the sqlite3 CLI 3.51.0, where an
- * INSERT split by a vertical tab is a parse error while the form-feed
- * version runs. Over-skipping is the fail-safe direction: the extra
- * character can only appear in SQL SQLite refuses to prepare, so treating it
- * as a separator costs no valid script a false positive, while not skipping
- * it hides a denied statement from the lint.
+ * It is deliberately two characters wider than SQLite's own
+ * `sqlite3Isspace`:
+ *
+ * - **U+000B** (vertical tab), which SQLite omits — verified against the
+ *   sqlite3 CLI 3.51.0, where an INSERT split by a vertical tab is a parse
+ *   error while the form-feed version runs.
+ * - **U+FEFF** (the UTF-8 BOM), which SQLite's *tokenizer* does accept as a
+ *   separator wherever a token may start (tokenize.c gives 0xEF its own
+ *   `CC_BOM` class and returns `TK_SPACE`), and which it treats as an
+ *   identifier character only when it continues one. Measured on the CLI
+ *   3.51.0 and Python's 3.53.4: `<BOM>SELECT 1`, `SELECT <BOM>1` and
+ *   `DELETE <BOM> FROM t` all run, while `DELETE<BOM>FROM t` is a syntax
+ *   error because the BOM is welded onto `DELETE`. Not skipping it meant
+ *   token 0 of `<BOM>PRAGMA writable_schema = ON` was punctuation, so
+ *   `leadingKeyword` and `writeTarget` both returned null and one invisible
+ *   character disabled the forbidden-statement and protocol-table-write
+ *   denylists outright.
+ *
+ * Over-skipping is the fail-safe direction in both cases: the extra
+ * character can only appear where SQLite refuses to prepare (a
+ * BOM *inside* an identifier), so treating it as a separator costs no
+ * runnable script a false positive, while not skipping it hides a denied
+ * statement from the lint.
  */
 function isSqlWhitespace(ch: string): boolean {
   return (
-    ch === " " || ch === "\t" || ch === "\n" || ch === "\v" || ch === "\f" || ch === "\r"
+    ch === " " ||
+    ch === "\t" ||
+    ch === "\n" ||
+    ch === "\v" ||
+    ch === "\f" ||
+    ch === "\r" ||
+    ch === "\uFEFF"
   );
 }
 
@@ -409,6 +431,13 @@ export const UNKNOWN_ARGS = -1;
  * them. Calls nested in another call's arguments are extracted as
  * their own entries (mirrors the Java validator's SqlAnalyzer).
  *
+ * One pass, one stack of open parens. The obvious shape — find each
+ * `identifier(`, then scan forward for its matching `)` — is quadratic in
+ * the nesting depth, and SQL nests: `abs(abs(abs(…)))` a hundred thousand
+ * deep is 10^10 token visits, minutes of CPU inside a lint an author runs
+ * on every save. The single scan below is proportional to the token count
+ * whatever the shape.
+ *
  * A *quoted* name in call position counts too, in every quoting form:
  * `"random"()`, `[random]()` and `` `random`() `` all invoke random()
  * in SQLite. Matching bare identifiers alone let an author bypass every
@@ -416,72 +445,110 @@ export const UNKNOWN_ARGS = -1;
  */
 export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   const calls: SqlFunctionCall[] = [];
-  for (let i = 0; i + 1 < tokens.length; i++) {
-    if (isIdentToken(tokens[i]) && isPunctAt(tokens[i + 1], "(")) {
-      calls.push({
-        name: tokens[i].value,
-        argCount: countArgs(tokens, i + 2),
-        hasNowArg: hasNowArg(tokens, i + 2),
-      });
+  const stack: ParenFrame[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const top = stack.length === 0 ? undefined : stack[stack.length - 1];
+    if (isPunctAt(token, "(")) {
+      if (top !== undefined) noteNestedToken(top);
+      // A call frame remembers WHERE its result goes, so the finished
+      // list stays in opening-token order however the nesting closes.
+      let slot = -1;
+      if (i > 0 && isIdentToken(tokens[i - 1])) {
+        slot = calls.length;
+        calls.push({ name: tokens[i - 1].value, argCount: UNKNOWN_ARGS, hasNowArg: false });
+      }
+      stack.push({ slot, commas: 0, sawArgToken: false, argTokens: 0, argIsNow: false, nowSeen: false });
+      continue;
     }
+    if (isPunctAt(token, ")")) {
+      const frame = stack.pop();
+      if (frame === undefined) continue; // stray ')' — closes nothing
+      if (frame.slot >= 0) {
+        const call = calls[frame.slot];
+        call.argCount = frame.sawArgToken ? frame.commas + 1 : 0;
+        call.hasNowArg = frame.nowSeen || (frame.argTokens === 1 && frame.argIsNow);
+      }
+      if (stack.length > 0) noteNestedToken(stack[stack.length - 1]);
+      continue;
+    }
+    if (top === undefined) continue; // outside every paren — nothing to count
+    if (isPunctAt(token, ",")) {
+      top.commas++;
+      top.sawArgToken = true;
+      if (top.argTokens === 1 && top.argIsNow) top.nowSeen = true;
+      top.argTokens = 0;
+      top.argIsNow = false;
+      continue;
+    }
+    if (top.argTokens === 0) {
+      top.argIsNow = token.kind === "string" && token.value.toLowerCase() === "now";
+    }
+    top.argTokens++;
+    top.sawArgToken = true;
+  }
+  // Frames still open at end of input have no matching ')': arity is
+  // unknowable, but a 'now' already closed off by a top-level comma was
+  // seen for certain.
+  for (const frame of stack) {
+    if (frame.slot >= 0) calls[frame.slot].hasNowArg = frame.nowSeen;
   }
   return calls;
 }
 
-/** Count top-level arguments from just after `(` to the matching `)`. */
-function countArgs(tokens: SqlToken[], start: number): number {
-  let depth = 1;
-  let commas = 0;
-  let sawArgToken = false;
-  for (let pos = start; pos < tokens.length; pos++) {
-    const token = tokens[pos];
-    if (isPunctAt(token, "(")) {
-      depth++;
-    } else if (isPunctAt(token, ")")) {
-      depth--;
-      if (depth === 0) {
-        return sawArgToken ? commas + 1 : 0;
-      }
-    } else if (isPunctAt(token, ",") && depth === 1) {
-      commas++;
-    }
-    sawArgToken = true;
-  }
-  return UNKNOWN_ARGS;
+/** One open `(` — a call when `slot` points at its entry in the result. */
+interface ParenFrame {
+  slot: number;
+  commas: number;
+  sawArgToken: boolean;
+  /** Tokens in the current top-level argument, CLAMPED at 2 (see below). */
+  argTokens: number;
+  argIsNow: boolean;
+  /** A completed top-level argument was exactly the literal `'now'`. */
+  nowSeen: boolean;
 }
 
 /**
- * Whether some top-level argument from just after `(` to the matching
- * `)` is exactly the string literal `'now'` (case-insensitive). Only a
- * bare literal counts: `datetime('now')` reads the clock, `datetime(:when)`
- * does not, and a literal nested inside a larger expression is not the
- * argument itself. Mirrors the Java validator's SqlAnalyzer.
+ * Account for a whole nested paren group in the enclosing frame with O(1)
+ * work — the step that makes the pass linear.
+ *
+ * Walking every enclosing frame per token would keep the cost quadratic in
+ * the nesting depth, which is the bug this replaced. It is unnecessary
+ * because an enclosing frame only ever asks two questions: whether its
+ * current argument holds any token at all, and whether that argument is
+ * EXACTLY one token which is `'now'`. An argument containing a nested group
+ * already fails the second test — the group's own `(` and `)` are two
+ * tokens — so clamping the count at 2 is not an approximation: no reachable
+ * read can tell the difference. Commas inside the group belong to the
+ * group, never to the enclosing frame, so they need no propagation at all.
  */
-function hasNowArg(tokens: SqlToken[], start: number): boolean {
-  let depth = 1;
-  let argTokens = 0;
-  let argIsNow = false;
-  for (let pos = start; pos < tokens.length; pos++) {
-    const token = tokens[pos];
-    if (isPunctAt(token, ")")) {
-      depth--;
-      if (depth === 0) {
-        return argTokens === 1 && argIsNow;
-      }
-    } else if (isPunctAt(token, "(")) {
-      depth++;
-    } else if (isPunctAt(token, ",") && depth === 1) {
-      if (argTokens === 1 && argIsNow) return true;
-      argTokens = 0;
-      argIsNow = false;
-      continue;
+function noteNestedToken(frame: ParenFrame): void {
+  frame.sawArgToken = true;
+  frame.argTokens = 2;
+}
+
+/**
+ * Every identifier token NOT immediately followed by `(` — a name used
+ * bare, which for a table-valued function is the argument-less spelling.
+ *
+ * `functionCalls` only ever saw `identifier(`, so a TVF written without an
+ * argument list was invisible to every rule that reads the call list:
+ * `SELECT * FROM pragma_optimize` runs ANALYZE, and
+ * `SELECT * FROM pragma_table_list` needs 3.37, and neither was seen. Both
+ * spellings are legal SQLite (`pragma_optimize(0xfffe)` too), so both have
+ * to be scanned. Callers filter by name — this returns every bare
+ * identifier, including ordinary tables and columns.
+ *
+ * Mirrors the Java SqlAnalyzer.bareIdentifiers.
+ */
+export function bareIdentifiers(tokens: SqlToken[]): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (isIdentToken(tokens[i]) && !isPunctAt(tokens[i + 1], "(")) {
+      names.push(tokens[i].value);
     }
-    if (argTokens === 0) {
-      argIsNow = token.kind === "string" && token.value.toLowerCase() === "now";
-    }
-    argTokens++;
   }
-  return false;
+  return names;
 }
 
 /**
@@ -495,6 +562,35 @@ function isIdentToken(token: SqlToken | undefined): token is SqlToken {
   return (
     token !== undefined &&
     (token.kind === "identifier" || token.kind === "quoted-identifier")
+  );
+}
+
+/**
+ * Every token kind SQLite accepts where a **name** is required (a table,
+ * a column): the two identifier kinds plus a single-quoted string.
+ *
+ * The string case is SQLite's documented MySQL-compatibility misfeature —
+ * "If a keyword in single quotes is used in a context where an identifier is
+ * allowed but where a string literal is not allowed, then the token is
+ * understood to be an identifier" (sqlite.org/lang_keywords.html). Verified
+ * against the sqlite3 CLI 3.51.0: `DELETE FROM 'pending_host_calls'`,
+ * `UPDATE 'result_get_value' SET …`, `INSERT INTO 'result_get_value' (…)`
+ * and `DELETE FROM main.'pending_host_calls'` all compile and run. Treating
+ * `'…'` as a value-only token in name position left every one of them
+ * invisible to protocol-table-write, the INSERT analysis and result-read
+ * lineage — a one-character bypass of the whole denylist.
+ *
+ * This is deliberately NOT used in value position: `resolveExpression` and
+ * the call-id atoms must keep reading `'x'` as the literal it is there, or
+ * static call-id resolution changes meaning. Mirrors the Java
+ * SqlAnalyzer.isName.
+ */
+function isNameToken(token: SqlToken | undefined): token is SqlToken {
+  return (
+    token !== undefined &&
+    (token.kind === "identifier" ||
+      token.kind === "quoted-identifier" ||
+      token.kind === "string")
   );
 }
 
@@ -590,13 +686,18 @@ function skipCtePrefix(tokens: SqlToken[]): number {
   return pos;
 }
 
-/** Read `[schema.]table` at `start`, keeping the last component (lowercased). */
+/**
+ * Read `[schema.]table` at `start`, keeping the last component (lowercased).
+ * Both components accept every name token, single-quoted included — SQLite
+ * resolves `main.'pending_host_calls'` as a name, and stopping at `main`
+ * reported the harmless schema as the write target.
+ */
 function qualifiedName(tokens: SqlToken[], start: number): string | null {
   let pos = start;
-  if (!isIdentToken(tokens[pos])) return null;
+  if (!isNameToken(tokens[pos])) return null;
   let name = tokens[pos].value;
   pos++;
-  while (isPunctAt(tokens[pos], ".") && isIdentToken(tokens[pos + 1])) {
+  while (isPunctAt(tokens[pos], ".") && isNameToken(tokens[pos + 1])) {
     name = tokens[pos + 1].value;
     pos += 2;
   }
@@ -683,17 +784,15 @@ export function analyzeInsert(
   if (!keywordAt(tokens, i, "into")) return null;
   i++;
   let nameToken = tokens[i];
-  if (
-    nameToken === undefined ||
-    (nameToken.kind !== "identifier" && nameToken.kind !== "quoted-identifier")
-  ) {
+  if (!isNameToken(nameToken)) {
     return null;
   }
   i++;
   // schema-qualified name: keep the rightmost part
   while (tokens[i]?.kind === "punct" && tokens[i]?.value === ".") {
-    nameToken = tokens[i + 1];
-    if (nameToken === undefined) return null;
+    const next = tokens[i + 1];
+    if (!isNameToken(next)) return null;
+    nameToken = next;
     i += 2;
   }
   const table = nameToken.value.toLowerCase();
@@ -715,7 +814,7 @@ export function analyzeInsert(
     i++;
     while (i < tokens.length && !(tokens[i].kind === "punct" && tokens[i].value === ")")) {
       const token = tokens[i];
-      if (token.kind === "identifier" || token.kind === "quoted-identifier") {
+      if (isNameToken(token)) {
         columns.push(token.value.toLowerCase());
       }
       i++;

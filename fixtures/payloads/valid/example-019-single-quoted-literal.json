@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-019",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "store-a-table-name-as-text",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, text_value) VALUES ('watched_table', 'text', 'pending_host_calls')",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

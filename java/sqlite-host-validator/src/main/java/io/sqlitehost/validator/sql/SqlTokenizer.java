@@ -93,7 +93,7 @@ public final class SqlTokenizer {
                     value.append(ch);
                     i++;
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 
@@ -115,7 +115,7 @@ public final class SqlTokenizer {
                     value.append(ch);
                     i++;
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 
@@ -131,7 +131,7 @@ public final class SqlTokenizer {
                 if (i < n) {
                     i++; // consume ']'
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 
@@ -262,17 +262,39 @@ public final class SqlTokenizer {
      * it also accepts {@code U+001C..U+001F} and the Unicode separators,
      * which the TypeScript scanner has no equivalent for.
      *
-     * <p>The set is deliberately one character wider than SQLite's own
-     * {@code sqlite3Isspace}, which omits {@code U+000B} — verified against
-     * the sqlite3 CLI 3.51.0, where an INSERT split by a vertical tab is a
-     * parse error while the form-feed version runs. Over-skipping is the
-     * fail-safe direction: the extra character can only appear in SQL SQLite
-     * refuses to prepare, so treating it as a separator costs no valid
-     * script a false positive, while not skipping it hides a denied
+     * <p>The set is deliberately two characters wider than SQLite's own
+     * {@code sqlite3Isspace}:</p>
+     *
+     * <ul>
+     *   <li>{@code U+000B} (vertical tab), which SQLite omits — verified
+     *       against the sqlite3 CLI 3.51.0, where an INSERT split by a
+     *       vertical tab is a parse error while the form-feed version
+     *       runs.</li>
+     *   <li>{@code U+FEFF} (the UTF-8 BOM), which SQLite's <em>tokenizer</em>
+     *       does accept as a separator wherever a token may start
+     *       (tokenize.c gives 0xEF its own {@code CC_BOM} class and returns
+     *       {@code TK_SPACE}), and which it treats as an identifier
+     *       character only when it continues one. Measured on the CLI 3.51.0
+     *       and Python's 3.53.4: {@code <BOM>SELECT 1},
+     *       {@code SELECT <BOM>1} and {@code DELETE <BOM> FROM t} all run,
+     *       while {@code DELETE<BOM>FROM t} is a syntax error because the
+     *       BOM is welded onto {@code DELETE}. Not skipping it meant token 0
+     *       of {@code <BOM>PRAGMA writable_schema = ON} was punctuation, so
+     *       {@code leadingKeyword} and {@code writeTarget} both returned
+     *       null and one invisible character disabled the
+     *       forbidden-statement and protocol-table-write denylists
+     *       outright.</li>
+     * </ul>
+     *
+     * <p>Over-skipping is the fail-safe direction in both cases: the extra
+     * character can only appear where SQLite refuses to prepare (a BOM
+     * <em>inside</em> an identifier), so treating it as a separator costs no
+     * runnable script a false positive, while not skipping it hides a denied
      * statement from the lint.</p>
      */
     private static boolean isSqlWhitespace(char c) {
-        return c == ' ' || c == '\t' || c == '\n' || c == 0x0b || c == '\f' || c == '\r';
+        return c == ' ' || c == '\t' || c == '\n' || c == 0x0b || c == '\f' || c == '\r'
+                || c == '\ufeff';
     }
 
     private static boolean isDigit(char c) {

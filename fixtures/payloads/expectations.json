@@ -837,6 +837,226 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-delete.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-insert.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-update.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-qualified.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/result-read-single-quoted-unknown-call.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "result-read-unknown-call",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-019-single-quoted-literal.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-bom-pragma.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unrecognized-statement.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unrecognized-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-explain.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-sqlite-master.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-function-pragma-optimize.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function-if.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function-pragma-table-list.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/nonportable-soundex.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "nonportable-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-020-current-timestamp.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "nondeterministic-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ]
     }
   ]
 }

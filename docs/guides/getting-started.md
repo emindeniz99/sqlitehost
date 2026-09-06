@@ -434,16 +434,16 @@ tarballs. `@sqlite-host/sample-admin` is a demo CLI
 | Artifact | For |
 |---|---|
 | `io.github.emindeniz99:sqlite-host-model` | envelope + manifest models, strict JSON reader/writer, DDL generator |
-| `io.github.emindeniz99:sqlite-host-validator` | semantic lint engine (library) + thin CLI main |
-| `io.github.emindeniz99:sqlite-host-jdbc` | prepare-only SQLite validation over the generated schema |
+| `io.github.emindeniz99:sqlite-host-validator` | semantic lint engine (library) |
+| `io.github.emindeniz99:sqlite-host-jdbc` | prepare-only SQLite validation over the generated schema, plus the CLI main |
 
 Today: `cd java && mvn -q install` puts the current version
 (`version.txt`) into your local `~/.m2`, then depend on the
 coordinates normally. The shaded validator CLI is a *local tool*, not
 a published contract — `mvn -q package` builds
-`sqlite-host-validator/target/sqlite-host-validator-<version>-cli.jar`
-and you run it with `java -jar` (usage and exit codes:
-`java/README.md` and Path D below).
+`sqlite-host-jdbc/target/sqlite-host-jdbc-<version>-cli.jar` and you run
+it with `java -jar` (usage and exit codes: `java/README.md` and Path D
+below).
 
 ### C.4 UPM — Unity Package Manager
 
@@ -497,7 +497,7 @@ publishable; warnings don't block.**
 ```sh
 cd java
 mvn -q package
-java -jar sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
+java -jar sqlite-host-jdbc/target/sqlite-host-jdbc-0.1.0-cli.jar \
     path/to/your-host.manifest.json path/to/payload.json
 ```
 
@@ -508,12 +508,12 @@ One finding per line (`ERROR <code> [step/statement] message` /
 |---|---|
 | 0 | publishable — no errors (warnings may have printed) |
 | 1 | validation errors |
-| 2 | usage error, or manifest/script unreadable |
+| 2 | usage error, manifest/script unreadable, or the layer-3 workspace could not be set up |
 
 Wire it as a CI/publish gate: `java -jar …-cli.jar manifest.json
-payload.json || reject`. Note the CLI runs the semantic lint only;
-the prepare-only SQLite layer lives in `sqlite-host-jdbc` as a
-library (add it to your backend's tests for full coverage).
+payload.json || reject`. It runs **all four layers**, prepare-only
+SQLite included — which is why it ships from `sqlite-host-jdbc` and why
+the fat jar carries the xerial driver and its natives (about 14 MB).
 
 ### D.3 TypeScript lint — at authoring time
 
@@ -688,7 +688,7 @@ conformance). And close the loop with Path D: the same script as a
 JSON payload passes both gates —
 
 ```sh
-java -jar java/sqlite-host-validator/target/sqlite-host-validator-0.1.0-cli.jar \
+java -jar java/sqlite-host-jdbc/target/sqlite-host-jdbc-0.1.0-cli.jar \
     generated/notes-host.manifest.json hello.json   # exit 0
 # TS: lintScript(payload, parseHostManifest(...)) -> [] , isPublishable -> true
 ```

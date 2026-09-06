@@ -34,6 +34,7 @@ public final class ValidationCodes {
     // Inline functions (feature inlineFunctions)
     public static final String UNDECLARED_FEATURE_USE = "undeclared-feature-use";
     public static final String UNKNOWN_FUNCTION = "unknown-function";
+    public static final String FORBIDDEN_FUNCTION = "forbidden-function";
     public static final String FUNCTION_ARITY_MISMATCH = "function-arity-mismatch";
 
     // Determinism
@@ -47,6 +48,7 @@ public final class ValidationCodes {
     // Statement denylist
     public static final String EMBEDDED_NUL = "embedded-nul";
     public static final String MULTIPLE_STATEMENTS = "multiple-statements";
+    public static final String UNRECOGNIZED_STATEMENT = "unrecognized-statement";
     public static final String FORBIDDEN_STATEMENT = "forbidden-statement";
     public static final String PROTOCOL_TABLE_WRITE = "protocol-table-write";
 

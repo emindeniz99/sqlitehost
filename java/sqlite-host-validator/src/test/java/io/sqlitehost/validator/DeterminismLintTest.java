@@ -100,6 +100,41 @@ class DeterminismLintTest {
     }
 
     @Test
+    void theWallClockKeywordsWarnWithoutACall() throws IOException {
+        // SQLite's grammar spells these three with no argument list --
+        // writing current_timestamp() is a syntax error -- so a scan that
+        // only looks at parsed calls saw none of them, while
+        // `VALUES (CURRENT_TIMESTAMP)` is exactly as unreplayable as the
+        // `datetime('now')` the scan does flag.
+        for (String sql : List.of("SELECT CURRENT_TIMESTAMP", "SELECT current_date",
+                "SELECT Current_Time")) {
+            List<ValidationFinding> found = warnings(sql);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.WARNING, found.get(0).severity(), sql);
+            assertTrue(found.get(0).message().contains("replay"), found.get(0).message());
+        }
+        // One per occurrence, the same rule the call scan follows for random().
+        assertEquals(2, warnings("SELECT CURRENT_DATE, CURRENT_TIMESTAMP").size());
+    }
+
+    @Test
+    void aQuotedOrPrefixedClockNameIsNotTheKeyword() throws IOException {
+        // A keyword cannot be written delimited, so "current_date" is a
+        // column reference (or, under SQLite's double-quote fallback, a
+        // string) -- flagging it would make a table carrying such a column
+        // unlintable. Nor may a longer identifier that merely contains the
+        // name match. This is the case that forced SqlToken to record
+        // whether an identifier was delimited: the tokenizer had collapsed
+        // both spellings into one IDENT kind.
+        for (String sql : List.of("SELECT \\\"current_date\\\" FROM t",
+                "SELECT [current_timestamp] FROM t",
+                "SELECT current_timestamp_utc FROM t",
+                "SELECT 'CURRENT_TIMESTAMP' AS label")) {
+            assertEquals(List.of(), warnings(sql), sql);
+        }
+    }
+
+    @Test
     void theWarningNeverBlocksPublishing() throws IOException {
         // Severity is pinned as warning: docs/validation.md makes a payload
         // publishable on zero errors, and a script may legitimately want a

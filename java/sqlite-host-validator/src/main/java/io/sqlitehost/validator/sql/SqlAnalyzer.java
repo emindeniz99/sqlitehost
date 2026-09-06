@@ -1,6 +1,8 @@
 package io.sqlitehost.validator.sql;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -19,6 +21,33 @@ public final class SqlAnalyzer {
             Set.of("from", "where", "group", "order", "limit", "union", "except", "intersect");
 
     private SqlAnalyzer() {
+    }
+
+    /**
+     * Whether the token may stand where SQLite requires a <b>name</b> (a
+     * table, a column): an identifier in any of its quoting forms, or a
+     * single-quoted string.
+     *
+     * <p>The string case is SQLite's documented MySQL-compatibility
+     * misfeature — "If a keyword in single quotes is used in a context where
+     * an identifier is allowed but where a string literal is not allowed,
+     * then the token is understood to be an identifier"
+     * (sqlite.org/lang_keywords.html). Verified against the sqlite3 CLI
+     * 3.51.0: {@code DELETE FROM 'pending_host_calls'},
+     * {@code UPDATE 'result_get_value' SET …},
+     * {@code INSERT INTO 'result_get_value' (…)} and
+     * {@code DELETE FROM main.'pending_host_calls'} all compile and run.
+     * Requiring {@link SqlToken.Kind#IDENT} in name position left every one
+     * of them invisible to protocol-table-write, the INSERT analysis and
+     * result-read lineage — a one-character bypass of the whole denylist.</p>
+     *
+     * <p>Deliberately NOT used in <em>value</em> position: {@link #isAtom}
+     * and the call-id resolution must keep reading {@code 'x'} as the literal
+     * it is there, or static call-id resolution changes meaning. Mirrors the
+     * TypeScript {@code isNameToken}.</p>
+     */
+    public static boolean isName(SqlToken token) {
+        return token.kind() == SqlToken.Kind.IDENT || token.kind() == SqlToken.Kind.STRING;
     }
 
     /**
@@ -48,7 +77,7 @@ public final class SqlAnalyzer {
             return null;
         }
         int pos = into + 1;
-        if (tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+        if (!isName(tokens.get(pos))) {
             return null;
         }
         String table = tokens.get(pos).text();
@@ -56,7 +85,7 @@ public final class SqlAnalyzer {
         // Schema-qualified name: keep the last component.
         while (pos + 1 < tokens.size()
                 && tokens.get(pos).isPunct(".")
-                && tokens.get(pos + 1).kind() == SqlToken.Kind.IDENT) {
+                && isName(tokens.get(pos + 1))) {
             table = tokens.get(pos + 1).text();
             pos += 2;
         }
@@ -79,7 +108,7 @@ public final class SqlAnalyzer {
             columns = new ArrayList<>();
             pos++;
             while (pos < tokens.size() && !tokens.get(pos).isPunct(")")) {
-                if (tokens.get(pos).kind() == SqlToken.Kind.IDENT) {
+                if (isName(tokens.get(pos))) {
                     columns.add(tokens.get(pos).text());
                 }
                 pos++;
@@ -179,75 +208,143 @@ public final class SqlAnalyzer {
      * matching {@code ')'}. String literals and comments never confuse
      * the scan — the tokenizer already collapsed them. Calls nested in
      * another call's arguments are extracted as their own entries.
+     *
+     * <p>One pass, one stack of open parens. The obvious shape — find each
+     * {@code identifier(}, then scan forward for its matching {@code ')'} —
+     * is quadratic in the nesting depth, and SQL nests:
+     * {@code abs(abs(abs(…)))} a hundred thousand deep is 10^10 token
+     * visits, and the engine walks the call list twice per statement. The
+     * single scan below is proportional to the token count whatever the
+     * shape.</p>
      */
     public static List<FunctionCall> functionCalls(List<SqlToken> tokens) {
         List<FunctionCall> calls = new ArrayList<>();
-        for (int i = 0; i + 1 < tokens.size(); i++) {
-            if (tokens.get(i).kind() == SqlToken.Kind.IDENT
-                    && tokens.get(i + 1).isPunct("(")) {
-                calls.add(new FunctionCall(tokens.get(i).text(),
-                        countArgs(tokens, i + 2), hasNowArg(tokens, i + 2)));
+        Deque<ParenFrame> stack = new ArrayDeque<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            SqlToken token = tokens.get(i);
+            ParenFrame top = stack.peek();
+            if (token.isPunct("(")) {
+                if (top != null) {
+                    noteNestedToken(top);
+                }
+                // A call frame remembers WHERE its result goes, so the
+                // finished list stays in opening-token order however the
+                // nesting closes.
+                int slot = -1;
+                if (i > 0 && tokens.get(i - 1).kind() == SqlToken.Kind.IDENT) {
+                    slot = calls.size();
+                    calls.add(new FunctionCall(tokens.get(i - 1).text(),
+                            FunctionCall.UNKNOWN_ARGS, false));
+                }
+                stack.push(new ParenFrame(slot));
+                continue;
+            }
+            if (token.isPunct(")")) {
+                ParenFrame frame = stack.poll();
+                if (frame == null) {
+                    continue; // stray ')' — closes nothing
+                }
+                if (frame.slot >= 0) {
+                    calls.set(frame.slot, new FunctionCall(calls.get(frame.slot).name(),
+                            frame.sawArgToken ? frame.commas + 1 : 0,
+                            frame.nowSeen || (frame.argTokens == 1 && frame.argIsNow)));
+                }
+                ParenFrame parent = stack.peek();
+                if (parent != null) {
+                    noteNestedToken(parent);
+                }
+                continue;
+            }
+            if (top == null) {
+                continue; // outside every paren — nothing to count
+            }
+            if (token.isPunct(",")) {
+                top.commas++;
+                top.sawArgToken = true;
+                if (top.argTokens == 1 && top.argIsNow) {
+                    top.nowSeen = true;
+                }
+                top.argTokens = 0;
+                top.argIsNow = false;
+                continue;
+            }
+            if (top.argTokens == 0) {
+                top.argIsNow = isNowLiteral(token);
+            }
+            top.argTokens++;
+            top.sawArgToken = true;
+        }
+        // Frames still open at end of input have no matching ')': arity is
+        // unknowable, but a 'now' already closed off by a top-level comma
+        // was seen for certain.
+        for (ParenFrame frame : stack) {
+            if (frame.slot >= 0 && frame.nowSeen) {
+                calls.set(frame.slot, new FunctionCall(calls.get(frame.slot).name(),
+                        FunctionCall.UNKNOWN_ARGS, true));
             }
         }
         return calls;
     }
 
-    /** Count top-level arguments from just after '(' to the matching ')'. */
-    private static int countArgs(List<SqlToken> tokens, int start) {
-        int depth = 1;
-        int commas = 0;
-        boolean sawArgToken = false;
-        for (int pos = start; pos < tokens.size(); pos++) {
-            SqlToken token = tokens.get(pos);
-            if (token.isPunct("(")) {
-                depth++;
-            } else if (token.isPunct(")")) {
-                depth--;
-                if (depth == 0) {
-                    return sawArgToken ? commas + 1 : 0;
-                }
-            } else if (token.isPunct(",") && depth == 1) {
-                commas++;
-            }
-            sawArgToken = true;
+    /** One open {@code '('} — a call when {@code slot} indexes the result. */
+    private static final class ParenFrame {
+        private final int slot;
+        private int commas;
+        private boolean sawArgToken;
+        /** Tokens in the current top-level argument, CLAMPED at 2. */
+        private int argTokens;
+        private boolean argIsNow;
+        /** A completed top-level argument was exactly the literal 'now'. */
+        private boolean nowSeen;
+
+        private ParenFrame(int slot) {
+            this.slot = slot;
         }
-        return FunctionCall.UNKNOWN_ARGS;
     }
 
     /**
-     * Whether some top-level argument from just after '(' to the matching
-     * ')' is exactly the string literal {@code 'now'} (case-insensitive).
-     * Only a bare literal counts: {@code datetime('now')} reads the clock,
-     * {@code datetime(:when)} does not, and a literal nested inside a
-     * larger expression is not the argument itself.
+     * Account for a whole nested paren group in the enclosing frame with
+     * O(1) work — the step that makes the pass linear.
+     *
+     * <p>Walking every enclosing frame per token would keep the cost
+     * quadratic in the nesting depth, which is the bug this replaced. It is
+     * unnecessary because an enclosing frame only ever asks two questions:
+     * whether its current argument holds any token at all, and whether that
+     * argument is EXACTLY one token which is {@code 'now'}. An argument
+     * containing a nested group already fails the second test — the group's
+     * own {@code '('} and {@code ')'} are two tokens — so clamping the count
+     * at 2 is not an approximation: no reachable read can tell the
+     * difference. Commas inside the group belong to the group, never to the
+     * enclosing frame, so they need no propagation at all.</p>
      */
-    private static boolean hasNowArg(List<SqlToken> tokens, int start) {
-        int depth = 1;
-        int argTokens = 0;
-        boolean argIsNow = false;
-        for (int pos = start; pos < tokens.size(); pos++) {
-            SqlToken token = tokens.get(pos);
-            if (token.isPunct(")")) {
-                depth--;
-                if (depth == 0) {
-                    return argTokens == 1 && argIsNow;
-                }
-            } else if (token.isPunct("(")) {
-                depth++;
-            } else if (token.isPunct(",") && depth == 1) {
-                if (argTokens == 1 && argIsNow) {
-                    return true;
-                }
-                argTokens = 0;
-                argIsNow = false;
-                continue;
+    private static void noteNestedToken(ParenFrame frame) {
+        frame.sawArgToken = true;
+        frame.argTokens = 2;
+    }
+
+    /**
+     * Every {@link SqlToken.Kind#IDENT} token NOT immediately followed by
+     * {@code '('} — a name used bare, which for a table-valued function is
+     * the argument-less spelling.
+     *
+     * <p>{@link #functionCalls} only ever saw {@code identifier(}, so a TVF
+     * written without an argument list was invisible to every rule that
+     * reads the call list: {@code SELECT * FROM pragma_optimize} runs
+     * ANALYZE, and {@code SELECT * FROM pragma_table_list} needs 3.37, and
+     * neither was seen. Both spellings are legal SQLite
+     * ({@code pragma_optimize(0xfffe)} too), so both have to be scanned.
+     * Callers filter by name — this returns every bare identifier,
+     * including ordinary tables and columns.</p>
+     */
+    public static List<String> bareIdentifiers(List<SqlToken> tokens) {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens.get(i).kind() == SqlToken.Kind.IDENT
+                    && (i + 1 >= tokens.size() || !tokens.get(i + 1).isPunct("("))) {
+                names.add(tokens.get(i).text());
             }
-            if (argTokens == 0) {
-                argIsNow = isNowLiteral(token);
-            }
-            argTokens++;
         }
-        return false;
+        return names;
     }
 
     private static boolean isNowLiteral(SqlToken token) {
@@ -470,17 +567,23 @@ public final class SqlAnalyzer {
         return tokens.size();
     }
 
-    /** Read {@code [schema.]table} at {@code start}, keeping the last component. */
+    /**
+     * Read {@code [schema.]table} at {@code start}, keeping the last
+     * component. Both components accept every name token, single-quoted
+     * included — SQLite resolves {@code main.'pending_host_calls'} as a name,
+     * and stopping at {@code main} reported the harmless schema as the write
+     * target.
+     */
     private static String qualifiedName(List<SqlToken> tokens, int start) {
         int pos = start;
-        if (pos >= tokens.size() || tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+        if (pos >= tokens.size() || !isName(tokens.get(pos))) {
             return null;
         }
         String name = tokens.get(pos).text();
         pos++;
         while (pos + 1 < tokens.size()
                 && tokens.get(pos).isPunct(".")
-                && tokens.get(pos + 1).kind() == SqlToken.Kind.IDENT) {
+                && isName(tokens.get(pos + 1))) {
             name = tokens.get(pos + 1).text();
             pos += 2;
         }

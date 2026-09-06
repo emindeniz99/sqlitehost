@@ -301,6 +301,26 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * The three wall-clock KEYWORDS. SQLite's grammar spells these without an
+ * argument list — `CURRENT_TIMESTAMP`, not `current_timestamp()`, which is a
+ * syntax error — so a determinism lint that only inspects function calls
+ * never sees them, even though `INSERT … VALUES (CURRENT_TIMESTAMP)` is
+ * exactly as unreplayable as `datetime('now')`, which it does flag.
+ *
+ * Kept as a separate list rather than folded into
+ * NONDETERMINISTIC_TIME_FUNCTIONS because the two are scanned differently:
+ * that list is matched against parsed calls with their argument counts, this
+ * one against bare identifier tokens. The names are compared lowercased —
+ * SQLite's tokenizer is case-insensitive for keywords, so `current_date` and
+ * `CURRENT_DATE` are the same token.
+ */
+export const NONDETERMINISTIC_TIME_KEYWORDS: readonly string[] = [
+  "current_timestamp",
+  "current_date",
+  "current_time",
+];
+
+/**
  * SQLite built-ins introduced ABOVE the default contract floor (3.19.3), keyed
  * by the SQLITE_VERSION_NUMBER of the release that added them. A script that
  * calls one of these runs fine on the validator's engine and then fails on a
@@ -335,12 +355,28 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   first_value: 3025000,
   last_value: 3025000,
   nth_value: 3025000,
+  // 3.26.0 "Added PRAGMA table_xinfo". The pragma_* table-valued functions
+  // are version-gated exactly like the pragmas they wrap, and appear in SQL
+  // as an identifier in table position — with or without an argument list,
+  // so the lint scans bare identifiers as well as identifier(…) calls.
+  pragma_table_xinfo: 3026000,
+  // 3.30.0 "Added PRAGMA function_list" / "PRAGMA module_list".
+  pragma_function_list: 3030000,
+  pragma_module_list: 3030000,
   // 3.32.0 (2020-05-22) "Added the iif() SQL function".
   iif: 3032000,
+  // 3.34.0 "The substring() function is an alias for substr()". Same
+  // function under a second spelling: flagging one and not the other made
+  // the rule look arbitrary and left the alias a device-side crash.
+  substring: 3034000,
+  // 3.37.0 "Added PRAGMA table_list".
+  pragma_table_list: 3037000,
   // 3.38.0 "Rename the printf() SQL function to format()" and "Added the
   // unixepoch() function". `printf` itself stays legal — it is pre-floor.
   format: 3038000,
   unixepoch: 3038000,
+  // 3.41.0 (2023-02-21) "Added the unhex() SQL function".
+  unhex: 3041000,
   // 3.43.0 "Added the octet_length(X) SQL function" / "Added the timediff()
   // SQL function".
   octet_length: 3043000,
@@ -350,6 +386,15 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   concat: 3044000,
   concat_ws: 3044000,
   string_agg: 3044000,
+  // 3.48.0 "Added the if() SQL function as an alias for iif()". The
+  // sharpest gap the table had: the identical function was an error under
+  // one spelling and invisible under the other.
+  if: 3048000,
+  // 3.50.0 (2025-05-29) "Added the unistr() and unistr_quote() SQL
+  // functions". Both, because a table that carried only one of a pair
+  // released together is how every other gap in this list started.
+  unistr: 3050000,
+  unistr_quote: 3050000,
 };
 
 /**
@@ -424,11 +469,44 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
   "radians",
   "sin",
   "sinh",
+  // Not math: compile-gated the same way, and for the same reason kept out
+  // of FUNCTION_MIN_VERSION. `soundex` needs -DSQLITE_SOUNDEX (absent from
+  // xerial's build and from macOS's system sqlite3); `sqlite_offset` needs
+  // -DSQLITE_ENABLE_OFFSET_SQL_FUNC. Neither is fixable by raising a floor.
+  "soundex",
+  "sqlite_offset",
   "sqrt",
   "tan",
   "tanh",
   "trunc",
 ];
+
+/**
+ * SQLite built-in functions a script may not call at all (the
+ * forbidden-function lint, docs/validation.md) — not because of a version
+ * or a compile option, but because calling them does something the
+ * statement denylist exists to prevent.
+ *
+ * `pragma_optimize` is the whole list today, and it is the reason the list
+ * exists: the `pragma_*` table-valued functions are documented as ordinary
+ * reads, and every one that was checked is — except this one, which
+ * executes `ANALYZE`. Measured on sqlite3 3.51.0: after
+ * `SELECT * FROM pragma_optimize` a database whose schema was `t,i` reads
+ * `t,i,sqlite_stat1`. That is a CREATE plus a write, performed by a SELECT,
+ * reaching the exact statement kind (`ANALYZE`) FORBIDDEN_LEADING_KEYWORDS
+ * denies. Checked and clean, for the record: `pragma_foreign_keys(1)`
+ * cannot set (max 0 args), there is no `pragma_wal_checkpoint` /
+ * `pragma_shrink_memory` / `pragma_incremental_vacuum` TVF, and
+ * `pragma_integrity_check` / `pragma_quick_check` are genuine reads.
+ *
+ * Names are compared lowercased and matched wherever the identifier
+ * appears — as a call (`pragma_optimize(0xfffe)`) or bare in table position
+ * (`FROM pragma_optimize`), which are both legal spellings.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const FORBIDDEN_FUNCTIONS: readonly string[] = ["pragma_optimize"];
 
 /**
  * Statement kinds a script may not use, identified by the statement's FIRST
@@ -448,6 +526,19 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
  *    contract. PRAGMA in particular can change semantics under the runtime's
  *    feet (`foreign_keys`, `recursive_triggers`, `case_sensitive_like`) or
  *    rewrite the schema outright (`writable_schema=ON`).
+ *  - `explain`: a legal prefix to *any* statement, which anchored
+ *    `leadingKeyword` on itself and left the real verb unread — so
+ *    `EXPLAIN DELETE FROM result_get_value` bypassed protocol-table-write
+ *    too. It is not inert: SQLite applies the flag pragmas
+ *    (`PragTyp_FLAG`) in the code generator, i.e. during prepare, so
+ *    `EXPLAIN PRAGMA writable_schema = ON` sets the flag for real while
+ *    executing nothing (verified on the sqlite3 CLI 3.51.0, likewise for
+ *    `foreign_keys`, `case_sensitive_like`, `recursive_triggers`,
+ *    `trusted_schema`, `legacy_alter_table`, and with the
+ *    `EXPLAIN QUERY PLAN` spelling). A script executes statements for
+ *    effect and discards rows (docs/sqlite-surface.md §4), so EXPLAIN has
+ *    no legitimate use in a payload and denying it costs nothing legal —
+ *    the same argument the list already makes for `create`.
  *  - `alter`/`create`/`drop`: schema DDL. The runtime owns the workspace
  *    schema and a script has no reason to change it. `DROP TRIGGER` on a
  *    queue trigger is the sharp case — inserts into the call table then
@@ -476,12 +567,48 @@ export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
   "detach",
   "drop",
   "end",
+  "explain",
   "pragma",
   "reindex",
   "release",
   "rollback",
   "savepoint",
   "vacuum",
+];
+
+/**
+ * Tables SQLite owns, which a script may not write either (the
+ * protocol-table-write lint, docs/validation.md). Unlike the runtime-owned
+ * tables this list is FIXED rather than manifest-derived: these names are
+ * SQLite's, not the host's, so nothing in a manifest can rename them and a
+ * manifest-only resolution missed every one of them.
+ *
+ * `sqlite_master` is the sharp case and the reason this list exists: paired
+ * with `PRAGMA writable_schema = ON` (reachable at prepare time through
+ * `EXPLAIN`, see FORBIDDEN_LEADING_KEYWORDS) an UPDATE against it rewrites
+ * the runtime's own queue trigger, after which host calls enqueue nothing
+ * and the run still reports Completed. `sqlite_sequence` is the quiet one:
+ * setting a table's AUTOINCREMENT high is not silent corruption but a loud
+ * SQLITE_FULL on the next queue insert — still not something a script has
+ * any business doing. `sqlite_stat1`..`sqlite_stat4` are the query planner's
+ * statistics tables.
+ *
+ * Names are compared lowercased, and only as a WRITE target — reading
+ * `sqlite_master` stays legal, like every other read.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const SYSTEM_TABLES: readonly string[] = [
+  "sqlite_master",
+  "sqlite_schema",
+  "sqlite_sequence",
+  "sqlite_stat1",
+  "sqlite_stat2",
+  "sqlite_stat3",
+  "sqlite_stat4",
+  "sqlite_temp_master",
+  "sqlite_temp_schema",
 ];
 
 /**

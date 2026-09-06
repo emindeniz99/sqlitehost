@@ -332,6 +332,167 @@ class StatementDenylistTest {
     }
 
     @Test
+    void explainIsADeniedLeadingKeyword() throws IOException {
+        // EXPLAIN is a legal prefix to ANY statement, so it anchored
+        // leadingKeyword on itself and left the real verb unread —
+        // `EXPLAIN DELETE FROM pending_host_calls` reported nothing at all.
+        // And it is not inert: SQLite applies the flag pragmas in the code
+        // generator, so `EXPLAIN PRAGMA writable_schema = ON` sets the flag
+        // for real while executing nothing (sqlite3 CLI 3.51.0, likewise for
+        // foreign_keys, case_sensitive_like, recursive_triggers,
+        // trusted_schema and legacy_alter_table). A script discards rows
+        // anyway, so EXPLAIN has no legitimate use in a payload.
+        for (String sql : List.of(
+                "EXPLAIN PRAGMA writable_schema = ON",
+                "EXPLAIN QUERY PLAN PRAGMA case_sensitive_like = ON",
+                "EXPLAIN DELETE FROM pending_host_calls",
+                "explain select 1")) {
+            List<ValidationFinding> found = forbidden(sql);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // A column or table whose name merely starts with the keyword is
+        // untouched, like every other entry on the list.
+        assertEquals(List.of(), forbidden("SELECT explain_id FROM script_vars"));
+    }
+
+    @Test
+    void pragmaOptimizeIsDeniedBecauseItIsNotARead() throws IOException {
+        // The docs bless the pragma_* table-valued functions as ordinary
+        // reads. This one is not: it executes ANALYZE. Measured on sqlite3
+        // 3.51.0 — a database whose schema was `t,i` reads
+        // `t,i,sqlite_stat1` after `SELECT * FROM pragma_optimize`. That is
+        // DDL plus a write, performed by a SELECT, reaching the exact
+        // statement kind (ANALYZE) the leading-keyword denylist blocks. Both
+        // legal spellings must be caught: the call form and the bare
+        // table-position form, which functionCalls never saw.
+        for (String sql : List.of(
+                "SELECT * FROM pragma_optimize",
+                "SELECT * FROM pragma_optimize(0xfffe)",
+                "SELECT * FROM PRAGMA_OPTIMIZE",
+                "INSERT INTO script_vars (name, value_type, int_value)"
+                        + " SELECT 'n', 'int64', 1 FROM pragma_optimize")) {
+            List<ValidationFinding> found =
+                    findings(sql, ValidationCodes.FORBIDDEN_FUNCTION);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // The read-only pragma_* functions stay legal — that is the whole
+        // reason this is a named list rather than a `pragma_` prefix rule.
+        for (String sql : List.of(
+                "SELECT name FROM pragma_table_info('script_vars')",
+                "SELECT * FROM pragma_integrity_check",
+                "SELECT * FROM pragma_helper")) {
+            assertEquals(List.of(), findings(sql, ValidationCodes.FORBIDDEN_FUNCTION), sql);
+        }
+    }
+
+    @Test
+    void sqlitesOwnTablesAreWriteProtectedToo() throws IOException {
+        // The manifest cannot name these, so a manifest-only resolution
+        // never saw them. `UPDATE sqlite_master SET sql = …` is the sharp
+        // one: with writable_schema on it rewrites the runtime's queue
+        // trigger, after which host calls enqueue nothing and the run still
+        // reports Completed.
+        for (String sql : List.of(
+                "UPDATE sqlite_master SET sql = 'x' WHERE name = 'trg_call_get_value_queue'",
+                "DELETE FROM sqlite_master",
+                "UPDATE sqlite_schema SET sql = 'x'",
+                "DELETE FROM sqlite_temp_master",
+                "UPDATE sqlite_sequence SET seq = 9223372036854775807"
+                        + " WHERE name = 'pending_host_calls'",
+                "DELETE FROM sqlite_stat1",
+                "UPDATE main.sqlite_master SET sql = 'x'",
+                "DELETE FROM 'sqlite_master'")) {
+            List<ValidationFinding> found = protocolWrite(sql);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // Reading them stays legal, like every other runtime-owned table.
+        assertEquals(List.of(), protocolWrite("SELECT name FROM sqlite_master"));
+    }
+
+    @Test
+    void aLeadingBomDoesNotHideADeniedStatement() throws IOException {
+        // WHY: SQLite's tokenizer gives the UTF-8 BOM its own character class
+        // and returns TK_SPACE for it, so `<BOM>PRAGMA writable_schema = ON`
+        // compiles and RUNS as the PRAGMA it is (measured on the sqlite3 CLI
+        // 3.51.0 and SQLite 3.53.4). The ASCII-only scanner made it
+        // punctuation at index 0, which meant leadingKeyword and writeTarget
+        // both returned null — one invisible character, both denylists gone.
+        // This is accident-reachable: editors and Windows tooling write BOMs,
+        // and a BOM inside a JSON string is legal.
+        String bom = "\ufeff";
+        assertEquals(1, forbidden(bom + "PRAGMA writable_schema = ON").size());
+        assertEquals(1, forbidden(bom + "ATTACH DATABASE '/tmp/x.db' AS x").size());
+        assertEquals(1, forbidden(bom + "DROP TRIGGER trg_call_get_value_queue").size());
+        assertEquals(1, protocolWrite(bom + "DELETE FROM pending_host_calls").size());
+        // A BOM separates tokens wherever one may start, not only at index 0.
+        assertEquals(1, protocolWrite("DELETE " + bom + " FROM pending_host_calls").size());
+    }
+
+    @Test
+    void aStatementStartingWithANonIdentifierIsRejectedNotSkipped() throws IOException {
+        // Fail closed. Both denylist rules read token 0, and doing nothing
+        // when that token is not an identifier is what the BOM walked
+        // through. The scanner fix above closes the known divergence; this
+        // closes the class.
+        for (String sql : List.of(") SELECT 1", "* FROM pending_host_calls", "1 + 1")) {
+            List<ValidationFinding> found =
+                    findings(sql, ValidationCodes.UNRECOGNIZED_STATEMENT);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // …and every legal statement shape still starts with an identifier,
+        // so none of them trips it.
+        for (String sql : List.of(
+                "SELECT 1",
+                "VALUES (1)",
+                "WITH d AS (SELECT 1) SELECT * FROM d",
+                "INSERT INTO script_vars (name, value_type, int_value)"
+                        + " VALUES ('n', 'int64', 1)",
+                "REPLACE INTO script_vars (name, value_type, int_value)"
+                        + " VALUES ('n', 'int64', 1)",
+                "\ufeffSELECT 1")) {
+            assertEquals(List.of(), findings(sql, ValidationCodes.UNRECOGNIZED_STATEMENT), sql);
+        }
+    }
+
+    @Test
+    void aSingleQuotedNameIsATableName() throws IOException {
+        // SQLite's MySQL-compatibility rule: a single-quoted token in a
+        // position where a name is required IS the name
+        // (sqlite.org/lang_keywords.html). Verified running against the
+        // generated schema on sqlite3 3.51.0 — each of these deletes,
+        // forges or rewrites for real. Reading `'…'` as value-only here
+        // was a one-character bypass of the entire denylist: every one of
+        // them reported nothing at all in both validators.
+        assertEquals(1, protocolWrite("DELETE FROM 'pending_host_calls'").size());
+        assertEquals(1, protocolWrite("UPDATE 'result_get_value' SET result_value = 1").size());
+        assertEquals(1, protocolWrite(
+                "INSERT INTO 'result_get_value' (call_id, status, result_value)"
+                        + " VALUES ('x', 'done', 1)").size());
+        // …and it survives schema qualification, where the '.'-follower is
+        // the name that counts.
+        assertEquals(1, protocolWrite("DELETE FROM main.'pending_host_calls'").size());
+    }
+
+    @Test
+    void aSingleQuotedValueStaysALiteral() throws IOException {
+        // The other half of the same rule, and the reason name-capability
+        // is positional rather than a token kind: in VALUE position `'…'`
+        // is a string, so storing a protocol table's name as text is an
+        // ordinary write to the script's own scratch table. Reading it as
+        // a name here would reject the payload AND change static call-id
+        // resolution, which reads the same literals.
+        assertEquals(List.of(), protocolWrite(
+                "INSERT INTO script_vars (name, value_type, text_value)"
+                        + " VALUES ('watched_table', 'text', 'pending_host_calls')"));
+        assertEquals(List.of(), protocolWrite(
+                "UPDATE script_vars SET text_value = 'result_get_value' WHERE name = 'w'"));
+    }
+
+    @Test
     void theMessageNamesTheTableAndItsRole() throws IOException {
         // "protocol-table-write" alone does not tell an author which of the
         // several runtime-owned tables they touched, or why it is owned.

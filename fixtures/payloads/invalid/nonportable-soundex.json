@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-nonportable-soundex",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "use-a-compile-gated-builtin",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, text_value) VALUES ('code', 'text', soundex('example'))",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

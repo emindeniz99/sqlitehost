@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-function-pragma-table-list",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "list-tables-through-a-post-floor-tvf",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value) SELECT 'tables', 'int64', count(*) FROM pragma_table_list",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

@@ -210,4 +210,61 @@ class EnginePortabilityLintTest {
                         + "[{\"sql\":\"SELECT iif(1, sqrt(4), 3)\",\"bindings\":{}}]}]}");
         assertFalse(new ValidationEngine().validate(manifest, script).isValid());
     }
+
+    @Test
+    void theScalarBuiltinsAddedBetween334And350AreGatedToo() throws IOException {
+        // The version table was assembled from the iif/format/concat era and
+        // stopped there, so four later additions were silently publishable
+        // against the 3.19.3 floor. Each is a "no such function" on every
+        // device below its release, discovered by the player.
+        for (String[] pair : List.of(
+                new String[] {"SELECT substring('abc', 1, 2)", "3.34.0"},
+                new String[] {"SELECT unhex('41')", "3.41.0"},
+                new String[] {"SELECT if(1, 2, 3)", "3.48.0"},
+                new String[] {"SELECT unistr('abc')", "3.50.0"})) {
+            List<ValidationFinding> found = versionFindings(pair[0]);
+            assertEquals(1, found.size(), pair[0] + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), pair[0]);
+            assertTrue(found.get(0).message().contains(pair[1]), found.get(0).message());
+        }
+    }
+
+    @Test
+    void pragmaTableValuedFunctionsAreGatedWhetherOrNotTheyAreCalled() throws IOException {
+        // These are the only built-ins routinely written with no argument
+        // list -- `FROM pragma_table_list` is the documented spelling -- so a
+        // scan that only looks at `name(` misses every real use of them.
+        for (String[] pair : List.of(
+                new String[] {"SELECT * FROM pragma_table_xinfo('t')", "3.26.0"},
+                new String[] {"SELECT * FROM pragma_function_list", "3.30.0"},
+                new String[] {"SELECT * FROM pragma_module_list", "3.30.0"},
+                new String[] {"SELECT * FROM pragma_table_list", "3.37.0"})) {
+            List<ValidationFinding> found = versionFindings(pair[0]);
+            assertEquals(1, found.size(), pair[0] + ": " + found);
+            assertTrue(found.get(0).message().contains(pair[1]), found.get(0).message());
+        }
+        // pragma_table_info is 3.16.0, below the floor, and must stay silent
+        // in both spellings -- otherwise the bare-identifier scan becomes a
+        // false-positive generator for the commonest pragma function there is.
+        assertEquals(List.of(), versionFindings("SELECT * FROM pragma_table_info('t')"));
+        assertEquals(List.of(), versionFindings("SELECT * FROM pragma_table_info"));
+    }
+
+    @Test
+    void compileGatedBuiltinsOutsideTheMathFamilyNameTheirOwnOption() throws IOException {
+        // soundex and sqlite_offset are absent from stock builds for the same
+        // reason load_extension can be: a compile flag, not a version.
+        // Pointing the author at minSqliteVersion would be advice that cannot
+        // work, so these must not also produce a version finding.
+        for (String[] pair : List.of(
+                new String[] {"SELECT soundex('robert')", "SQLITE_SOUNDEX"},
+                new String[] {"SELECT sqlite_offset(k) FROM t",
+                        "SQLITE_ENABLE_OFFSET_SQL_FUNC"})) {
+            List<ValidationFinding> found = portabilityFindings(pair[0]);
+            assertEquals(1, found.size(), pair[0] + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), pair[0]);
+            assertTrue(found.get(0).message().contains(pair[1]), found.get(0).message());
+            assertEquals(List.of(), versionFindings(pair[0]), pair[0]);
+        }
+    }
 }

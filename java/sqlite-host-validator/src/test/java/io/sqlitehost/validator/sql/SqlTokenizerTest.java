@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -61,7 +62,26 @@ class SqlTokenizerTest {
         assertEquals(Set.of("p"),
                 params("SELECT \":notaparam\" FROM t WHERE x = :p"));
         List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT \"weird \"\"name\"\"\"");
-        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "weird \"name\""), tokens.get(1));
+        assertEquals(SqlToken.delimitedIdent("weird \"name\""), tokens.get(1));
+    }
+
+    @Test
+    void delimitedIdentifiersAreMarkedAsSuch() {
+        // Both spellings resolve to the same NAME, so the kind stays IDENT
+        // and every name-matching rule keeps treating them alike. The flag
+        // exists for the one thing that differs: a KEYWORD cannot be
+        // delimited. CURRENT_DATE reads the clock; "current_date" is a
+        // column reference (or, under SQLite's double-quote fallback, a
+        // string literal), and the determinism lint must not confuse them.
+        for (String sql : List.of("\"current_date\"", "[current_date]", "`current_date`")) {
+            SqlToken token = SqlTokenizer.tokenize(sql).get(0);
+            assertEquals(SqlToken.Kind.IDENT, token.kind(), sql);
+            assertEquals("current_date", token.text(), sql);
+            assertTrue(token.delimited(), sql);
+        }
+        SqlToken bare = SqlTokenizer.tokenize("current_date").get(0);
+        assertEquals(SqlToken.Kind.IDENT, bare.kind());
+        assertFalse(bare.delimited());
     }
 
     @Test
@@ -69,18 +89,18 @@ class SqlTokenizerTest {
         // [id] (MS Access/SQL Server compat) lexes as an IDENT with the
         // inner text — no escape mechanism, so it ends at the first ']'.
         List<SqlToken> tokens = SqlTokenizer.tokenize("[call_get_value]");
-        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "call_get_value"), tokens.get(0));
+        assertEquals(SqlToken.delimitedIdent("call_get_value"), tokens.get(0));
         List<SqlToken> weird = SqlTokenizer.tokenize("[weird ]x]");
-        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "weird "), weird.get(0));
+        assertEquals(SqlToken.delimitedIdent("weird "), weird.get(0));
     }
 
     @Test
     void lexesBacktickQuotedIdentifiersWithDoubledEscapes() {
         // `id` (MySQL compat) lexes as an IDENT; `` is one literal backtick.
         List<SqlToken> tokens = SqlTokenizer.tokenize("`call_get_value`");
-        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "call_get_value"), tokens.get(0));
+        assertEquals(SqlToken.delimitedIdent("call_get_value"), tokens.get(0));
         List<SqlToken> escaped = SqlTokenizer.tokenize("`a``b`");
-        assertEquals(new SqlToken(SqlToken.Kind.IDENT, "a`b"), escaped.get(0));
+        assertEquals(SqlToken.delimitedIdent("a`b"), escaped.get(0));
     }
 
     @Test
