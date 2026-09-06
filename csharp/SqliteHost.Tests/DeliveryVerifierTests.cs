@@ -354,6 +354,43 @@ namespace SqliteHost.Tests
                 new RSAParameters { Modulus = Modulus(modulusBytes), Exponent = new byte[] { 1, 0, 1 } }));
         }
 
+        [Theory]
+        [InlineData("AQ==")]      // e = 1
+        [InlineData("AAAAAQ==")]  // e = 1 again, written with leading zeros
+        [InlineData("AQAA")]      // e = 65536, even
+        public void RsaKeyWithADegenerateExponent_ThrowsAtConstruction(string exponentBase64)
+        {
+            // The exponent fails OPEN exactly like a short modulus, and the
+            // construction check was the only place looking: e=1 makes RSA
+            // the identity, so the "signature" is the padded digest and
+            // anyone mints envelopes the app accepts without ever seeing a
+            // private key. An even e is not an RSA exponent at all (no
+            // inverse mod phi(n)) and can only be a typo or tampering. The
+            // leading-zero case is the same value written differently, which
+            // a length comparison would have waved through.
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), exponentBase64));
+            Assert.Throws<ArgumentException>(() => DeliveryKey.Rsa(
+                KeyId,
+                new RSAParameters
+                {
+                    Modulus = Modulus(256),
+                    Exponent = Convert.FromBase64String(exponentBase64)
+                }));
+        }
+
+        [Theory]
+        [InlineData("AQAB")]  // e = 65537, what generateDeliveryKeyPair() emits
+        [InlineData("Aw==")]  // e = 3, small but legitimate
+        public void RsaKeyWithAUsableExponent_IsAccepted(string exponentBase64)
+        {
+            // Guards against over-tightening: the check rejects degenerate
+            // values, it does not audit key quality, so it must not start
+            // demanding one blessed exponent.
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), exponentBase64);
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
         [Fact]
         public void RsaKeyAtTheModulusFloor_IsAccepted()
         {

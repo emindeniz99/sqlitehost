@@ -44,7 +44,8 @@ namespace SqliteHost.Delivery
         /// An RSA public key for <c>rsa-sha256</c> (RSASSA-PKCS#1 v1.5 over
         /// SHA-256). Only <see cref="RSAParameters.Modulus"/> and
         /// <see cref="RSAParameters.Exponent"/> are used. The modulus must
-        /// be at least 2048 bits.
+        /// be at least 2048 bits and the exponent must be odd and greater
+        /// than 1.
         /// </summary>
         public static DeliveryKey Rsa(string keyId, RSAParameters publicKey)
         {
@@ -63,6 +64,18 @@ namespace SqliteHost.Delivery
                 throw new ArgumentException(
                     "RSA public key must be at least 2048 bits (a " + MinimumRsaModulusBytes
                     + "-byte modulus); this one is " + (publicKey.Modulus.Length * 8) + " bits.",
+                    "publicKey");
+            }
+            // A degenerate exponent fails OPEN the same way. e=1 makes RSA
+            // the identity, so m^e mod n is the padded digest itself and
+            // anyone forges a signature without the private key; an even e
+            // has no inverse mod phi(n), so it is not an RSA exponent at
+            // all. Both are typos or tampering, never a key
+            // generateDeliveryKeyPair() minted.
+            if (!IsUsableRsaExponent(publicKey.Exponent))
+            {
+                throw new ArgumentException(
+                    "RSA public key exponent must be odd and greater than 1.",
                     "publicKey");
             }
             var key = new DeliveryKey(keyId, ScriptEnvelopeAlgorithms.RsaSha256);
@@ -119,6 +132,37 @@ namespace SqliteHost.Delivery
                 throw new ArgumentException(
                     "keyId must be 1-128 characters from [A-Za-z0-9._:-].", "keyId");
             }
+        }
+
+        /// <summary>
+        /// Big-endian public exponent that is odd and greater than 1 — the
+        /// two properties every real RSA exponent has (65537 = AQAB, the one
+        /// generateDeliveryKeyPair() emits, and 3 both pass). No upper bound
+        /// and no primality test: this rejects degenerate values, it does not
+        /// audit key quality.
+        /// </summary>
+        private static bool IsUsableRsaExponent(byte[] exponent)
+        {
+            int last = exponent.Length - 1;
+            if ((exponent[last] & 1) == 0)
+            {
+                return false;
+            }
+            if (exponent[last] > 1)
+            {
+                return true;
+            }
+            // Trailing byte is exactly 1: greater than 1 only if some
+            // higher-order byte carries a value (leading zeros are legal
+            // padding, so scan rather than compare lengths).
+            for (int i = 0; i < last; i++)
+            {
+                if (exponent[i] != 0)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static byte[] DecodeBase64(string value, string parameterName)
