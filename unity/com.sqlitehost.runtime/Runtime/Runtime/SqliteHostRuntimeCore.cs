@@ -203,6 +203,10 @@ namespace SqliteHost
                     }
 #endif
 
+                    // Scope the inline-failure record to this statement, so a
+                    // handler that threw in an earlier one cannot colour a
+                    // later plain SQL error as a handler error.
+                    state.ClearInlineFailure();
                     try
                     {
                         connection.Execute(statement.Sql, ToBindingList(statement.Bindings));
@@ -358,8 +362,10 @@ namespace SqliteHost
                     {
                         continue;
                     }
-                    functionConnection.RegisterScalarFunction(
-                        spec.CreateInlineFunction(_handlers, state.CountInlineHandlerInvocation));
+                    functionConnection.RegisterScalarFunction(RecordingInlineFailures(
+                        spec.CreateInlineFunction(_handlers, state.CountInlineHandlerInvocation),
+                        spec.MethodName,
+                        state));
                 }
             }
             catch (Exception ex)
@@ -372,11 +378,50 @@ namespace SqliteHost
         }
 
         /// <summary>
-        /// Maps a failed script statement to its result: when the adapter's
-        /// error text carries the SQLITEHOST_HANDLER_ERROR: marker the
-        /// failure happened inside an inline scalar function and becomes
-        /// FailedHandler/handler-error (Method resolved from the function
-        /// name when derivable); otherwise plain FailedSql/sql-error.
+        /// Wraps a registered inline function so the runtime knows which
+        /// method's handler threw during the statement now executing. The
+        /// exception itself only reaches the runtime as SQL error TEXT (it
+        /// must not cross the native frames), and text is forgeable — see
+        /// <see cref="MapStatementException"/>.
+        /// </summary>
+        private static SqliteHostScalarFunction RecordingInlineFailures(
+            SqliteHostScalarFunction function, string methodName, RunState state)
+        {
+            Func<SqliteHostBindingValue[], SqliteHostBindingValue> invoke = function.Invoke;
+            return new SqliteHostScalarFunction(
+                function.Name,
+                function.MinArgs,
+                function.MaxArgs,
+                delegate(SqliteHostBindingValue[] args)
+                {
+                    try
+                    {
+                        return invoke(args);
+                    }
+                    catch
+                    {
+                        state.ReportInlineFailure(methodName);
+                        throw;
+                    }
+                });
+        }
+
+        /// <summary>
+        /// Maps a failed script statement to its result. The failure is
+        /// FailedHandler/handler-error only when one of this host's inline
+        /// functions actually threw while the statement ran AND the adapter
+        /// surfaced the SQLITEHOST_HANDLER_ERROR: marker for it; otherwise
+        /// plain FailedSql/sql-error.
+        ///
+        /// The marker alone is not evidence. SQLite echoes unresolved
+        /// identifiers and collation names into its error text, so a script
+        /// can put the marker (and a real function name) there with no
+        /// handler running at all — which used to report FailedHandler
+        /// against a named method whose handler never executed, or against
+        /// no method at all on a definition with no inline functions.
+        /// The recorded failure is the authoritative half: it can only be
+        /// set by a function this runtime registered and wrapped, and it is
+        /// cleared before every statement.
         /// </summary>
         private SqliteHostRunResult MapStatementException(
             RunState state,
@@ -384,21 +429,12 @@ namespace SqliteHost
             int statementIndex,
             Exception exception)
         {
-            for (Exception current = exception; current != null; current = current.InnerException)
+            if (state.FailedInlineMethod != null && CarriesHandlerErrorMarker(exception))
             {
-                string message = current.Message;
-                int markerIndex = message == null
-                    ? -1
-                    : message.IndexOf(SqliteHostScalarFunction.HandlerErrorMarker, StringComparison.Ordinal);
-                if (markerIndex < 0)
-                {
-                    continue;
-                }
                 SqliteHostRunResult failure = StatementFailure(
                     state, SqliteHostRunStatus.FailedHandler, "handler-error",
                     exception.Message, stepId, statementIndex);
-                failure.Method = ResolveInlineMethod(
-                    message, markerIndex + SqliteHostScalarFunction.HandlerErrorMarker.Length);
+                failure.Method = state.FailedInlineMethod;
                 return WithSqliteErrorCode(failure, exception);
             }
             return WithSqliteErrorCode(StatementFailure(
@@ -407,23 +443,24 @@ namespace SqliteHost
         }
 
         /// <summary>
-        /// Resolves the method whose inline function reported the error:
-        /// the runtime's invocation wrapper prefixes every message with
-        /// "&lt;functionName&gt;: ", so the text right after the marker names
-        /// the function. Null when not derivable.
+        /// True when any message in the exception chain carries the marker
+        /// the adapter puts on the SQL error text for a throwing inline
+        /// function (docs/adapter-contract.md). Keeps an adapter that does
+        /// not surface the marker on the plain-SQL-error path, as before.
         /// </summary>
-        private string ResolveInlineMethod(string message, int afterMarkerIndex)
+        private static bool CarriesHandlerErrorMarker(Exception exception)
         {
-            string remainder = message.Substring(afterMarkerIndex).TrimStart();
-            foreach (ErasedHostMethodSpec spec in _hostDefinition.Specs)
+            for (Exception current = exception; current != null; current = current.InnerException)
             {
-                if (spec.InlineFunction != null
-                    && remainder.StartsWith(spec.InlineFunction.FunctionName + ":", StringComparison.Ordinal))
+                string message = current.Message;
+                if (message != null
+                    && message.IndexOf(
+                        SqliteHostScalarFunction.HandlerErrorMarker, StringComparison.Ordinal) >= 0)
                 {
-                    return spec.MethodName;
+                    return true;
                 }
             }
-            return null;
+            return false;
         }
 
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
@@ -977,6 +1014,23 @@ namespace SqliteHost
             public void CountInlineHandlerInvocation()
             {
                 InlineCallCount++;
+            }
+
+            /// <summary>
+            /// Method whose inline function threw during the statement now
+            /// executing, or null. Only RecordingInlineFailures sets it, so
+            /// script text can never fake it; cleared before every statement.
+            /// </summary>
+            public string FailedInlineMethod { get; private set; }
+
+            public void ReportInlineFailure(string methodName)
+            {
+                FailedInlineMethod = methodName;
+            }
+
+            public void ClearInlineFailure()
+            {
+                FailedInlineMethod = null;
             }
 
             public List<SqliteHostCallDiagnostic> Calls { get; }

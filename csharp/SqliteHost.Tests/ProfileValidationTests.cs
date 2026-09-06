@@ -33,6 +33,10 @@ namespace SqliteHost.Tests
             public bool Ok { get; set; }
         }
 
+        // The value-type DTO guards are optional strict checks SQLITEHOST_SLIM
+        // strips (docs/csharp-api.md), so these two compile out with it.
+#if !SQLITEHOST_SLIM
+
         [Fact]
         public void Classic_ValueTypeInputDto_IsRejectedAtRegistration()
         {
@@ -49,6 +53,7 @@ namespace SqliteHost.Tests
                 () => builder.Inputs(i => i.List<int>("items", (x, v) => { }, item => { })));
             Assert.Contains("must be classes", ex.Message);
         }
+#endif
 
         private sealed class DummyInput
         {
@@ -131,6 +136,73 @@ namespace SqliteHost.Tests
             Assert.Contains("scalar fields only (no lists)", ex.Message);
         }
 
+        // --- null handler result: same verdict on all three surfaces ---
+
+        private sealed class NullResultProbeHandlers : ITestHandlers
+        {
+        }
+
+        private static SqliteHostRunResult RunProbeSpec(IHostMethodSpec<ITestHandlers> spec)
+        {
+            SqliteHostDefinition<ITestHandlers> definition = SqliteHostDefinition
+                .ForHandlers<ITestHandlers>()
+                .Methods(new List<IHostMethodSpec<ITestHandlers>> { spec });
+            using var factory = new TestWorkspaceFactory();
+            var runtime = new SqliteHostRuntime<ITestHandlers>(
+                factory, definition, new NullResultProbeHandlers(), null);
+            return runtime.Run(Scripts.New(Scripts.Step(
+                "s",
+                Scripts.Statement(
+                    "INSERT INTO call_probe (call_id, input_key) VALUES (:c, 'k')",
+                    ("c", SqliteHostBindingValue.Text("call-1"))))));
+        }
+
+        [SkippableFact]
+        public void Classic_NullHandlerResult_IsAHandlerError()
+        {
+            // A handler that returns null is a handler bug. The erased path
+            // used to carry the null into the result getters, so it surfaced
+            // as FailedSql / result-write-error carrying an NRE message —
+            // the wrong layer, the wrong code, and a message naming nothing.
+            // Ultra already reported FailedHandler here; classic now agrees.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunProbeSpec(HostMethod
+                .For<ITestHandlers, ProbeInput, DummyResult>("probe")
+                .Inputs(i => i.Text("key", (x, v) => x.Key = v))
+                .Results(r => r.Bool("ok", x => x.Ok))
+                .Handler((h, input) => null)
+                .Build());
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("returned null", result.ErrorMessage);
+        }
+
+        [SkippableFact]
+        public void Compact_NullHandlerResult_IsAHandlerError()
+        {
+            // Same erased core, so the compact surface must agree too.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunProbeSpec(CompactHostMethod
+                .For<ITestHandlers>("probe")
+                .CreateInput(() => new ProbeInput())
+                .InputText("key", (x, v) => ((ProbeInput)x).Key = v)
+                .ResultBool("ok", x => ((DummyResult)x).Ok)
+                .Handler((h, input) => null)
+                .Build());
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("returned null", result.ErrorMessage);
+        }
+
+        private sealed class ProbeInput
+        {
+            public string Key { get; set; }
+        }
+
         // --- ultra result-shape enforcement at runtime ---
 
         private SqliteHostRunResult RunUltraMethod(
@@ -163,6 +235,42 @@ namespace SqliteHost.Tests
                     "INSERT INTO call_probe (call_id, input_key) VALUES (:c, 'k')",
                     ("c", SqliteHostBindingValue.Text("call-1"))))));
         }
+
+        [SkippableFact]
+        public void Ultra_RowsToUndeclaredResultList_IsAHandlerError()
+        {
+            // Runs in BOTH builds. ErasedHostMethodSpec.WriteResultListRows
+            // iterates the DECLARED result lists, so rows the handler added
+            // under a name that is not one of them are written nowhere. With
+            // the check stripped, a mistyped list name ("rowz" for "rows")
+            // loses every row and the run still reports Completed — silent
+            // data loss, which is why this half of the shape check is not a
+            // strict check and must fail loud even under SQLITEHOST_SLIM.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunUltraMethod(
+                call =>
+                {
+                    var r = new SqliteHostUltraResult().SetInt64("value", 1);
+                    r.AddRow("rowz").SetText("name", "x");
+                    return r;
+                },
+                declareResults: b => b.ResultLong("value").ResultList("rows", item => item.Text("name")));
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("undeclared result list", result.ErrorMessage);
+            Assert.Contains("rowz", result.ErrorMessage);
+        }
+
+        // Full ultra result-shape enforcement (every declared field set,
+        // every set field declared and correctly typed, same per list row) is
+        // an optional strict check SQLITEHOST_SLIM strips, so these compile
+        // out with it. The name-membership half — rows written to an
+        // undeclared result list — is NOT stripped, because dropping them
+        // silently loses data; it is pinned under both builds by
+        // Ultra_RowsToUndeclaredResultList_IsAHandlerError below.
+#if !SQLITEHOST_SLIM
 
         [SkippableFact]
         public void Ultra_UnsetRequiredResultField_IsAHandlerError()
@@ -199,6 +307,7 @@ namespace SqliteHost.Tests
                 call => new SqliteHostUltraResult().SetNull("value"));
             Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
         }
+#endif
 
         [SkippableFact]
         public void Ultra_NullHandlerResult_IsAHandlerError()
@@ -242,6 +351,7 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
         }
 
+#if !SQLITEHOST_SLIM
         [SkippableFact]
         public void Ultra_ResultListRows_AreShapeChecked()
         {
@@ -256,6 +366,7 @@ namespace SqliteHost.Tests
                 declareResults: b => b.ResultLong("value").ResultList("rows", item => item.Text("name")));
             Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
         }
+#endif
 
         // --- ultra input surface ---
 

@@ -159,10 +159,32 @@ jobs:
       # so the 8.x SDK builds and runs the whole solution.
       - run: dotnet test --nologo
         working-directory: csharp
-      # The size-critical vendoring build has no tests of its own — this
-      # is the check that SQLITEHOST_SLIM still compiles.
+      # Release-configuration compile of the vendoring build on both OSes.
+      # The behavioural half is the `dotnet-slim` job below, which runs the
+      # suite under the define.
       - run: dotnet build SqliteHost.Runtime/SqliteHost.Runtime.csproj -c Release --nologo -v q -p:SqliteHostSlim=true
         working-directory: csharp
+
+  # The size-critical vendoring build, exercised rather than only compiled.
+  # SQLITEHOST_SLIM strips the optional strict checks, so the tests that
+  # pin those checks compile out (guarded with the same #if) and what runs
+  # is the functional core: schema creation, execution, drain order, the
+  # version gate, halt/control, error mapping, delivery, conformance. A
+  # slim-only regression — a fail-loud gate accidentally stripped with the
+  # strict checks — shows up here and nowhere else.
+  dotnet-slim:
+    name: dotnet (slim)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No NuGet cache: setup-dotnet's cache needs a packages.lock.json,
+      # and this solution does not use locked restore.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test csharp/SqliteHost.Tests/ --nologo -p:SqliteHostSlim=true
 
   # The cross-language contract: rebuild every emitter output and byte-
   # compare it against the committed fixtures and the vendored generated

@@ -173,6 +173,12 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "c-1|done|7" }, resultRows);
         }
 
+        // Everything below is registration-time naming validation, one of the
+        // optional strict checks SQLITEHOST_SLIM strips (docs/csharp-api.md).
+        // Under SLIM a bad workspace name registers cleanly, so these cases
+        // compile out; the functional naming tests above still run.
+#if !SQLITEHOST_SLIM
+
         [Theory]
         [InlineData("")]
         [InlineData(null)]
@@ -301,5 +307,6 @@ namespace SqliteHost.Tests
                 () => resultChildBuilder.Methods(new[] { listSpec }));
             Assert.Contains("'result_get_values__result_entries'", ex.Message);
         }
+#endif
     }
 }

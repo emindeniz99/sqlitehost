@@ -7,6 +7,15 @@
     <RootNamespace>SqliteHost.Tests</RootNamespace>
   </PropertyGroup>
 
+  <!-- Mirror SqliteHost.Runtime's slim switch into the test assembly so
+       `dotnet test -p:SqliteHostSlim=true` compiles: the tests that pin the
+       stripped strict checks (and the internals those checks own) are
+       guarded with the same #if. Without this the global property reaches
+       the runtime but not the tests, and the suite fails to build. -->
+  <PropertyGroup Condition="'$(SqliteHostSlim)' == 'true'">
+    <DefineConstants>$(DefineConstants);SQLITEHOST_SLIM</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <!-- Dynamic native override: SQLITEHOST_NATIVE_SQLITE=<path.so> loads an

@@ -1,7 +1,14 @@
+#if !SQLITEHOST_SLIM
 using Xunit;
 
 namespace SqliteHost.Tests
 {
+    /// <summary>
+    /// The lexical parameter scanner is one of the optional strict checks
+    /// SQLITEHOST_SLIM strips (docs/csharp-api.md, SQLITEHOST_SLIM), so the
+    /// whole class compiles out with it — <c>SqlParameterScanner</c> does
+    /// not exist in a slim build.
+    /// </summary>
     public class SqlParameterScannerTests
     {
         [Fact]
@@ -149,3 +156,4 @@ namespace SqliteHost.Tests
         }
     }
 }
+#endif

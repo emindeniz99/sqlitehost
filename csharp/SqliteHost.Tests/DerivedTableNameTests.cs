@@ -1,3 +1,4 @@
+#if !SQLITEHOST_SLIM
 using System;
 using System.Collections.Generic;
 using SqliteHost.Tests.TestSupport;
@@ -12,6 +13,10 @@ namespace SqliteHost.Tests
     /// the TypeSpec duplicate-table-name diagnostic — instead of building
     /// cleanly and failing the first Run with an opaque FailedSchema
     /// "table already exists" error.
+    ///
+    /// Registration-time naming validation is one of the optional strict
+    /// checks SQLITEHOST_SLIM strips (docs/csharp-api.md), so the whole class
+    /// compiles out with it.
     /// </summary>
     public class DerivedTableNameTests
     {
@@ -116,3 +121,4 @@ namespace SqliteHost.Tests
         }
     }
 }
+#endif

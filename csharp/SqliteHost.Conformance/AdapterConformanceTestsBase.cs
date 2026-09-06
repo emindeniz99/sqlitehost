@@ -385,6 +385,12 @@ namespace SqliteHost.Conformance
 
         // ---- runtime conformance (adapter driven through the runtime) ----
 
+        // Lexical binding validation is one of the optional strict checks
+        // SQLITEHOST_SLIM strips (docs/csharp-api.md): with it, ValidateBindings
+        // is ignored and missing-binding/unused-binding never fire, so these
+        // two cases compile out of a slim consumer's conformance run.
+#if !SQLITEHOST_SLIM
+
         [SkippableFact]
         public void UnknownBinding_FailsMissingBinding_WithBindingName()
         {
@@ -419,6 +425,7 @@ namespace SqliteHost.Conformance
             Assert.Equal("unused-binding", result.ErrorCode);
             Assert.Equal("leftover", result.BindingName);
         }
+#endif
 
         [SkippableFact]
         public void ErrorMidStep_AbortsTheStep_NoLaterStatement_NoHandlerForEarlierInsert()

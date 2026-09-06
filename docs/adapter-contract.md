@@ -129,7 +129,9 @@ with `ISqliteHostScalarFunctionCapableFactory`. Contract:
 - catch **everything** thrown by `Invoke` and report it via the SQL
   error channel prefixed `SQLITEHOST_HANDLER_ERROR:` — an exception
   must never cross the native frames (IL2CPP safety); the runtime maps
-  the marker back to `FailedHandler`/`handler-error`;
+  the marker back to `FailedHandler`/`handler-error` — but only for a
+  statement during which one of its own registered functions threw, so
+  script text that merely contains the marker stays a plain SQL error;
 - do not register with SQLITE_DETERMINISTIC (v1 rule — see
   `docs/proposals/inline-host-functions.md`);
 - incapable adapters implement nothing: hosts running on them

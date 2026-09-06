@@ -635,7 +635,10 @@ for Unity-vendored sources) strips the optional strict checks:
 registration-time naming/shape validation, the value-type DTO guards,
 lexical binding validation (`ValidateBindings` remains settable but is
 ignored; `missing-binding`/`unused-binding` never fire), ultra
-result-shape enforcement, and list-child-after-drain probing.
+result-shape enforcement (field presence and typing — rows added to an
+undeclared result list stay a `handler-error` in every build, because
+the writer would otherwise drop them silently), and
+list-child-after-drain probing.
 Functional semantics — schema creation, execution, drain order, the
 version gate, halt/control — are identical; measured savings in
 `docs/compatibility.md`. Error mapping is not identical for the two

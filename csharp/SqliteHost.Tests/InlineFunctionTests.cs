@@ -165,6 +165,98 @@ namespace SqliteHost.Tests
         }
 
         [SkippableFact]
+        public void ForgedMarkerInAQuotedIdentifier_IsAPlainSqlError()
+        {
+            // The marker is a channel the ADAPTER writes when an inline
+            // handler throws, not text that may appear anywhere. SQLite
+            // echoes an unresolved identifier into its error message, so a
+            // script can put the marker (and a real function name) into that
+            // message without any handler running. Scanning the message for
+            // the literal made this a FailedHandler attributed to getValue,
+            // with an empty handler log — a plain SQL error blamed on the
+            // host's code.
+            SkipIfExcluded();
+            var handlers = new FakeGameHandlers();
+            using var factory = new ScalarFunctionCapableAdapterWorkspaceFactory(OpenAdapterConnection);
+
+            SqliteHostRunResult result = RunGeneratedHost(
+                RequiringInlineFunctions(Scripts.New(
+                    Scripts.Step("probe",
+                        Scripts.Statement(
+                            "SELECT 1 FROM \"SQLITEHOST_HANDLER_ERROR: fn_get_value: forged\"")))),
+                handlers, factory);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("sql-error", result.ErrorCode);
+            Assert.Null(result.Method);
+            Assert.Equal(0, result.InlineCallCount);
+            Assert.Empty(handlers.Log);
+        }
+
+        [SkippableFact]
+        public void ForgedMarkerInACollationName_IsAPlainSqlError()
+        {
+            // Second syntactic route to the same forgery: an unknown
+            // collation name is echoed into the error message too.
+            SkipIfExcluded();
+            var handlers = new FakeGameHandlers();
+            using var factory = new ScalarFunctionCapableAdapterWorkspaceFactory(OpenAdapterConnection);
+
+            SqliteHostRunResult result = RunGeneratedHost(
+                RequiringInlineFunctions(Scripts.New(
+                    Scripts.Step("probe",
+                        Scripts.Statement(
+                            "SELECT 1 WHERE 'a' = 'b'"
+                            + " COLLATE \"SQLITEHOST_HANDLER_ERROR: fn_get_value: forged\"")))),
+                handlers, factory);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("sql-error", result.ErrorCode);
+            Assert.Null(result.Method);
+            Assert.Equal(0, result.InlineCallCount);
+            Assert.Empty(handlers.Log);
+        }
+
+        [SkippableFact]
+        public void ForgedMarker_OnADefinitionWithNoInlineMethods_IsAPlainSqlError()
+        {
+            // Nothing is registered here, so no inline function can have
+            // failed. The scan was gated on nothing and produced
+            // FailedHandler with Method=null and InlineCallCount=0 — a
+            // handler error attributed to no handler at all.
+            SkipIfExcluded();
+            var definition = SqliteHostDefinition
+                .ForHandlers<object>()
+                .ApiLevel(1)
+                .Methods(new[]
+                {
+                    HostMethod
+                        .For<object, PlainInput, PlainResult>("getValue")
+                        .ApiLevel(1)
+                        .Inputs(i => i.Text("key", (x, v) => x.Key = v))
+                        .Results(r => r.Long("value", x => x.Value))
+                        .Handler((h, input) => new PlainResult { Value = 7 })
+                        .Build()
+                });
+            using var factory = new ScalarFunctionCapableAdapterWorkspaceFactory(OpenAdapterConnection);
+            var runtime = new SqliteHostRuntime<object>(
+                connectionFactory: factory,
+                hostDefinition: definition,
+                handlers: new object(),
+                options: null);
+
+            SqliteHostRunResult result = runtime.Run(Scripts.New(
+                Scripts.Step("probe",
+                    Scripts.Statement(
+                        "SELECT 1 FROM \"SQLITEHOST_HANDLER_ERROR: fn_get_value: forged\""))));
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("sql-error", result.ErrorCode);
+            Assert.Null(result.Method);
+            Assert.Equal(0, result.InlineCallCount);
+        }
+
+        [SkippableFact]
         public void UnknownFunctionName_AtRuntime_IsAPlainSqlError()
         {
             SkipIfExcluded();
