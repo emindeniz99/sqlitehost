@@ -36,6 +36,31 @@ BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ExtraBinding_FailsUnusedBinding'
 BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ErrorMidStep_AbortsTheStep'
 BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ScalarFunction_NullForRequiredArg'
 
+# --- skip budget ----------------------------------------------------------
+# A green leg proves nothing until you know how much of the suite it ran.
+# Every cell skips a large, DESIGNED fraction (README "What the numbers
+# mean"): the two adapters that bundle their own SQLite skip whenever the
+# override is active, and below the floor every runtime-driven test skips
+# itself through the version gate. That is 22% of the suite at the floor
+# and 44% below it — and until these ceilings existed, an inverted skip
+# predicate could have taken it to 100% and still reported PASS.
+#
+# The ceilings are the measured skip counts plus room for ordinary test
+# growth; the passed floors are the same in reverse. They are deliberately
+# far below what any inverted predicate produces (an at-floor leg that
+# started skipping everything runtime-driven lands near the below-floor
+# number, ~330). Recompute after a change that adds adapter-parameterized
+# tests: run one leg, read `Skipped:`/`Passed:`, round up/down with slack,
+# and update the README table with the same numbers.
+#
+# Measured 2026-09-07 on the fix/coverage-hunt3 tree (Total 768):
+#   3.19.3   Passed 596  Skipped 172        3.28.0  Passed 598  Skipped 170
+#   3.9.0    Passed 419  Skipped 333  (Total 752 = 768 - 16 filtered)
+MAX_SKIPPED_AT_FLOOR=220
+MIN_PASSED_AT_FLOOR=520
+MAX_SKIPPED_BELOW_FLOOR=400
+MIN_PASSED_BELOW_FLOOR=360
+
 mkdir -p "$CACHE_DIR"
 
 if ! command -v dotnet >/dev/null 2>&1; then
@@ -203,6 +228,37 @@ for entry in "${VERSIONS[@]}"; do
   summary="$(grep -E 'Failed:.*Passed:.*Total:' "$log" | tail -1 \
     | sed -E 's/.*(Failed:[ ]*[0-9]+),[ ]*(Passed:[ ]*[0-9]+),[ ]*(Skipped:[ ]*[0-9]+),[ ]*(Total:[ ]*[0-9]+).*/\1, \2, \3, \4/' \
     | tr -s ' ')"
+
+  # --- skip budget: a leg that ran almost nothing is not a passing leg ----
+  if [ "$status" = "PASS" ]; then
+    counts_line="$(grep -E 'Failed:.*Passed:.*Total:' "$log" | tail -1)"
+    passed="$(printf '%s' "$counts_line" | sed -nE 's/.*Passed:[ ]*([0-9]+).*/\1/p')"
+    skipped="$(printf '%s' "$counts_line" | sed -nE 's/.*Skipped:[ ]*([0-9]+).*/\1/p')"
+    if [ -z "$passed" ] || [ -z "$skipped" ]; then
+      status="NO-COUNTS"
+      summary="could not read Passed/Skipped from $log"
+      overall_failure=1
+    else
+      if [ "$vernum" -lt "$FLOOR_VERSION_NUMBER" ]; then
+        max_skipped=$MAX_SKIPPED_BELOW_FLOOR; min_passed=$MIN_PASSED_BELOW_FLOOR; band="below-floor"
+      else
+        max_skipped=$MAX_SKIPPED_AT_FLOOR; min_passed=$MIN_PASSED_AT_FLOOR; band="at-or-above-floor"
+      fi
+      if [ "$skipped" -gt "$max_skipped" ] || [ "$passed" -lt "$min_passed" ]; then
+        status="SKIP-BUDGET"
+        summary="$band budget breached: Passed $passed (min $min_passed), Skipped $skipped (max $max_skipped)"
+        echo "  SKIP BUDGET BREACHED for sqlite $ver" >&2
+        echo "    passed  $passed (minimum $min_passed)" >&2
+        echo "    skipped $skipped (maximum $max_skipped)" >&2
+        echo "    Either a skip predicate inverted and the leg stopped testing this" >&2
+        echo "    engine, or the suite grew legitimately — in which case recompute" >&2
+        echo "    the budget at the top of this script AND the table in" >&2
+        echo "    tests/compatibility-sqlite/README.md." >&2
+        overall_failure=1
+      fi
+    fi
+  fi
+
   echo "  $status — ${summary:-no test summary (see $log)}"
   RESULT_VERSION+=("$ver"); RESULT_STATUS+=("$status"); RESULT_DETAIL+=("${summary:-see $log}")
 done
@@ -220,7 +276,8 @@ done
 echo "============================================================="
 
 if [ "$overall_failure" -ne 0 ]; then
-  echo "MATRIX FAILURE: a version row did not pass (below-floor rows are expected green too)." >&2
+  echo "MATRIX FAILURE: a version row did not pass its tests or its skip budget" >&2
+  echo "(below-floor rows are expected green too)." >&2
   exit 1
 fi
 echo "All versions passed (>= $FLOOR_VERSION runs the full suite; below-floor rows skip the runtime-driven suites and prove the gate via FloorGateTests)."
