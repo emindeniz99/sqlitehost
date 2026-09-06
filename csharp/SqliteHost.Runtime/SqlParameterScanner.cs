@@ -17,8 +17,18 @@ namespace SqliteHost
     /// pinned rule, '$' is also an identifier character in SQLite, so a
     /// '$' immediately preceded by an identifier character continues that
     /// identifier instead of starting a parameter; ':' and '@' always
-    /// start parameters outside quoted regions. The same algorithm is used
-    /// by the Java validator and the TypeScript authoring lint.
+    /// start parameters outside quoted regions. Two further characters can
+    /// appear <em>inside</em> a name and are handled by the scan loop
+    /// rather than by the IdChar test, because they are only legal in
+    /// position: a doubled colon (:a::b) and one trailing parenthesised
+    /// group ($a(1)). Both come from SQLite's TCL variable syntax, are
+    /// compiled in by default, and apply to every prefix — verified
+    /// against the sqlite3 CLI 3.51.0, where :a::b and $a(1) each bind as
+    /// a <em>single</em> parameter whose name carries the suffix. The same
+    /// algorithm is used by the Java validator and the TypeScript
+    /// authoring lint, and that agreement is the contract: a runtime that
+    /// splits these names rejects at run time exactly the payloads the
+    /// validators pass.
     /// </summary>
     internal static class SqlParameterScanner
     {
@@ -70,11 +80,52 @@ namespace SqliteHost
                 {
                     int start = i + 1;
                     int end = start;
-                    while (end < length && IsSqlIdentifierChar(sql[end]))
+                    int idChars = 0;
+                    bool illegal = false;
+                    while (end < length)
                     {
-                        end++;
+                        char c = sql[end];
+                        if (IsSqlIdentifierChar(c))
+                        {
+                            idChars++;
+                            end++;
+                        }
+                        else if (c == '(' && idChars > 0)
+                        {
+                            // A single trailing '(...)' group closes the name.
+                            end++;
+                            while (end < length && sql[end] != ')' && !IsSqlWhitespace(sql[end]))
+                            {
+                                end++;
+                            }
+                            if (end < length && sql[end] == ')')
+                            {
+                                end++;
+                            }
+                            else
+                            {
+                                illegal = true;
+                            }
+                            break;
+                        }
+                        else if (c == ':' && end + 1 < length && sql[end + 1] == ':')
+                        {
+                            end += 2;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
-                    if (end > start)
+                    if (illegal)
+                    {
+                        // SQLite lexes an unterminated '(' group as one
+                        // illegal token; consume the same span so no
+                        // parameter is invented out of it.
+                        i = end;
+                        previousIsIdentifierChar = false;
+                    }
+                    else if (idChars > 0)
                     {
                         string name = sql.Substring(start, end - start);
                         if (!names.Contains(name))
@@ -82,7 +133,10 @@ namespace SqliteHost
                             names.Add(name);
                         }
                         i = end;
-                        previousIsIdentifierChar = true;
+                        // A parameter is its own token: a '$' that follows one
+                        // starts a new variable, exactly as in the Java and
+                        // TypeScript tokenizers.
+                        previousIsIdentifierChar = false;
                     }
                     else
                     {
@@ -153,6 +207,23 @@ namespace SqliteHost
                 i++;
             }
             return sql.Length;
+        }
+
+        /// <summary>
+        /// The characters that separate tokens: C's isspace() set — space,
+        /// tab, newline, U+000B, form feed, carriage return. The Java
+        /// tokenizer and the TypeScript authoring lint enumerate the
+        /// identical set, and that agreement is the point: whitespace is
+        /// what closes an unterminated '(' group in a variable name, so a
+        /// byte one scanner skips and another does not makes the runtime
+        /// reject payloads the validators accept. It is deliberately one
+        /// character wider than SQLite's own sqlite3Isspace, which omits
+        /// U+000B; over-skipping is the fail-safe direction, since the extra
+        /// character can only appear in SQL SQLite refuses to prepare.
+        /// </summary>
+        private static bool IsSqlWhitespace(char ch)
+        {
+            return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\u000b' || ch == '\f' || ch == '\r';
         }
 
         private static bool IsIdentifierChar(char ch)
