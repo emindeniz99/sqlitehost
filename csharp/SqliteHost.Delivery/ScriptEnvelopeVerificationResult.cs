@@ -68,7 +68,18 @@ namespace SqliteHost.Delivery
         /// high-water mark where no legitimate envelope can pass it again.
         /// Only ever reported after the signature verified.
         /// </summary>
-        IssuedInFuture = 6
+        IssuedInFuture = 6,
+
+        /// <summary>
+        /// The signature is genuine but the envelope carries no
+        /// <c>expiresAt</c>, and
+        /// <see cref="ScriptEnvelopeVerificationOptions.RequireExpiry"/>
+        /// is on. An envelope that never expires is one a stolen key can
+        /// mint and an attacker can serve forever, so an app that caches
+        /// scripts must not accept one. Only ever reported after the
+        /// signature verified.
+        /// </summary>
+        MissingExpiry = 7
     }
 
     /// <summary>

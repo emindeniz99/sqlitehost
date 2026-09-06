@@ -401,6 +401,60 @@ namespace SqliteHost.Tests
         }
 
         [Fact]
+        public void MissingExpiresAtIsRejectedByDefaultPolicy()
+        {
+            // An envelope with no expiresAt never dies. Revocation in this
+            // design is an app update, so expiresAt is the ONLY thing
+            // bounding the window in which a key an attacker held for an
+            // hour keeps minting scripts the app accepts. An app that
+            // caches must not take one, and the option surface defaults to
+            // that policy: reaching for it is choosing policy, and this is
+            // the policy worth choosing.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.MissingExpiry,
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).Reason);
+        }
+
+        [Fact]
+        public void MissingExpiresAtIsAcceptedByTheWirePolicy()
+        {
+            // deliveryVersion 1 defines an empty expiresAt as "never
+            // expires", and the cross-language golden corpus pins it
+            // (valid-hmac.envelope). The three-argument overload keeps
+            // implementing the format as specified; RequireExpiry is app
+            // policy layered on top, exactly like the rollback rule.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).IsValid);
+            var permissive = new ScriptEnvelopeVerificationOptions { RequireExpiry = false };
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, permissive).IsValid);
+        }
+
+        [Fact]
+        public void PresentExpiresAtSatisfiesTheDefaultPolicy()
+        {
+            byte[] envelope = Build(Payload("{}"), expiresAt: (Now + 1000L).ToString());
+            Assert.True(
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).IsValid);
+        }
+
+        [Fact]
+        public void SignatureIsCheckedBeforeTheExpiryRequirement()
+        {
+            // Same rule as every other post-signature check: an unsigned
+            // envelope must report bad-signature, not a policy verdict on
+            // header fields nobody has verified.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            envelope[envelope.Length - 6] ^= 0x01;
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.BadSignature,
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).Reason);
+        }
+
+        [Fact]
         public void IssuedAtAtTheSkewCeiling_Verifies()
         {
             // The ceiling is inclusive, like expiresAt. A backend clock a
@@ -475,7 +529,8 @@ namespace SqliteHost.Tests
             byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
             var wide = new ScriptEnvelopeVerificationOptions
             {
-                MaxIssuedAtSkewMs = long.MaxValue
+                MaxIssuedAtSkewMs = long.MaxValue,
+                RequireExpiry = false
             };
             Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, wide).IsValid);
         }
@@ -486,7 +541,8 @@ namespace SqliteHost.Tests
             byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 1000L).ToString());
             var tight = new ScriptEnvelopeVerificationOptions
             {
-                MaxIssuedAtSkewMs = 999
+                MaxIssuedAtSkewMs = 999,
+                RequireExpiry = false
             };
             Assert.Equal(
                 ScriptEnvelopeFailureReason.IssuedInFuture,

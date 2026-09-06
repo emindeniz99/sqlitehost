@@ -31,7 +31,7 @@ namespace SqliteHost.Delivery
         /// applies. Shared and never mutated after construction.
         /// </summary>
         private static readonly ScriptEnvelopeVerificationOptions WirePolicy =
-            new ScriptEnvelopeVerificationOptions();
+            new ScriptEnvelopeVerificationOptions { RequireExpiry = false };
 
         // Fixed order is the reason no canonicalization is needed: there
         // is no map to sort and no optional field to omit. A reordered or
@@ -66,8 +66,10 @@ namespace SqliteHost.Delivery
         /// Applies the <c>deliveryVersion</c> 1 wire policy: the
         /// <c>issuedAt</c> ceiling with its default skew, and no expiry
         /// requirement, because the format defines an empty <c>expiresAt</c>
-        /// as "never expires". Take the four-argument overload to choose
-        /// app policy instead.
+        /// as "never expires". An app that caches what it verifies should
+        /// take the four-argument overload and a default-constructed
+        /// <see cref="ScriptEnvelopeVerificationOptions"/>, which requires
+        /// <c>expiresAt</c>.
         /// </summary>
         /// <param name="envelope">The envelope bytes exactly as received.</param>
         /// <param name="trustedKeys">Keys this build trusts; selection is by (kid, alg).</param>
@@ -212,6 +214,16 @@ namespace SqliteHost.Delivery
             if (hasExpiresAt && nowUnixMs > expiresAt)
             {
                 return Fail(ScriptEnvelopeFailureReason.Expired);
+            }
+
+            // App policy, not wire format: an envelope with no expiresAt
+            // never dies, so a key an attacker held for an hour keeps
+            // minting scripts the app accepts until an app update drops
+            // that key. Off in the three-argument overload, which has to
+            // keep implementing deliveryVersion 1 as specified.
+            if (options.RequireExpiry && !hasExpiresAt)
+            {
+                return Fail(ScriptEnvelopeFailureReason.MissingExpiry);
             }
 
             // Ceiling on issuedAt, checked after the signature for the same

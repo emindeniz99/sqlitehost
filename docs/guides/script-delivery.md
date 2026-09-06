@@ -126,9 +126,15 @@ static readonly List<DeliveryKey> TrustedKeys = new List<DeliveryKey>
 Then, per download:
 
 ```csharp
+// Policy for the checks the wire format leaves to you. The defaults
+// are the ones an app that caches wants: expiresAt required, and
+// issuedAt no more than five minutes ahead of `now`.
+static readonly ScriptEnvelopeVerificationOptions Policy =
+    new ScriptEnvelopeVerificationOptions();
+
 long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 ScriptEnvelopeVerificationResult result =
-    ScriptEnvelopeVerifier.Verify(downloadedBytes, TrustedKeys, nowUnixMs);
+    ScriptEnvelopeVerifier.Verify(downloadedBytes, TrustedKeys, nowUnixMs, Policy);
 
 if (!result.IsValid)
 {
@@ -145,8 +151,52 @@ if (result.IssuedAtUnixMs.Value <= LastIssuedAt(result.ScriptId))
     return; // stale or replayed; keep the newer script
 }
 
-SaveScript(result.ScriptId, result.Payload, result.IssuedAtUnixMs.Value);
+// Cache the ENVELOPE, not the payload. See below.
+SaveEnvelope(result.ScriptId, downloadedBytes, result.IssuedAtUnixMs.Value);
+Run(result.Payload);
 ```
+
+### Cache the envelope, and re-verify it every time you load it
+
+**Store the verified envelope bytes — the same `downloadedBytes` you
+just handed to `Verify` — not `result.Payload`.** Saving the payload
+throws away the signature and the `kid`, which are the only things that
+can ever be re-checked. Then run `Verify` again on every load from
+cache, against the *current* key set:
+
+```csharp
+byte[] cached = LoadEnvelope(scriptId);
+if (cached == null) { return null; }
+
+ScriptEnvelopeVerificationResult result = ScriptEnvelopeVerifier.Verify(
+    cached, TrustedKeys, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Policy);
+if (!result.IsValid)
+{
+    DeleteEnvelope(scriptId);   // revoked key, or expired while offline
+    return null;                // fall back to the bundled script
+}
+return result.Payload;
+```
+
+That is one signature check per launch, and it is what makes revocation
+actually revoke. Without it, a script signed by a compromised key
+survives the very app update that dropped the key — the update replaces
+the key set, but nothing ever re-examines what is already on disk, and
+the app keeps running that script until a *newer* envelope arrives.
+
+Two rules follow, and the default `ScriptEnvelopeVerificationOptions`
+enforces the first one for you:
+
+- **`expiresAt` is mandatory for anything you cache.** An envelope
+  without one never expires, so re-verifying it can never reject it and
+  the compromise window never closes. With the default policy such an
+  envelope is rejected outright (`MissingExpiry`). If you deliberately
+  verify with `RequireExpiry = false`, then treat a null
+  `result.ExpiresAtUnixMs` as **do not cache**: use the payload for this
+  session and write nothing to disk.
+- **Keep the stored `issuedAt` even when you drop the envelope.** The
+  high-water mark is what stops rollback replay; deleting it alongside
+  an expired envelope re-opens the window the mark was closing.
 
 `IssuedAtUnixMs` is a `long?`, null only when `IsValid` is false — the
 `.Value` above is guarded by the `IsValid` check two lines earlier, but
@@ -197,8 +247,12 @@ point — see `docs/guides/getting-started.md`.
 
 Revocation is the same move, urgently: a compromised key is removed in
 the next build. There is no online revocation check — that would need
-a transport, and this package does not have one. Short `expiresAt`
-values are what bound the damage until the update lands.
+a transport, and this package does not have one. Two things bound the
+damage, and both are yours to implement: short `expiresAt` values,
+which cap how long any envelope the stolen key minted stays valid, and
+re-verifying the cache on load (step 4), which is what makes the app
+update take effect on scripts already on disk. Without the second, a
+script signed by the revoked key outlives the update that revoked it.
 
 ## `hmac-sha256`: for your dev loop only
 

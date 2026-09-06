@@ -230,6 +230,17 @@ of keys; the verifier selects by `kid` **and** `alg`.
   damage window in the meantime. That bound is the main operational
   argument for keeping TTLs short.
 
+  Two conditions are what make that bound real, and neither is
+  automatic — both belong to the cache contract below. **`expiresAt`
+  is chosen by whoever holds the key**, and an empty one means "never
+  expires", so an attacker signs with no expiry and the window never
+  closes: an app that caches must require it
+  (`ScriptEnvelopeVerificationOptions.RequireExpiry`, on by default).
+  And **the app must re-verify what it cached**, or the update that
+  drops the key never reaches the script already on disk — the key set
+  is replaced, nothing re-examines the cache, and the revoked key's
+  script keeps running until a newer envelope arrives.
+
 ## Verification order (normative)
 
 `Verify(envelopeBytes, keys, nowUnixMs)` performs, in this order:
@@ -336,14 +347,35 @@ and the client happily accepts it — the signature is genuine.
 
 **The contract, which the app MUST implement:**
 
-> Persist `issuedAt` alongside the cached script, per `scriptId`.
-> Accept a newly verified envelope only if its `issuedAt` is strictly
-> greater than the stored value for that `scriptId`. Otherwise keep
-> what you have.
+> Cache the **verified envelope bytes**, never the payload alone, and
+> persist `issuedAt` alongside them per `scriptId`. Accept a newly
+> verified envelope only if its `issuedAt` is strictly greater than the
+> stored value for that `scriptId`. Otherwise keep what you have.
+> **Re-run `Verify` on every load from the cache**, against the key set
+> the current build trusts, and discard what fails.
 
 That is why `scriptId` and `issuedAt` are inside the signed region and
 are returned on success: they are not decoration, they are the inputs
 to this rule.
+
+**Why the envelope and not the payload.** The payload alone carries no
+signature and no `kid`, so once it is on disk nothing can ever check it
+again. Re-verification costs one signature check per launch and buys
+the property revocation depends on: a key dropped in an app update
+stops being able to serve *cached* scripts, not merely new downloads.
+It also re-applies `expiresAt` to a device that has been offline. The
+key set is compiled into the build, so this needs no transport — it is
+the same call, with the same arguments, on bytes that are already
+local.
+
+An envelope with no `expiresAt` breaks that: re-verification can never
+reject it, so it is exactly the envelope an attacker who held the key
+for one hour serves forever. `RequireExpiry` (default true on
+`ScriptEnvelopeVerificationOptions`) rejects it as `missing-expiry`.
+The library's three-argument overload keeps accepting it, because the
+wire format defines an empty `expiresAt` as "never expires" and that is
+not the library's decision to overturn — this is app policy, exactly
+like the rollback rule itself.
 
 Consequences worth stating plainly:
 
