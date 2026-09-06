@@ -319,6 +319,23 @@ namespace SqliteHost
         }
 
         /// <summary>
+        /// Row count and highest rowid of the control table — enough to see
+        /// any write a handler makes, including a delete-and-reinsert that
+        /// leaves the count alone.
+        /// </summary>
+        private ControlTableShape ReadControlTableShape(ISqliteHostConnection connection)
+        {
+            IReadOnlyList<object> rows = connection.QueryRows(
+                "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM " + _hostDefinition.Naming.ControlTable,
+                RuntimeSql.NoBindings,
+                delegate(ISqliteHostRow row)
+                {
+                    return new ControlTableShape(row.GetInt64(0), row.GetInt64(1));
+                });
+            return (ControlTableShape)rows[0];
+        }
+
+        /// <summary>
         /// Registers every inline scalar function on the workspace, before
         /// any schema DDL runs, when the definition exposes inline methods
         /// and the connection can register functions. Returns null on
@@ -717,6 +734,26 @@ namespace SqliteHost
                         stepId, call.Method);
                 }
 
+                // The control table is the script's channel, and the runtime
+                // only ever reads it — so a row that appears while a handler
+                // runs is the HOST's, not the script's. Without this
+                // snapshot the next statement's control check reports
+                // script-abort against a step that never touched the table,
+                // and presents the handler's text as "the script's message"
+                // (docs/errors.md handler-wrote-control). Same
+                // misattribution class as the forged handler-error marker,
+                // arriving through the control table instead.
+                ControlTableShape controlBefore;
+                try
+                {
+                    controlBefore = ReadControlTableShape(connection);
+                }
+                catch (Exception ex)
+                {
+                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                        ex.Message, stepId, call.Method), ex);
+                }
+
                 try
                 {
                     spec.ExecuteCall(connection, _hostDefinition.Naming, columns, _handlers, call.CallId);
@@ -766,6 +803,26 @@ namespace SqliteHost
                         Method = call.Method,
                         StepId = stepId
                     });
+                }
+
+                ControlTableShape controlAfter;
+                try
+                {
+                    controlAfter = ReadControlTableShape(connection);
+                }
+                catch (Exception ex)
+                {
+                    return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
+                        ex.Message, stepId, call.Method), ex);
+                }
+                if (!controlAfter.Equals(controlBefore))
+                {
+                    return Failure(state, SqliteHostRunStatus.FailedHandler, "handler-wrote-control",
+                        "Method '" + call.Method + "' wrote the control table "
+                        + _hostDefinition.Naming.ControlTable
+                        + " while handling call '" + call.CallId
+                        + "'. That table is the script's channel; the runtime only reads it.",
+                        stepId, call.Method);
                 }
 
                 try
@@ -1083,6 +1140,24 @@ namespace SqliteHost
             public List<long> RowCounts { get; }
         }
 #endif
+
+        /// <summary>Control-table snapshot taken around a handler invocation.</summary>
+        private sealed class ControlTableShape
+        {
+            private readonly long _rowCount;
+            private readonly long _maxRowId;
+
+            public ControlTableShape(long rowCount, long maxRowId)
+            {
+                _rowCount = rowCount;
+                _maxRowId = maxRowId;
+            }
+
+            public bool Equals(ControlTableShape other)
+            {
+                return other != null && other._rowCount == _rowCount && other._maxRowId == _maxRowId;
+            }
+        }
 
         private sealed class PendingCall
         {
