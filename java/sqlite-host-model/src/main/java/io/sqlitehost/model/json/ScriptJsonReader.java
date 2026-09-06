@@ -39,9 +39,18 @@ public final class ScriptJsonReader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     /** Largest int64 magnitude representable exactly as a JSON number (2^53−1), mirrors ScriptJsonWriter. */
     private static final BigInteger MAX_SAFE_JSON_INTEGER = BigInteger.valueOf(9007199254740991L);
-    /** Strict base64 (docs/script-envelope.md): standard alphabet, padded, no whitespace. */
+    /**
+     * Strict base64 (docs/script-envelope.md): standard alphabet, padded,
+     * no whitespace, and <em>canonical</em> — the trailing character
+     * classes require the padding bits to be zero, so {@code "QR=="} is
+     * refused even though it decodes to the same 0x41 as {@code "QQ=="}.
+     * An envelope is signed bytes; accepting several spellings of one blob
+     * forces a reader to pick one to re-emit, which is a different
+     * artifact from the one that was signed.
+     */
     private static final Pattern BASE64 = Pattern.compile(
-            "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$");
+            "^(?:[A-Za-z0-9+/]{4})*"
+                    + "(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$");
     /** Strict decimal string: no whitespace, no leading '+'. */
     private static final Pattern DECIMAL_STRING = Pattern.compile("^-?[0-9]+$");
 

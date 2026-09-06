@@ -52,7 +52,8 @@ class EnvelopeRoundTripTest {
      * refusal instead, which is the stronger statement.
      */
     private static final Set<String> READER_REJECTS =
-            Set.of("non-integral-int.json", "null-optional-field.json");
+            Set.of("non-integral-int.json", "null-optional-field.json",
+                    "non-canonical-base64.json");
 
     @TestFactory
     Stream<DynamicTest> everyPayloadFixtureRoundTrips() throws IOException {

@@ -548,6 +548,20 @@
       "warnings": []
     },
     {
+      "payload": "invalid/non-canonical-base64.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "invalid-envelope",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/null-optional-field.json",
       "valid": false,
       "errors": [

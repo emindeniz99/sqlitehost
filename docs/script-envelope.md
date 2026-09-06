@@ -56,7 +56,7 @@ Discriminated by `type`:
 | `int64` | number when \|v\| ≤ 2^53−1, else decimal string; parsers accept both | INTEGER |
 | `bool` | `true` / `false` | INTEGER 1 / 0 |
 | `text` | string | TEXT |
-| `blob` | base64 string (standard alphabet, padding, no line breaks) | BLOB |
+| `blob` | canonical base64 string (standard alphabet, padding, no line breaks, padding bits zero) | BLOB |
 | `float32` | finite JSON number representable as an IEEE-754 single (parsed via round-to-nearest); string form NOT accepted | REAL |
 | `float64` | finite JSON number; string form NOT accepted | REAL |
 
@@ -64,6 +64,13 @@ Float rules: NaN and ±Infinity are not representable (JSON has no
 literal for them) and readers must reject any string-typed value for
 `float32`/`float64` — unlike `int64`, floats never need a string form
 because every IEEE-754 double round-trips through a JSON number.
+
+Base64 must be **canonical**: `"QR=="` is refused even though it decodes
+to the same byte as `"QQ=="`, because the four bits it carries past that
+byte are padding and must be zero. Several spellings of one blob would
+force a reader to choose which to re-emit, and an envelope is signed
+bytes — normalizing after verification produces a different artifact from
+the one that was signed.
 
 An **explicit JSON `null` is not an absent field.** Every optional field
 above is absent by being missing from the object; spelling it `null`
