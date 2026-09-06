@@ -238,3 +238,67 @@ test("parseScript accepts mixed-prefix parameters (validator-only warning)", () 
   const script = parseScript(readFixture("payloads/valid/example-007-mixed-prefix.json"));
   assert.equal(script.scriptId, "example-007");
 });
+
+// -- duplicate object keys (docs/script-envelope.md) --------------------------
+// An object may not repeat a key. Last-wins is a convention, not a rule of
+// JSON, so a repeated key is a document two conforming readers may read
+// differently — and the delivery path's whole security model is that the
+// validator judged the same document the device runs. Rejecting is the only
+// resolution that cannot differ between implementations.
+
+test("parseScript rejects a duplicate key", () => {
+  assert.throws(
+    () =>
+      parseScript(
+        '{"engine":"sqlite-host-v1","engine":"sqlite-host-v1","requiredApiLevel":1,' +
+          '"steps":[{"id":"s","statements":[{"sql":"SELECT 1"}]}]}',
+      ),
+    SyntaxError,
+  );
+});
+
+test("parseScript rejects a duplicate sql key inside a statement", () => {
+  // The differential that motivates the rule: a validator reading the
+  // second value and an engine reading the first is a bypass with no
+  // tampering anywhere.
+  assert.throws(
+    () =>
+      parseScript(
+        '{"engine":"sqlite-host-v1","requiredApiLevel":1,"steps":[{"id":"s","statements":' +
+          '[{"sql":"ATTACH \'x\' AS y","sql":"SELECT 1"}]}]}',
+      ),
+    SyntaxError,
+  );
+});
+
+test("parseScript rejects a duplicate key spelled with an escape", () => {
+  // "sql" and "sql" are the same key after unescaping, so the check
+  // has to compare decoded names rather than raw source spans.
+  assert.throws(
+    () =>
+      parseScript(
+        '{"engine":"sqlite-host-v1","requiredApiLevel":1,"steps":[{"id":"s","statements":' +
+          '[{"sql":"SELECT 1","\\u0073ql":"SELECT 2"}]}]}',
+      ),
+    SyntaxError,
+  );
+});
+
+test("parseScript accepts the same key name in sibling objects", () => {
+  // Guard against over-tightening: the rule is per object.
+  const script = parseScript(
+    '{"engine":"sqlite-host-v1","requiredApiLevel":1,"steps":[' +
+      '{"id":"a","statements":[{"sql":"SELECT 1"}]},' +
+      '{"id":"b","statements":[{"sql":"SELECT 2"}]}]}',
+  );
+  assert.equal(script.steps.length, 2);
+});
+
+test("parseScript is not confused by a colon inside a string value", () => {
+  // A value that looks like a key when scanned naively.
+  const script = parseScript(
+    '{"engine":"sqlite-host-v1","requiredApiLevel":1,"steps":[{"id":"s","statements":' +
+      '[{"sql":"SELECT \\":a\\" , 1"}]}]}',
+  );
+  assert.equal(script.steps[0].statements.length, 1);
+});

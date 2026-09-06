@@ -1385,3 +1385,79 @@ test("binding-type-mismatch: correctly typed protocol columns stay silent", () =
     JSON.stringify(findings),
   );
 });
+
+// -- input scaling ------------------------------------------------------------
+// @sqlite-host/authoring is slated for npm, and a consumer linting a
+// payload someone uploaded will not all honour the threat model that says
+// scripts are trusted. lintScript takes no input cap, so any O(n²) scan
+// over a payload-controlled array is a hang the caller cannot defend
+// against — in a browser tab it is the whole page.
+//
+// These budgets are deliberately loose (a fast machine does the linear
+// version in tens of milliseconds). They are there to catch a
+// reintroduced quadratic scan, which at these sizes costs minutes, not a
+// few hundred milliseconds.
+
+test("scanNamedParameters is linear in the parameter count", () => {
+  const names = Array.from({ length: 80000 }, (_, i) => `p${i}`);
+  const sql = `SELECT ${names.map((n) => `:${n}`).join(", ")}`;
+  const started = Date.now();
+  const scanned = scanNamedParameters(sql);
+  assert.equal(scanned.length, names.length);
+  assert.ok(Date.now() - started < 1000, "scanNamedParameters did not scale");
+});
+
+test("binding/parameter cross-checks are linear in the binding count", () => {
+  const count = 40000;
+  const names = Array.from({ length: count }, (_, i) => `p${i}`);
+  const bindings: Record<string, BindingValue> = {};
+  for (const name of names) {
+    bindings[name] = { type: "int32", value: 1 };
+  }
+  // One unbound parameter and one unused binding, so both directions of
+  // the cross-check are exercised rather than short-circuited.
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    steps: [
+      {
+        id: "s1",
+        statements: [
+          {
+            sql: `SELECT ${names.map((n) => `:${n}`).join(", ")}, :unbound`,
+            bindings,
+          },
+        ],
+      },
+    ],
+  };
+  const started = Date.now();
+  const found = codes(lintScript(payload, manifest));
+  assert.ok(found.includes("missing-binding"), JSON.stringify(found.slice(0, 5)));
+  assert.ok(Date.now() - started < 1000, "lintScript did not scale with bindings");
+});
+
+test("list child/parent colocation is linear in the insert count", () => {
+  // The colocation pass looked a parent up with
+  // inserts.find(...callIds.includes(...)) — a scan of every insert, and
+  // of every call id on it, for every call id of every child insert.
+  const count = 20000;
+  const parents = Array.from({ length: count }, (_, i) => ({
+    sql: `INSERT INTO call_get_values (call_id, input_default_value) VALUES ('q-${i}', 0)`,
+  }));
+  const children = Array.from({ length: count }, (_, i) => ({
+    sql:
+      "INSERT INTO call_get_values__input_keys (call_id, item_index, input_key) " +
+      `VALUES ('q-${i}', 0, 'k')`,
+  }));
+  const payload = {
+    engine: "sqlite-host-v1",
+    requiredApiLevel: 1,
+    requiredMethods: ["getValues"],
+    steps: [{ id: "s1", statements: [...parents, ...children] }],
+  };
+  const started = Date.now();
+  const found = codes(lintScript(payload, manifest));
+  assert.ok(!found.includes("list-child-later-step"), JSON.stringify(found.slice(0, 5)));
+  assert.ok(Date.now() - started < 1500, "lintScript did not scale with inserts");
+});

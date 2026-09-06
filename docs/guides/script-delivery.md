@@ -22,6 +22,8 @@ The pieces:
 
 **`SqliteHost.Delivery` does no networking and reads no clock.** You
 supply the bytes and the current time; it supplies trust and freshness.
+Which clock you supply is a policy decision the library leaves to you —
+step 4 says what the choice costs.
 That is deliberate — see `docs/proposals/script-delivery.md`.
 
 ## 0. Make a key pair (development)
@@ -40,6 +42,17 @@ developer machine. The public half is not a secret — it ships inside
 the app precisely so the app can check signatures offline.
 
 A date-stamped `keyId` (`prod-2026-07`) makes rotation self-documenting.
+
+**One signing key per app.** Do not share a key across two titles, even
+in the same studio. Nothing in the envelope names the application it is
+for — the signed region carries `alg`, `kid`, `scriptId`, `issuedAt`,
+`expiresAt`, `minApiLevel` and the payload, and no audience or bundle
+id (this is where a JWT would have `aud`). So an envelope signed for
+title A verifies in title B whenever both trust that key, and
+`scriptId` is no defence: studios reuse names like
+`daily-quest-rules` across titles precisely because they mean the same
+thing. Adding an audience field is a `deliveryVersion` 2 change and is
+not on the table today, so the separation has to be operational.
 
 ## 1. Sign, on the backend
 
@@ -66,7 +79,16 @@ Three rules that matter more than they look:
 - **`expiresAt` is a blast-radius limit, not the security model.** It
   bounds how long a captured envelope stays replayable and how long a
   compromised key keeps working before your next app update drops it.
-  Hours-to-days is the useful range.
+  Hours-to-days is the useful range. Set it on every envelope you
+  expect a client to cache — see step 4.
+- **`issuedAt` must be a real timestamp, not a counter.** The verifier
+  rejects an envelope issued more than five minutes past the `now` you
+  hand it (`IssuedInFuture`). That bound exists because the rollback
+  rule below has no upper end of its own: one envelope stamped with a
+  far-future `issuedAt` — a signer bug, microseconds in a milliseconds
+  field, or an attacker during a key compromise — pins the client's
+  high-water mark where nothing legitimate can pass it again, and the
+  only recovery is an app update that wipes the cache.
 - **To roll back, re-sign the old payload with a new `issuedAt`.** Do
   not re-serve yesterday's envelope: that is byte-identical to an
   attacker replaying it, and step 4 will (correctly) reject it.
@@ -117,9 +139,21 @@ static readonly List<DeliveryKey> TrustedKeys = new List<DeliveryKey>
 Then, per download:
 
 ```csharp
+// Policy for the checks the wire format leaves to you. The defaults
+// are the ones an app that caches wants: expiresAt required, and
+// issuedAt no more than five minutes ahead of `now`.
+static readonly ScriptEnvelopeVerificationOptions Policy =
+    new ScriptEnvelopeVerificationOptions();
+
+// The DEVICE clock — the least trustworthy of the three sources the
+// library deliberately refuses to choose between. Fine for catching a
+// stale CDN; not fine if expiresAt is load-bearing, because the owner
+// of the device can wind it back and keep an expired envelope
+// verifying. Where it matters, anchor a server `Date` header to a
+// monotonic timer at launch and pass that instead.
 long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 ScriptEnvelopeVerificationResult result =
-    ScriptEnvelopeVerifier.Verify(downloadedBytes, TrustedKeys, nowUnixMs);
+    ScriptEnvelopeVerifier.Verify(downloadedBytes, TrustedKeys, nowUnixMs, Policy);
 
 if (!result.IsValid)
 {
@@ -136,8 +170,52 @@ if (result.IssuedAtUnixMs.Value <= LastIssuedAt(result.ScriptId))
     return; // stale or replayed; keep the newer script
 }
 
-SaveScript(result.ScriptId, result.Payload, result.IssuedAtUnixMs.Value);
+// Cache the ENVELOPE, not the payload. See below.
+SaveEnvelope(result.ScriptId, downloadedBytes, result.IssuedAtUnixMs.Value);
+Run(result.Payload);
 ```
+
+### Cache the envelope, and re-verify it every time you load it
+
+**Store the verified envelope bytes — the same `downloadedBytes` you
+just handed to `Verify` — not `result.Payload`.** Saving the payload
+throws away the signature and the `kid`, which are the only things that
+can ever be re-checked. Then run `Verify` again on every load from
+cache, against the *current* key set:
+
+```csharp
+byte[] cached = LoadEnvelope(scriptId);
+if (cached == null) { return null; }
+
+ScriptEnvelopeVerificationResult result = ScriptEnvelopeVerifier.Verify(
+    cached, TrustedKeys, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Policy);
+if (!result.IsValid)
+{
+    DeleteEnvelope(scriptId);   // revoked key, or expired while offline
+    return null;                // fall back to the bundled script
+}
+return result.Payload;
+```
+
+That is one signature check per launch, and it is what makes revocation
+actually revoke. Without it, a script signed by a compromised key
+survives the very app update that dropped the key — the update replaces
+the key set, but nothing ever re-examines what is already on disk, and
+the app keeps running that script until a *newer* envelope arrives.
+
+Two rules follow, and the default `ScriptEnvelopeVerificationOptions`
+enforces the first one for you:
+
+- **`expiresAt` is mandatory for anything you cache.** An envelope
+  without one never expires, so re-verifying it can never reject it and
+  the compromise window never closes. With the default policy such an
+  envelope is rejected outright (`MissingExpiry`). If you deliberately
+  verify with `RequireExpiry = false`, then treat a null
+  `result.ExpiresAtUnixMs` as **do not cache**: use the payload for this
+  session and write nothing to disk.
+- **Keep the stored `issuedAt` even when you drop the envelope.** The
+  high-water mark is what stops rollback replay; deleting it alongside
+  an expired envelope re-opens the window the mark was closing.
 
 `IssuedAtUnixMs` is a `long?`, null only when `IsValid` is false — the
 `.Value` above is guarded by the `IsValid` check two lines earlier, but
@@ -160,6 +238,8 @@ error page, not on `null`. It returns a reason instead:
 | `UnknownKey` | no trusted key for that `kid`+`alg` — rotated out, or an attacker repointed the key | keep the cached script; check your rotation |
 | `BadSignature` | altered in transit, or signed by someone else | keep the cached script; this one is worth an alert |
 | `Expired` | genuinely signed, but past `expiresAt` | keep the cached script; your publish job is late |
+| `IssuedInFuture` | genuinely signed, but `issuedAt` is more than five minutes ahead of the `now` you passed | keep the cached script; a clock is wrong — the signer's, or this device's |
+| `MissingExpiry` | genuinely signed, but carries no `expiresAt`, and your policy requires one | keep the cached script; the signer omitted the TTL, which for anything you cache is a publishing bug |
 
 On failure the result carries **nothing else** — no payload, no
 `scriptId`. Unverified data is unreachable by construction.
@@ -187,8 +267,12 @@ point — see `docs/guides/getting-started.md`.
 
 Revocation is the same move, urgently: a compromised key is removed in
 the next build. There is no online revocation check — that would need
-a transport, and this package does not have one. Short `expiresAt`
-values are what bound the damage until the update lands.
+a transport, and this package does not have one. Two things bound the
+damage, and both are yours to implement: short `expiresAt` values,
+which cap how long any envelope the stolen key minted stays valid, and
+re-verifying the cache on load (step 4), which is what makes the app
+update take effect on scripts already on disk. Without the second, a
+script signed by the revoked key outlives the update that revoked it.
 
 ## `hmac-sha256`: for your dev loop only
 

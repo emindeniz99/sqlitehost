@@ -167,11 +167,20 @@ algorithm and the verifier requires it to equal the envelope's `alg`
 | `rsa-sha256` | RSASSA-**PKCS#1 v1.5** over SHA-256 of `signedBytes`, per RFC 8017 §8.2 | production |
 | `hmac-sha256` | HMAC-SHA-256 over `signedBytes`, compared in constant time | dev/internal only |
 
-`DeliveryKey.Rsa(...)` rejects a modulus shorter than 256 bytes with
-`ArgumentException`, so 2048 bits is a hard floor rather than a
-recommendation: a short modulus is the misconfiguration that fails
-*open*, since verification keeps succeeding while the private key is
-within reach of factoring.
+`DeliveryKey.Rsa(...)` rejects a modulus whose **significant** length is
+under 256 bytes with `ArgumentException`, so 2048 bits is a hard floor
+rather than a recommendation: a short modulus is the misconfiguration
+that fails *open*, since verification keeps succeeding while the private
+key is within reach of factoring.
+
+Significant, not encoded: leading `0x00` bytes are legal padding in a
+big-endian integer and real producers emit them (Java's
+`BigInteger.toByteArray()` prepends a sign byte; HSM/KMS and
+JWK-adjacent tooling emit fixed-width fields). A floor that counted
+array length would accept a 1024-bit modulus left-padded to 256 bytes —
+the most likely shape of the very misconfiguration the floor exists to
+catch. The padding is stripped, not rejected, so a key exported by the
+Java side of this project stays usable.
 
 **Why PKCS#1 v1.5 and not PSS.** Unity/IL2CPP is the hard constraint:
 PKCS#1 v1.5 verification is the path with the broadest Mono and
@@ -203,6 +212,17 @@ of keys; the verifier selects by `kid` **and** `alg`.
 - **`keyId` is opaque** to the library — any `[A-Za-z0-9._:-]{1,128}`
   string. A date-stamped convention (`prod-2026-07`) makes rotation
   self-documenting.
+- **One key per app, as an operational rule.** There is no audience
+  binding in v1: nothing in the signed region names an application, a
+  bundle id or a tenant, so an envelope signed for one title verifies
+  in any other title that trusts the same key, and `scriptId` does not
+  separate them — the natural names (`daily-quest-rules`) are exactly
+  the ones a studio reuses. The alternative is an eighth header line
+  (`audience=<id|empty>`) inside the signed region, which the format
+  can take as a `deliveryVersion` 2 addition rather than a break,
+  since `alg` is already signed. Out of scope for v1: the operational
+  rule costs nothing, and adding a field to a signed format is not
+  something to do speculatively.
 - **RSA public keys are supplied as raw modulus + exponent**
   (`RSAParameters`, or base64 strings the library converts). Not
   SPKI/PEM: `netstandard2.0` has no `ImportSubjectPublicKeyInfo`
@@ -221,6 +241,17 @@ of keys; the verifier selects by `kid` **and** `alg`.
   damage window in the meantime. That bound is the main operational
   argument for keeping TTLs short.
 
+  Two conditions are what make that bound real, and neither is
+  automatic — both belong to the cache contract below. **`expiresAt`
+  is chosen by whoever holds the key**, and an empty one means "never
+  expires", so an attacker signs with no expiry and the window never
+  closes: an app that caches must require it
+  (`ScriptEnvelopeVerificationOptions.RequireExpiry`, on by default).
+  And **the app must re-verify what it cached**, or the update that
+  drops the key never reaches the script already on disk — the key set
+  is replaced, nothing re-examines the cache, and the revoked key's
+  script keeps running until a newer envelope arrives.
+
 ## Verification order (normative)
 
 `Verify(envelopeBytes, keys, nowUnixMs)` performs, in this order:
@@ -235,7 +266,8 @@ of keys; the verifier selects by `kid` **and** `alg`.
 5. No key with this `kid` **and** this `alg` → `unknown-key`.
 6. Signature over `signedBytes` does not verify → `bad-signature`.
 7. `expiresAt` present and `nowUnixMs > expiresAt` → `expired`.
-8. Otherwise `Ok(payloadBytes)`.
+8. `issuedAt > nowUnixMs + maxIssuedAtSkew` → `issued-in-future`.
+9. Otherwise `Ok(payloadBytes)`.
 
 Three of those orderings are load-bearing:
 
@@ -256,8 +288,28 @@ Three of those orderings are load-bearing:
   key set is keyed by the *pair*; "I have that id but not for that
   algorithm" is precisely "I do not have that key".
 
+Step 8 is a **ceiling on `issuedAt`**, and it is checked after the
+signature for exactly the same reason expiry is. Without it, one
+envelope carrying `issuedAt=9007199254740991` — minted during a key
+compromise, or emitted by a signer with microseconds in a milliseconds
+field — permanently freezes its `scriptId`: the cache contract below
+accepts only a strictly greater value, so every legitimate envelope
+that follows is rejected by the app's own defence, with no recovery
+short of shipping a build that wipes the cache or renames the
+`scriptId`.
+
+The device clock is untrusted for *ordering* and is never used for it
+(see the cache contract). It is sound as a sanity *ceiling*, because
+the error is one-directional: a wound-back clock only makes this check
+stricter. The skew defaults to five minutes and is
+`ScriptEnvelopeVerificationOptions.MaxIssuedAtSkewMs`; `long.MaxValue`
+disables it, for a fleet with no usable clock at all.
+
 `expiresAt` is inclusive: `nowUnixMs == expiresAt` still verifies, and
-the envelope dies at the first millisecond after. `minApiLevel` is
+the envelope dies at the first millisecond after. The `issuedAt`
+ceiling is inclusive the same way — a backend a few minutes ahead of a
+device is ordinary, and a bound that fired on it would cause outages
+rather than prevent them. `minApiLevel` is
 **reported, never enforced** — the library has no idea what api level
 the host was generated at (`docs/api-levels.md`), so it hands the value
 to the app, which does.
@@ -280,6 +332,18 @@ validate and throw, because that is the app's own configuration, not
 attacker input, and a malformed trusted key must fail loudly at
 startup rather than degrade to "nothing verifies".
 
+What "malformed" covers for an RSA key: an empty modulus or exponent,
+a modulus under 2048 significant bits, an **even** modulus (no product
+of two odd primes is even), an exponent that is even or ≤ 1, and an
+exponent wider than 8 significant bytes. All of those are typos,
+truncations or mis-decoded fields rather than keys a generator emits.
+The floor and the exponent checks catch the misconfigurations that
+fail *open*; the even-modulus and width checks catch ones that fail
+*closed*, which is the "nothing verifies" degrade this paragraph is
+about. The set is structural on purpose — it does not attempt to tell
+a composite modulus from a real one, which would need factoring-grade
+analysis.
+
 ## Downgrade and replay: the app's cache contract
 
 The library does not store anything, so it cannot detect replay on its
@@ -294,14 +358,35 @@ and the client happily accepts it — the signature is genuine.
 
 **The contract, which the app MUST implement:**
 
-> Persist `issuedAt` alongside the cached script, per `scriptId`.
-> Accept a newly verified envelope only if its `issuedAt` is strictly
-> greater than the stored value for that `scriptId`. Otherwise keep
-> what you have.
+> Cache the **verified envelope bytes**, never the payload alone, and
+> persist `issuedAt` alongside them per `scriptId`. Accept a newly
+> verified envelope only if its `issuedAt` is strictly greater than the
+> stored value for that `scriptId`. Otherwise keep what you have.
+> **Re-run `Verify` on every load from the cache**, against the key set
+> the current build trusts, and discard what fails.
 
 That is why `scriptId` and `issuedAt` are inside the signed region and
 are returned on success: they are not decoration, they are the inputs
 to this rule.
+
+**Why the envelope and not the payload.** The payload alone carries no
+signature and no `kid`, so once it is on disk nothing can ever check it
+again. Re-verification costs one signature check per launch and buys
+the property revocation depends on: a key dropped in an app update
+stops being able to serve *cached* scripts, not merely new downloads.
+It also re-applies `expiresAt` to a device that has been offline. The
+key set is compiled into the build, so this needs no transport — it is
+the same call, with the same arguments, on bytes that are already
+local.
+
+An envelope with no `expiresAt` breaks that: re-verification can never
+reject it, so it is exactly the envelope an attacker who held the key
+for one hour serves forever. `RequireExpiry` (default true on
+`ScriptEnvelopeVerificationOptions`) rejects it as `missing-expiry`.
+The library's three-argument overload keeps accepting it, because the
+wire format defines an empty `expiresAt` as "never expires" and that is
+not the library's decision to overturn — this is app policy, exactly
+like the rollback rule itself.
 
 Consequences worth stating plainly:
 
@@ -315,6 +400,12 @@ Consequences worth stating plainly:
 - **`issuedAt` must be monotonic per `scriptId` at the signer.** Two
   signers racing on the same `scriptId` can emit out-of-order
   timestamps and clients will pin the higher one.
+- **A far-future `issuedAt` is a lockout, not just a race.** The
+  high-water rule has no upper bound of its own, so the verifier
+  supplies one (step 8 above). An envelope the verifier rejects as
+  `issued-in-future` must not update the stored high-water mark —
+  which follows automatically, since the app only ever stores values
+  from a *verified* result.
 - **Device clock is not trusted for ordering.** The rule compares two
   *signed* `issuedAt` values against each other, never against the
   device clock. Only `expiresAt` involves `nowUnixMs`, and a device

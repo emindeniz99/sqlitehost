@@ -14,13 +14,13 @@ function fixturePath(relative: string): string {
 
 async function runDemoBin(
   args: string[],
-): Promise<{ code: number; stdout: string }> {
+): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
-    const { stdout } = await execFileAsync(process.execPath, [DEMO_BIN, ...args]);
-    return { code: 0, stdout };
+    const { stdout, stderr } = await execFileAsync(process.execPath, [DEMO_BIN, ...args]);
+    return { code: 0, stdout, stderr };
   } catch (error) {
-    const failure = error as { code?: number; stdout?: string };
-    return { code: failure.code ?? -1, stdout: failure.stdout ?? "" };
+    const failure = error as { code?: number; stdout?: string; stderr?: string };
+    return { code: failure.code ?? -1, stdout: failure.stdout ?? "", stderr: failure.stderr ?? "" };
   }
 }
 
@@ -57,4 +57,31 @@ test("demo exits 2 without arguments", async () => {
   const { code, stdout } = await runDemoBin([]);
   assert.equal(code, 2);
   assert.match(stdout, /usage:/);
+});
+
+// -- malformed input, not a crash ---------------------------------------------
+// parseHostManifest checks four fields and then casts, and JSON.parse
+// throws on anything that is not JSON at all. Both sat outside the
+// try/catch that already turned an unreadable file into `error: ...`
+// and exit 2, so pointing the demo at the wrong file dumped a Node
+// stack trace — which reads as a tool that broke rather than an input
+// that was wrong, and prints internal paths while doing it.
+
+test("demo reports a malformed manifest instead of crashing", async () => {
+  const { code, stdout, stderr } = await runDemoBin([
+    fixturePath("payloads/valid/example-001-read-then-conditional-write.json"),
+    fixturePath("payloads/valid/example-001-read-then-conditional-write.json"),
+  ]);
+  assert.equal(code, 2);
+  assert.match(stdout, /error: .*manifestVersion/);
+  assert.doesNotMatch(stderr, /at .*\.js:/, `stack trace on stderr: ${stderr}`);
+});
+
+test("demo reports a payload that is not JSON instead of crashing", async () => {
+  // A file that exists and reads fine, so the pre-existing IO catch
+  // does not cover it — JSON.parse is where it fails.
+  const { code, stdout, stderr } = await runDemoBin([DEMO_BIN]);
+  assert.equal(code, 2);
+  assert.match(stdout, /error: /);
+  assert.doesNotMatch(stderr, /at .*\.js:/, `stack trace on stderr: ${stderr}`);
 });

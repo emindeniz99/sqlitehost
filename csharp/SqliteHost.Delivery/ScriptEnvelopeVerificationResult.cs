@@ -56,7 +56,30 @@ namespace SqliteHost.Delivery
         /// relative to the caller-supplied <c>now</c>. Only ever reported
         /// after the signature verified.
         /// </summary>
-        Expired = 5
+        Expired = 5,
+
+        /// <summary>
+        /// The signature is genuine but <c>issuedAt</c> sits further ahead
+        /// of the caller-supplied <c>now</c> than
+        /// <see cref="ScriptEnvelopeVerificationOptions.MaxIssuedAtSkewMs"/>
+        /// allows. Distinct from <see cref="Expired"/> because the answer
+        /// differs: a clock is wrong — the signer's, or this device's — and
+        /// accepting the envelope would pin the app's per-<c>scriptId</c>
+        /// high-water mark where no legitimate envelope can pass it again.
+        /// Only ever reported after the signature verified.
+        /// </summary>
+        IssuedInFuture = 6,
+
+        /// <summary>
+        /// The signature is genuine but the envelope carries no
+        /// <c>expiresAt</c>, and
+        /// <see cref="ScriptEnvelopeVerificationOptions.RequireExpiry"/>
+        /// is on. An envelope that never expires is one a stolen key can
+        /// mint and an attacker can serve forever, so an app that caches
+        /// scripts must not accept one. Only ever reported after the
+        /// signature verified.
+        /// </summary>
+        MissingExpiry = 7
     }
 
     /// <summary>
