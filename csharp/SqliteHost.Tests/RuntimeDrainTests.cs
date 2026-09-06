@@ -206,6 +206,50 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "g-1|done|41" }, resultRows);
         }
 
+        /// <summary>
+        /// docs/errors.md: ExecutedCallCount "always counts successfully
+        /// completed handler invocations". The bookkeeping UPDATE that
+        /// marks the queue row done runs AFTER the handler, and there is no
+        /// transaction around the pair (docs/sqlite-surface.md), so when it
+        /// fails — disk full, SQLITE_BUSY, an IO error on the queue write —
+        /// the handler's side effects and its result row are already
+        /// committed. A count of zero then tells a host reconciling "which
+        /// of my methods actually fired" the opposite of the truth.
+        /// </summary>
+        [SkippableFact]
+        public void QueueUpdateFailsAfterASuccessfulHandler_StillCountsTheInvocation()
+        {
+            using var factory = new TestWorkspaceFactory(retainWorkspace: true);
+            var handlers = new FakeGameHandlers();
+            var runtime = CreateRuntime(handlers, factory, new SqliteHostRuntimeOptions
+            {
+                EnableDiagnostics = true
+            });
+            // Drop the queue table from inside the handler: the result row
+            // is written, then the UPDATE has nothing to update.
+            handlers.GetValueOverride = _ =>
+            {
+                factory.LastWorkspace.Execute("DROP TABLE pending_host_calls", null);
+                return new GetValueResult { Value = 5 };
+            };
+            var script = Scripts.New(Scripts.Step("only", InsertGetValue("g-1", "k")));
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("sql-error", result.ErrorCode);
+            Assert.Equal(new[] { "getValue:k" }, handlers.Log);
+            Assert.Equal(1, result.ExecutedCallCount);
+            SqliteHostCallDiagnostic call = Assert.Single(result.Calls);
+            Assert.Equal("g-1", call.CallId);
+            Assert.Equal("getValue", call.Method);
+            Assert.Equal("only", call.StepId);
+            // The result row really is committed — that is why the count matters.
+            var resultRows = factory.LastWorkspace.Query(
+                "SELECT call_id || '=' || status FROM result_get_value", null, row => row.GetText(0));
+            Assert.Equal(new[] { "g-1=done" }, resultRows);
+        }
+
         [SkippableFact]
         public void HandlerFailure_LeavesNoResultRowForTheFailingCall()
         {

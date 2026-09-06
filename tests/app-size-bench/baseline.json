@@ -6,10 +6,16 @@
     "",
     "The linux-x64 entry below was measured on a GitHub ubuntu-latest runner by the app-size job",
     "in ci.yml (run 32603450209), which is the only place the repository publishes NativeAOT for",
-    "linux-x64. It replaces numbers transcribed from docs/guides/il2cpp-size-protocol.md \u00a73 that",
+    "linux-x64. It replaces numbers transcribed from docs/guides/il2cpp-size-protocol.md §3 that",
     "predated the runtime's current shape: every row measured 9-16 KB above them, so the advisory",
-    "warning fired on all eight rows and said nothing. Real numbers, so \"gate\": true \u2014 a byte",
+    "warning fired on all eight rows and said nothing. Real numbers, so \"gate\": true — a byte",
     "move outside the tolerance now fails the build.",
+    "",
+    "Re-recorded from run 34060022503 (the round-3 runtime fixes: storage-class guard on the read",
+    "path, drain-until-empty loop, control-table shape snapshot, drained-row set). Those added a fixed",
+    "12.5 KB raw / 6 KB gz to every host-bearing row (8.3 KB raw on compact50-slim) — the intended",
+    "cost of four new failure modes, not a per-method regression: the marginal per-method costs",
+    "did not move.",
     "",
     "Re-record after a change that is supposed to move bytes: read the app-size job's summary,",
     "confirm the new numbers are what the change intended, then run",
@@ -18,48 +24,48 @@
     "",
     "The shape invariants in measure-nativeaot.mjs (profile ordering, falling per-method cost,",
     "H-FIELDS no-op, SLIM a net win, reflection-free build runs) are enforced regardless of this",
-    "gate \u2014 those are ratios, not bytes."
+    "gate — those are ratios, not bytes."
   ],
   "runtimes": {
     "linux-x64": {
       "gate": true,
       "deltas": {
         "classic50": {
-          "raw": 312240,
-          "gz": 135125
+          "raw": 324736,
+          "gz": 141584
         },
         "compact50": {
-          "raw": 228768,
-          "gz": 100026
+          "raw": 237168,
+          "gz": 106235
         },
         "compact50-fields": {
-          "raw": 228776,
-          "gz": 100022
+          "raw": 237176,
+          "gz": 106239
         },
         "ultra50": {
-          "raw": 200712,
-          "gz": 91668
+          "raw": 209112,
+          "gz": 96737
         },
         "classic5": {
-          "raw": 159280,
-          "gz": 77078
+          "raw": 167696,
+          "gz": 82925
         },
         "compact5": {
-          "raw": 146400,
-          "gz": 72010
+          "raw": 158912,
+          "gz": 77088
         },
         "ultra5": {
-          "raw": 163400,
-          "gz": 81142
+          "raw": 175880,
+          "gz": 86644
         },
         "compact50-slim": {
-          "raw": 191120,
-          "gz": 81036
+          "raw": 199456,
+          "gz": 85877
         }
       },
       "probeDelta": {
         "raw": 289936,
-        "gz": 135530
+        "gz": 135525
       }
     }
   }

@@ -311,6 +311,33 @@ namespace SqliteHost.Tests.Adapter
         }
 
         public bool IsNull(int index) => _reader.IsDBNull(index);
+
+        /// <summary>
+        /// Microsoft.Data.Sqlite's GetFieldType is value-based: it reports
+        /// the CLR type of what sqlite3_column_type says is in this row's
+        /// column, not the column's declared type.
+        /// </summary>
+        public SqliteHostStorageClass GetStorageClass(int index)
+        {
+            if (_reader.IsDBNull(index))
+            {
+                return SqliteHostStorageClass.Null;
+            }
+            Type fieldType = _reader.GetFieldType(index);
+            if (fieldType == typeof(long))
+            {
+                return SqliteHostStorageClass.Integer;
+            }
+            if (fieldType == typeof(double))
+            {
+                return SqliteHostStorageClass.Real;
+            }
+            if (fieldType == typeof(byte[]))
+            {
+                return SqliteHostStorageClass.Blob;
+            }
+            return SqliteHostStorageClass.Text;
+        }
         public int GetInt32(int index) { RequireNotNull(index); return _reader.GetInt32(index); }
         public long GetInt64(int index) { RequireNotNull(index); return _reader.GetInt64(index); }
         public bool GetBool(int index) { RequireNotNull(index); return _reader.GetInt64(index) != 0; }

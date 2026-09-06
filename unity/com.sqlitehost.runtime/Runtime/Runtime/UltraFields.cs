@@ -26,7 +26,8 @@ namespace SqliteHost
             return new ErasedReadField(sqlName, scalarType, optional,
                 delegate(object dto, ISqliteHostRow row, int index)
                 {
-                    ((IUltraValueSink)dto).Store(sqlName, ReadValue(row, index, scalarType, optional));
+                    ((IUltraValueSink)dto).Store(
+                        sqlName, ReadValue(row, index, scalarType, optional, sqlName));
                 })
             {
                 Column = decl.Column
@@ -115,9 +116,10 @@ namespace SqliteHost
             ISqliteHostRow row,
             int index,
             HostScalarType scalarType,
-            bool optional)
+            bool optional,
+            string sqlName)
         {
-            return ErasedScalarFields.ReadColumn(row, index, scalarType, optional);
+            return ErasedScalarFields.ReadColumn(row, index, scalarType, optional, sqlName);
         }
     }
 

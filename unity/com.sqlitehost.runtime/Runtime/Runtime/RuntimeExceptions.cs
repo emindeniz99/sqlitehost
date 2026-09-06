@@ -20,6 +20,19 @@ namespace SqliteHost
         }
     }
 
+    /// <summary>
+    /// A call column's stored value contradicts the declared scalar type,
+    /// or does not fit it (error code input-type-mismatch). Raised on the
+    /// read path before the handler sees a coerced argument.
+    /// </summary>
+    internal sealed class SqliteHostInputTypeMismatchException : Exception
+    {
+        public SqliteHostInputTypeMismatchException(string message)
+            : base(message)
+        {
+        }
+    }
+
     /// <summary>Writing result rows failed (error code result-write-error).</summary>
     internal sealed class SqliteHostResultWriteException : Exception
     {

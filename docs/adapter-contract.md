@@ -42,7 +42,14 @@ failures:
   as exceptions (preferably `SqliteHostAdapterException`, carrying the
   native SQLite error code when available). The runtime maps them to
   `sql-error` / `FailedSql` and copies the code into
-  `SqliteHostRunResult.SqliteErrorCode`.
+  `SqliteHostRunResult.SqliteErrorCode`. That code is the **extended**
+  result code (`sqlite3_extended_errcode`) where the wrapper exposes
+  one, and reduces to the primary code where it does not — the shipped
+  native adapter reports `1555` for a duplicate key, Microsoft.Data.Sqlite
+  reports `19`. Adapters are not required to reach the extended code;
+  they are required to leave its low byte intact, which is the primary
+  code and the part a host can branch on
+  (`ConstraintViolation_SurfacesAConstraintResultCode`).
 - Malformed SQL, missing tables, and missing columns must never look
   like success with zero rows.
 - `Execute` must step a row-producing statement to completion (until
@@ -65,6 +72,18 @@ failures:
   (`MultiStatementSql_NeverRunsTheFirstStatementAlone`), and tests that
   a trailing terminator or comment is *not* treated as a second
   statement.
+- **SQL that compiles to no program is a no-op, not an error.** A
+  statement whose text is only a comment or only whitespace prepares
+  successfully with no statement handle, and `Execute`/`QueryRows` must
+  treat that as a completed statement with no rows. Commenting a
+  statement out is the most ordinary thing a script author does, and
+  nothing rejects such a payload earlier: `invalid-envelope` covers
+  blank fields, and a comment is not blank. The alternative — the state
+  before `CommentOnlySql_IsANoOp` was added to the suite — was a script
+  that ran on one host and hard-failed on two others. It is the same
+  reading as "a trailing comment is not a second statement" below.
+  `Prepare` is the exception: it exists to report a statement's
+  parameters and has nothing to describe, so it throws.
 - SQL text carrying an embedded NUL must be rejected before anything is
   compiled. SQLite reads SQL as a C string and stops at the first NUL
   byte, so the NUL truncates the statement: `DELETE FROM t\0 WHERE k =
@@ -166,6 +185,14 @@ wrong without any test noticing:
   throws. `sqlite3_column_blob` returns a null pointer for *both*, so a
   P/Invoke adapter that infers NULL from the pointer conflates them —
   check `sqlite3_column_type` instead.
+- **The typed getters are range-checked, not truncating.** An INTEGER
+  column holds any int64, so `GetInt32` can be pointed at a value that
+  does not fit. `sqlite3_column_int` returns the low 32 bits — 2^32+7
+  reads back as 7 — and that substituted value cannot be told apart
+  from a stored 7, so a P/Invoke adapter must read int64 and refuse
+  what is out of range instead. `Int32Getter_OnAValueOutsideInt32Range_FailsLoud`
+  pins it at both boundaries; any exception satisfies it, since ADO.NET
+  wrappers throw their own `OverflowException` here.
 - **±Infinity and NaN are legitimate REAL values on the way out.** The
   finite-only rule is the JSON envelope's (`docs/script-envelope.md`),
   and a REAL column can hold an infinity — SQLite parses the literal
@@ -176,11 +203,27 @@ wrong without any test noticing:
 `EmptyBlob_IsNotNull_AndReadsAsAnEmptyArray` in the conformance suite
 pin both.
 
+**A declared type is not a storage class.** Affinity converts a value
+only when the conversion is lossless, so an INTEGER-declared column
+keeps the text `'1,000'` as TEXT and a REAL as REAL — and an
+unconditional `GetInt64` would then report `1` for it. That is the same
+substitution the NULL rule above forbids, arriving through affinity
+instead of through NULL, so `GetStorageClass(index)` is part of the
+contract next to `IsNull`: it reports what `sqlite3_column_type` says
+is in *this row's* column, never the column's declared type. Wrappers
+without direct access to that call answer from whatever their reader
+exposes about the value — Microsoft.Data.Sqlite's `GetFieldType` is
+value-based, System.Data.SQLite's is not and its `GetFieldAffinity` is.
+`StorageClass_ReportsTheStoredValue_NotTheDeclaredType` pins it across
+all five classes. The runtime asks before every typed read and fails
+the call with `input-type-mismatch` (`docs/errors.md`) rather than hand
+a handler a coerced argument.
+
 ## Conformance suite
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (29 core
+`AdapterConformanceTestsBase` — the xunit contract suite (33 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

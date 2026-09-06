@@ -98,6 +98,10 @@ namespace SqliteHost.Adapters.Native
         {
             ThrowIfDisposed();
             IntPtr statement = PrepareAndBind(sql, bindings);
+            if (statement == IntPtr.Zero)
+            {
+                return;   // comment-only / whitespace-only SQL: a completed no-op
+            }
             try
             {
                 // SQLite evaluates a row-producing statement only as it is
@@ -127,6 +131,10 @@ namespace SqliteHost.Adapters.Native
         {
             ThrowIfDisposed();
             IntPtr statement = PrepareAndBind(sql, bindings);
+            if (statement == IntPtr.Zero)
+            {
+                return new List<object>();   // no program, so no rows
+            }
             var row = new NativeRow(statement);
             try
             {
@@ -156,7 +164,18 @@ namespace SqliteHost.Adapters.Native
         public ISqliteHostPreparedStatement Prepare(string sql)
         {
             ThrowIfDisposed();
-            var statement = new NativePreparedStatement(this, PrepareOnly(sql));
+            IntPtr handle = PrepareOnly(sql);
+            if (handle == IntPtr.Zero)
+            {
+                // Executing such SQL is a no-op; describing its parameters
+                // is not a question with an answer, and returning a
+                // statement wrapping a null handle would postpone the
+                // failure into the caller's first read.
+                throw new SqliteHostAdapterException(
+                    "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
+                    0, null);
+            }
+            var statement = new NativePreparedStatement(this, handle);
             _liveStatements.Add(statement);
             return statement;
         }
@@ -418,12 +437,13 @@ namespace SqliteHost.Adapters.Native
             }
             if (statement == IntPtr.Zero)
             {
-                // Whitespace/comment-only SQL prepares "successfully" with no
-                // statement; stepping a null handle would crash, and treating
-                // it as success would mask an authoring error. Fail loud.
-                throw new SqliteHostAdapterException(
-                    "sqlite3_prepare_v2 produced no statement: the SQL text is empty or comment-only.",
-                    0, null);
+                // Whitespace/comment-only SQL prepares "successfully" with
+                // no statement. That compiles to no VDBE program, so it is a
+                // no-op, not an error (docs/adapter-contract.md): Execute
+                // and QueryRows below skip it and stay usable. Only Prepare,
+                // which exists to report a statement's parameters, has
+                // nothing to hand back and says so.
+                return IntPtr.Zero;
             }
             RejectSqlAfterFirstStatement(statement, sqlUtf8, tailOffset);
             return statement;
@@ -507,6 +527,10 @@ namespace SqliteHost.Adapters.Native
         private IntPtr PrepareAndBind(string sql, IReadOnlyList<SqliteHostBinding> bindings)
         {
             IntPtr statement = PrepareOnly(sql);
+            if (statement == IntPtr.Zero)
+            {
+                return IntPtr.Zero;   // nothing to bind against
+            }
             try
             {
                 if (bindings != null)
@@ -697,10 +721,42 @@ namespace SqliteHost.Adapters.Native
             public bool IsNull(int index)
                 => NativeMethods.sqlite3_column_type(Statement, index) == NativeMethods.SQLITE_NULL;
 
+            public SqliteHostStorageClass GetStorageClass(int index)
+            {
+                switch (NativeMethods.sqlite3_column_type(Statement, index))
+                {
+                    case NativeMethods.SQLITE_INTEGER:
+                        return SqliteHostStorageClass.Integer;
+                    case NativeMethods.SQLITE_FLOAT:
+                        return SqliteHostStorageClass.Real;
+                    case NativeMethods.SQLITE_TEXT:
+                        return SqliteHostStorageClass.Text;
+                    case NativeMethods.SQLITE_BLOB:
+                        return SqliteHostStorageClass.Blob;
+                    default:
+                        return SqliteHostStorageClass.Null;
+                }
+            }
+
+            /// <summary>
+            /// int64 plus a range check, never sqlite3_column_int: that call
+            /// is documented to return the low 32 bits, so 2^32+7 comes back
+            /// as 7 — a substituted value indistinguishable from a stored 7,
+            /// which is what docs/adapter-contract.md forbids for NULL and
+            /// for the same reason.
+            /// </summary>
             public int GetInt32(int index)
             {
                 RequireNotNull(index);
-                return NativeMethods.sqlite3_column_int(Statement, index);
+                long value = NativeMethods.sqlite3_column_int64(Statement, index);
+                if (value < int.MinValue || value > int.MaxValue)
+                {
+                    throw new SqliteHostAdapterException(
+                        "Column " + index + " holds " + value
+                        + ", which is outside the int32 range; read it with GetInt64.",
+                        0, null);
+                }
+                return (int)value;
             }
 
             public long GetInt64(int index)

@@ -98,6 +98,19 @@ For each method (naming derives from host-level conventions, see
   placeholders); duplicate `(call_id, item_index)` pairs fail at
   insert time through the primary-key constraint (`sql-error`);
   an empty list maps to an empty DTO list, never null.
+  `INTEGER` there is an affinity, not a constraint: a negative,
+  fractional or TEXT `item_index` is accepted, and the order is
+  SQLite's own comparison, which ranks storage classes before values
+  (NULL < numeric < TEXT < BLOB). So `5, -3, 1.5, 'zz'` maps in the
+  order `-3, 1.5, 5, 'zz'` — a text index sorts after every number
+  whatever it spells. Nothing is lost and the list still maps densely;
+  the guarantee is "ascending by SQLite's comparison", not "ascending
+  by integer". The duplicate rule holds through the same affinity:
+  `1` and `'1'` are one key, and the second insert fails.
+  At-most-once per queue row is the runtime's guarantee, not the
+  schema's: `status` is ordinary data a statement can rewrite, so the
+  runtime also remembers which `queue_id`s it has drained and refuses a
+  repeat (`call-already-drained`, `docs/errors.md`).
 - **Queue trigger** `trg_call_<method>_queue`:
 
 ```sql

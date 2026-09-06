@@ -13,11 +13,31 @@ namespace SqliteHost
     /// so <see cref="IsNull"/> is the only way to ask, and asking it first
     /// is the caller's job. The conformance suite pins this for every
     /// adapter (docs/adapter-contract.md, "Value fidelity").</para>
+    ///
+    /// <para><b>A declared type is not a storage class.</b> SQLite affinity
+    /// converts a value only when the conversion is lossless, so an
+    /// INTEGER-declared column happily holds the text <c>'1,000'</c> and a
+    /// typed getter would coerce it to <c>1</c>. <see cref="GetStorageClass"/>
+    /// is how a caller asks what is actually there; the runtime asks before
+    /// every typed read and refuses the call rather than hand a handler a
+    /// silently coerced argument.</para>
     /// </summary>
     public interface ISqliteHostRow
     {
         /// <summary>True when the column holds SQL NULL. Ask before any getter below.</summary>
         bool IsNull(int index);
+
+        /// <summary>
+        /// The storage class of the value in this column — what
+        /// <c>sqlite3_column_type</c> reports for the current row, never the
+        /// column's declared type. Wrappers with no direct access to that
+        /// call answer from whatever their reader exposes about the value
+        /// (the ADO.NET readers' value-based <c>GetFieldType</c> /
+        /// <c>GetFieldAffinity</c>). Returns
+        /// <see cref="SqliteHostStorageClass.Null"/> exactly when
+        /// <see cref="IsNull"/> is true.
+        /// </summary>
+        SqliteHostStorageClass GetStorageClass(int index);
 
         /// <summary>The column as int32. Throws on a NULL column.</summary>
         int GetInt32(int index);

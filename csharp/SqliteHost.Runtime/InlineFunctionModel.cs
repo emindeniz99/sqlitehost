@@ -43,6 +43,33 @@ namespace SqliteHost
             return index >= _args.Length || _args[index].Type == SqliteHostBindingType.Null;
         }
 
+        /// <summary>
+        /// An inline argument carries the storage class SQLite handed the
+        /// function (sqlite3_value_type), so the same read-path guard the
+        /// call-table path uses applies unchanged here.
+        /// </summary>
+        public SqliteHostStorageClass GetStorageClass(int index)
+        {
+            if (IsNull(index))
+            {
+                return SqliteHostStorageClass.Null;
+            }
+            switch (_args[index].Type)
+            {
+                case SqliteHostBindingType.Int32:
+                case SqliteHostBindingType.Int64:
+                case SqliteHostBindingType.Bool:
+                    return SqliteHostStorageClass.Integer;
+                case SqliteHostBindingType.Float32:
+                case SqliteHostBindingType.Float64:
+                    return SqliteHostStorageClass.Real;
+                case SqliteHostBindingType.Text:
+                    return SqliteHostStorageClass.Text;
+                default:
+                    return SqliteHostStorageClass.Blob;
+            }
+        }
+
         public int GetInt32(int index)
         {
             return (int)GetInt64(index);

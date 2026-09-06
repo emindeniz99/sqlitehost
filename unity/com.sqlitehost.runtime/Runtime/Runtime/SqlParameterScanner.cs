@@ -94,7 +94,7 @@ namespace SqliteHost
                         {
                             // A single trailing '(...)' group closes the name.
                             end++;
-                            while (end < length && sql[end] != ')' && !IsSqlWhitespace(sql[end]))
+                            while (end < length && sql[end] != ')' && !SqlText.IsSqlWhitespace(sql[end]))
                             {
                                 end++;
                             }
@@ -221,11 +221,6 @@ namespace SqliteHost
         /// U+000B; over-skipping is the fail-safe direction, since the extra
         /// character can only appear in SQL SQLite refuses to prepare.
         /// </summary>
-        private static bool IsSqlWhitespace(char ch)
-        {
-            return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\u000b' || ch == '\f' || ch == '\r';
-        }
-
         private static bool IsIdentifierChar(char ch)
         {
             return (ch >= 'a' && ch <= 'z')
