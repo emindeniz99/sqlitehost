@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { parseManifest, type HostLibraryIr } from "@sqlite-host/codegen-core";
 import {
+  DEFAULT_DESCRIPTORS_CLASS_NAME,
   ENVELOPE_PACKAGE,
   emitEnvelopeModel,
   emitJava,
@@ -438,6 +439,81 @@ test("smoke IR: no emitted file mentions the default shared table or column name
 });
 
 // ---------------------------------------------------------------------------
+// Several @hostLibrary interfaces per compilation
+// ---------------------------------------------------------------------------
+
+/** The smoke IR renamespaced, with one renamed method, as a second library. */
+function siblingIr(interfaceName: string, methodName: string): HostLibraryIr {
+  const ir = smokeIr();
+  ir.library = { ...ir.library, namespace: "Example.Game", interfaceName };
+  ir.methods = [{ ...ir.methods[0], methodName, handlerName: methodName }];
+  return ir;
+}
+
+test("two libraries in one namespace get distinct descriptor files", () => {
+  // WHY: the frontend accepts several @hostLibrary interfaces per
+  // compilation and they routinely share a namespace, which is the whole
+  // of the generated Java package. Java also ties a public class's file
+  // name to the class name. With the name fixed, both libraries emitted
+  // example/game/generated/MethodDescriptors.java with different
+  // contents and the second run silently overwrote the first — in the
+  // ordinary single-source-root layout, not an exotic one.
+  const players = emitJava(siblingIr("PlayerHostMethods", "recordScore"), {
+    className: "PlayerMethodDescriptors",
+  });
+  const boards = emitJava(siblingIr("LeaderboardHostMethods", "listTop"), {
+    className: "LeaderboardMethodDescriptors",
+  });
+
+  const playersFile = fileByName(players, "PlayerMethodDescriptors.java");
+  const boardsFile = fileByName(boards, "LeaderboardMethodDescriptors.java");
+  assert.equal(
+    playersFile.path,
+    "example/game/generated/PlayerMethodDescriptors.java",
+  );
+  assert.equal(
+    boardsFile.path,
+    "example/game/generated/LeaderboardMethodDescriptors.java",
+  );
+  // Same package, so co-existing in one source root is the point.
+  assert.match(playersFile.contents, /^package example\.game\.generated;$/m);
+  assert.match(boardsFile.contents, /^package example\.game\.generated;$/m);
+  // The name reaches the declaration and the private constructor, or the
+  // file would not compile under its own name.
+  assert.match(
+    playersFile.contents,
+    /public final class PlayerMethodDescriptors \{/,
+  );
+  assert.match(playersFile.contents, /private PlayerMethodDescriptors\(\) \{/);
+  assert.match(
+    boardsFile.contents,
+    /public final class LeaderboardMethodDescriptors \{/,
+  );
+  assert.match(
+    boardsFile.contents,
+    /private LeaderboardMethodDescriptors\(\) \{/,
+  );
+  // Nothing keeps the old fixed name around.
+  assert.equal(
+    players.filter((f) => basename(f.path) === "MethodDescriptors.java").length,
+    0,
+  );
+});
+
+test("the descriptor class name defaults to MethodDescriptors", () => {
+  // The committed goldens are emitted without the option, so the default
+  // is what keeps every existing consumer (and the cross-language golden
+  // runner) byte-identical.
+  const ir = sampleIr();
+  assert.equal(DEFAULT_DESCRIPTORS_CLASS_NAME, "MethodDescriptors");
+  assert.deepEqual(
+    emitJava(ir),
+    emitJava(ir, { className: DEFAULT_DESCRIPTORS_CLASS_NAME }),
+  );
+  fileByName(emitJava(ir), "MethodDescriptors.java");
+});
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -454,6 +530,32 @@ test("CLI writes files identical to the emit API output", () => {
   assert.equal(run.status, 0, `stderr: ${run.stderr}`);
   for (const file of emitJava(sampleIr())) {
     assert.equal(readFileSync(join(outDir, file.path), "utf8"), file.contents);
+  }
+  rmSync(outDir, { recursive: true, force: true });
+});
+
+test("CLI --class-name lets two runs share one out-dir", () => {
+  // The multi-library case as an operator actually hits it: one source
+  // root, one package, two manifests. Same manifest twice here — the
+  // file name is what has to differ, and it is the only thing the
+  // emitter previously could not vary.
+  const outDir = join(scratchRoot, `cli-classname-${process.pid}`);
+  rmSync(outDir, { recursive: true, force: true });
+  for (const className of ["PlayerMethodDescriptors", "LeaderboardMethodDescriptors"]) {
+    const run = spawnSync(
+      process.execPath,
+      [join(packageRoot, "dist/cli.js"), manifestPath, outDir, "--class-name", className],
+      { encoding: "utf8" },
+    );
+    assert.equal(run.status, 0, `stderr: ${run.stderr}`);
+  }
+  const generatedDir = generatedPackageName(sampleIr()).split(".").join("/");
+  for (const className of ["PlayerMethodDescriptors", "LeaderboardMethodDescriptors"]) {
+    const contents = readFileSync(
+      join(outDir, generatedDir, `${className}.java`),
+      "utf8",
+    );
+    assert.match(contents, new RegExp(`public final class ${className} \\{`));
   }
   rmSync(outDir, { recursive: true, force: true });
 });

@@ -269,7 +269,7 @@ Argument shapes (from each CLI's usage string):
 |---|---|
 | `sqlite-host-emit-manifest` | `<entrypoint.tsp> <out-dir> [--base-name <name>]` |
 | *(no bin — run `codegen/csharp-emitter/dist/cli.js`)* | `<manifest.json> <out-dir> [--profile classic\|compact\|ultra] [--namespace <ns>] [--dto-fields]` |
-| `sqlite-host-emit-java` | `<manifest.json> <out-dir>` |
+| `sqlite-host-emit-java` | `<manifest.json> <out-dir> [--class-name <name>]` |
 | `sqlite-host-emit-typescript` | `<manifest.json> <out-dir> [--base-name <name>]` |
 
 C#-only: `--profile` picks the generated-code **size profile** —
@@ -284,6 +284,13 @@ public fields instead of auto-properties — recommended when targeting
 **Unity IL2CPP** (measured ~32 KB raw / ~12 KB gz smaller on a
 50-method host there; zero difference under NativeAOT; usage code
 `x.Key = v` unchanged — `docs/reports/il2cpp-size-report.md`).
+
+Java-only: `--class-name` names the method-descriptor class and its
+file (default `MethodDescriptors`). Pass a distinct one per library
+when several `@hostLibrary` interfaces share a namespace and one source
+root — the generated package is the namespace, and Java ties the file
+name to the class name, so otherwise the second run overwrites the
+first.
 
 `--base-name` defaults to `sample-host` — pass your own. The bin
 names come from each emitter's `package.json` and matter once the

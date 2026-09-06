@@ -65,6 +65,21 @@ literal for them) and readers must reject any string-typed value for
 `float32`/`float64` — unlike `int64`, floats never need a string form
 because every IEEE-754 double round-trips through a JSON number.
 
+**Canonical float text** is what ECMAScript's `Number::toString`
+produces, which is what `JSON.stringify` writes in
+`@sqlite-host/runtime-types`: the shortest digits that round-trip the
+double, plain decimal notation while the decimal exponent `n` satisfies
+`-6 < n ≤ 21` and `d.ddde±XX` otherwise (exponent always signed, never
+zero-padded), `-0` spelled `0`, and no `.0` tail on an integral value —
+so `1e23` is `1e+23`, `1e-6` is `0.000001`, and `3.0` is `3`. A
+`float32` is written through the double it widens to, which is the
+single the engine will store. Writers must not delegate this to the
+platform's own double formatter: Java's `Double.toString` spells the
+same values `9.999999999999999E22`, `1.0E-6` and `3.0`, and changed its
+digit selection in JDK 19 (JDK-4511638), so an envelope written on one
+JDK would not match the same envelope written on another. `example-018`
+in `fixtures/payloads/valid` is the pinned corpus for these spellings.
+
 Base64 must be **canonical**: `"QR=="` is refused even though it decodes
 to the same byte as `"QQ=="`, because the four bits it carries past that
 byte are padding and must be zero. Several spellings of one blob would

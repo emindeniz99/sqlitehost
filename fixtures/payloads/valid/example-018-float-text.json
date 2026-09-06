@@ -1,0 +1,130 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-018",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables",
+    "scriptInputs"
+  ],
+  "requiredMethods": [
+    "recordScore"
+  ],
+  "inputs": [
+    {
+      "name": "exponentUpperEdge",
+      "value": {
+        "type": "float64",
+        "value": 1e+21
+      }
+    },
+    {
+      "name": "exponentAboveEdge",
+      "value": {
+        "type": "float64",
+        "value": 1e+23
+      }
+    },
+    {
+      "name": "plainUpperEdge",
+      "value": {
+        "type": "float64",
+        "value": 123456789012345680000
+      }
+    },
+    {
+      "name": "exponentLowerEdge",
+      "value": {
+        "type": "float64",
+        "value": 1e-7
+      }
+    },
+    {
+      "name": "plainLowerEdge",
+      "value": {
+        "type": "float64",
+        "value": 0.000001
+      }
+    },
+    {
+      "name": "shortestDigits",
+      "value": {
+        "type": "float64",
+        "value": 0.1
+      }
+    },
+    {
+      "name": "seventeenDigits",
+      "value": {
+        "type": "float64",
+        "value": 0.30000000000000004
+      }
+    },
+    {
+      "name": "smallestSubnormal",
+      "value": {
+        "type": "float64",
+        "value": 5e-324
+      }
+    },
+    {
+      "name": "largestFinite",
+      "value": {
+        "type": "float64",
+        "value": 1.7976931348623157e+308
+      }
+    },
+    {
+      "name": "integralValue",
+      "value": {
+        "type": "float64",
+        "value": 3
+      }
+    },
+    {
+      "name": "negativeValue",
+      "value": {
+        "type": "float64",
+        "value": -2.5
+      }
+    },
+    {
+      "name": "negativeExponent",
+      "value": {
+        "type": "float64",
+        "value": -1e-7
+      }
+    },
+    {
+      "name": "negativeZero",
+      "value": {
+        "type": "float64",
+        "value": 0
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "record",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_record_score (call_id, input_key, input_score, input_weight) VALUES (:callId, 'score-key', :score, :weight)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "float-text-1"
+            },
+            "score": {
+              "type": "float64",
+              "value": 1e+23
+            },
+            "weight": {
+              "type": "float32",
+              "value": 0.10000000149011612
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

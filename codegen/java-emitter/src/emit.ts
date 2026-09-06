@@ -6,7 +6,8 @@
  *  1. Envelope model records/classes (Script, Step, Statement,
  *     RuntimeInput, BindingValue) in io.sqlitehost.model.envelope.
  *  2. Host method DTO records in <namespace-lowercased>.generated.
- *  3. A MethodDescriptors class mirroring the manifest method metadata.
+ *  3. A method-descriptor class mirroring the manifest method metadata
+ *     (MethodDescriptors unless the caller names it — see EmitJavaOptions).
  *
  * Paths are relative to a Java source root (package dirs included), so
  * callers decide which source tree the files land in.
@@ -47,13 +48,31 @@ export const PROTOCOL_FILE = "io/sqlitehost/model/Protocol.java";
 
 const MAX_LINE = 80;
 
+/** Descriptor class (and file) name used when no explicit name is given. */
+export const DEFAULT_DESCRIPTORS_CLASS_NAME = "MethodDescriptors";
+
+export interface EmitJavaOptions {
+  /**
+   * Name of the emitted method-descriptor class and its file. The
+   * generated package is the library's namespace, which several
+   * `@hostLibrary` interfaces routinely share, and Java pins the file
+   * name to the class name — so two libraries emitted into one source
+   * root need distinct names here or the second silently overwrites the
+   * first.
+   */
+  className?: string;
+}
+
 /** All Java files for the IR: envelope model, DTOs, method descriptors. */
-export function emitJava(ir: HostLibraryIr): EmittedFile[] {
+export function emitJava(
+  ir: HostLibraryIr,
+  options: EmitJavaOptions = {},
+): EmittedFile[] {
   return [
     emitJavaProtocolConstants(),
     ...emitEnvelopeModel(ir),
     ...emitHostMethodDtos(ir),
-    emitMethodDescriptors(ir),
+    emitMethodDescriptors(ir, options.className),
   ];
 }
 
@@ -744,7 +763,7 @@ export function emitHostMethodDtos(ir: HostLibraryIr): EmittedFile[] {
 }
 
 // ---------------------------------------------------------------------------
-// MethodDescriptors (compile-time manifest method metadata)
+// Method descriptors (compile-time manifest method metadata)
 // ---------------------------------------------------------------------------
 
 function stringListLiteral(values: string[]): string {
@@ -768,8 +787,11 @@ function inlineLiteral(method: HostMethodIr): string {
   return `new Inline(${javaString(functionName)}, ${minArgs}, ${maxArgs})`;
 }
 
-/** One MethodDescriptors class mirroring the manifest method metadata. */
-export function emitMethodDescriptors(ir: HostLibraryIr): EmittedFile {
+/** One descriptor class mirroring the manifest method metadata. */
+export function emitMethodDescriptors(
+  ir: HostLibraryIr,
+  className: string = DEFAULT_DESCRIPTORS_CLASS_NAME,
+): EmittedFile {
   const packageName = generatedPackageName(ir);
   const header = generatedHeader(ir, "Host method metadata");
 
@@ -809,7 +831,7 @@ import java.util.List;
  * trigger, and column names per host method, for host apps that want
  * the metadata without parsing manifest JSON.
  */
-public final class MethodDescriptors {
+public final class ${className} {
 
     /** Engine identifier of the protocol this library targets. */
     public static final String ENGINE = ${javaString(ir.engine)};
@@ -853,9 +875,9 @@ ${constants}
     /** All host methods in manifest order. */
     public static final List<Method> ALL = ${allLiteral}
 
-    private MethodDescriptors() {
+    private ${className}() {
     }
 }
 `;
-  return { path: packagePath(packageName, "MethodDescriptors"), contents };
+  return { path: packagePath(packageName, className), contents };
 }
