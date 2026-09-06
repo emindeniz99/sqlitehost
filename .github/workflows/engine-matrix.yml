@@ -37,6 +37,13 @@ on:
     branches: [main]
     paths:
       - "csharp/**"
+      # The C# suite this workflow runs against each engine reads the
+      # payload, manifest, schema and delivery fixtures off disk
+      # (SqliteHost.Tests/Fixtures/FixturePaths.cs), so a fixture-only
+      # change is a change to what these legs execute. Without this entry
+      # the three pull requests that added 30+ payload fixtures never
+      # re-ran the matrix.
+      - "fixtures/**"
       - "tests/compatibility-sqlite/**"
       - "docs/compatibility.md"
       - ".github/workflows/engine-matrix.yml"
@@ -44,6 +51,13 @@ on:
   pull_request:
     paths:
       - "csharp/**"
+      # The C# suite this workflow runs against each engine reads the
+      # payload, manifest, schema and delivery fixtures off disk
+      # (SqliteHost.Tests/Fixtures/FixturePaths.cs), so a fixture-only
+      # change is a change to what these legs execute. Without this entry
+      # the three pull requests that added 30+ payload fixtures never
+      # re-ran the matrix.
+      - "fixtures/**"
       - "tests/compatibility-sqlite/**"
       - "docs/compatibility.md"
       - ".github/workflows/engine-matrix.yml"
