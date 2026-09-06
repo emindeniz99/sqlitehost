@@ -32,9 +32,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * full engine — semantic lint plus prepare-only SQLite validation
  * (which is what makes the {@code sql-prepare-error} case pass).
  *
- * <p>Valid cases must produce zero errors and exactly the expected
- * warnings; invalid cases must include every expected code among their
- * errors (extra findings are allowed on invalid payloads).</p>
+ * <p><strong>Exact match, both verdicts.</strong> The reported error
+ * codes and the reported warning codes must each equal the expected
+ * list — no extra findings, no missing ones. The comparison is over
+ * sorted lists rather than sets, so multiplicity counts: a code
+ * reported twice is two findings and must be expected twice. Every
+ * invalid fixture is single-fault by construction (enforced by
+ * scripts/check-fixture-corpus.mjs), so in practice each one expects
+ * exactly one error.</p>
  */
 class ConformanceTest {
 
@@ -81,7 +86,7 @@ class ConformanceTest {
                     ValidationCodes.INVALID_ENVELOPE, e.getMessage()));
             assertTrue(!valid, payload + ": the strict reader rejected a valid fixture: "
                     + e.getMessage());
-            assertExpectedCodes(payload, caseNode, findings);
+            assertExactCodes(payload, caseNode, findings);
             return;
         }
 
@@ -100,21 +105,30 @@ class ConformanceTest {
                     warningCodes.stream().sorted().toList(),
                     payload + ": valid payloads must produce exactly the expected warnings");
         } else {
-            assertExpectedCodes(payload, caseNode, findings);
+            assertExactCodes(payload, caseNode, findings);
         }
     }
 
-    /** Invalid payloads: errors, including every code this implementation owns. */
-    private static void assertExpectedCodes(
+    /**
+     * Invalid payloads: the reported errors and warnings must each equal
+     * the expected list exactly. Containment used to be enough here, and
+     * every validator divergence found in two audit rounds walked through
+     * that gap — an extra finding is either a fixture that is not
+     * single-fault or a validator that disagrees with its peer, and both
+     * are things this matrix exists to catch.
+     */
+    private static void assertExactCodes(
             String payload, JsonNode caseNode, List<ValidationFinding> findings) {
         List<String> errorCodes = codes(findings, Severity.ERROR);
+        List<String> warningCodes = codes(findings, Severity.WARNING);
         assertTrue(errorCodes.size() > 0,
                 payload + ": invalid payloads must produce errors");
-        for (String expected : expectedCodes(caseNode.get("errors"))) {
-            assertTrue(errorCodes.contains(expected),
-                    payload + ": expected error code '" + expected
-                            + "' among " + errorCodes);
-        }
+        assertEquals(expectedCodes(caseNode.get("errors")),
+                errorCodes.stream().sorted().toList(),
+                payload + ": invalid payloads must produce exactly the expected errors");
+        assertEquals(expectedCodes(caseNode.get("warnings")),
+                warningCodes.stream().sorted().toList(),
+                payload + ": invalid payloads must produce exactly the expected warnings");
     }
 
     /** The codes this implementation must report (validators include "java"). */

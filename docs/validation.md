@@ -322,9 +322,12 @@ can reach it.
 
 Both codes carry `"validators": ["java", "typescript"]` in
 `fixtures/payloads/expectations.json`, and the TypeScript rule lives in
-`typescript/authoring-sdk/src/lint.ts`. The two tokenizers are not
-identical: only the Java one resolves a bracket-quoted result table, which
-is why `invalid/result-read-unknown-call-bracket.json` expects Java alone.
+`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all three
+quoting forms for a result table — `"…"`, `` `…` `` and `[…]` — so
+`invalid/result-read-unknown-call-bracket.json` expects both. That case
+read `["java"]` until the matrix became exact: the TypeScript tokenizer
+had grown bracket support and containment could not see that the
+`validators` list had gone stale.
 
 Static `call_id` resolution covers literals and bindings with text
 values (`call_id = :x` where `x` is bound); computed ids (e.g.
@@ -334,6 +337,30 @@ documented best-effort linting, not proof.
 ## Validity
 
 A payload is **publishable** when it has zero errors; warnings don't
-block. Implementations may report extra findings on invalid payloads,
-but must produce no errors and exactly the expected warnings on valid
-fixtures.
+block.
+
+**The conformance matrix is exact.** For every case in
+`fixtures/payloads/expectations.json`, an implementation's reported
+errors and reported warnings must each *equal* the codes listed for it —
+an extra finding fails the suite exactly as a missing one does. The
+comparison is over sorted lists rather than sets, so multiplicity is part
+of the expectation: a code reported twice must be expected twice. Every
+`invalid/` fixture is single-fault, and `scripts/check-fixture-corpus.mjs`
+holds the corpus to that shape.
+
+Containment was the rule until the exact match landed, and every
+validator divergence found in two audit rounds walked through it: an
+implementation could report anything at all as long as the expected code
+was somewhere in the list, so a rule that fired on the wrong payload, a
+stale `validators` list, and a fixture carrying two faults all read as
+green.
+
+The one finding that legitimately accompanies another is
+`sql-prepare-error`: layer 3 compiles the same statement the semantic
+lint just rejected, so a fixture whose SQL is also uncompilable
+(`invalid/inline-unknown-function.json`,
+`invalid/inline-arity-mismatch.json`,
+`invalid/protocol-table-write-vertical-tab.json`) carries a second,
+Java-only expected code. It corroborates the fault rather than being a
+second one, which is why the corpus checker allows it alongside a lint
+code and nothing else.
