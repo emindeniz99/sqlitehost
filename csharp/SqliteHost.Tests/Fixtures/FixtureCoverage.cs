@@ -106,6 +106,7 @@ namespace SqliteHost.Tests.Fixtures
             {
                 { "non-canonical-base64.json", "canonical base64" },
                 { "non-integral-int.json", "invalid format" },
+                { "null-optional-field.json", "is null; an explicit JSON null is not an absent field" },
             };
         // <<< invalid-reader-refusals
 
@@ -160,7 +161,6 @@ namespace SqliteHost.Tests.Fixtures
                 { "nonportable-function.json", "lint-only: nonportable-function is an authoring rule; whether the build has the function is the engine's" },
                 { "nonportable-load-extension.json", "lint-only: nonportable-function is an authoring rule; whether load_extension exists is a compile-time flag of the engine" },
                 { "nonportable-soundex.json", "lint-only: nonportable-function is an authoring rule; whether the build has soundex is a compile-time flag of the engine" },
-                { "null-optional-field.json", "gap: invalid-envelope in expectations.json, but the reader treats a JSON null for an optional string as absent" },
                 { "positional-parameter.json", "post-envelope: the unbound positional parameter makes the bind fail" },
                 { "protocol-table-write-single-quoted-delete.json", "lint-only: protocol-table-write is an authoring rule; the statement is ordinary SQL to the engine" },
                 { "protocol-table-write-single-quoted-insert.json", "lint-only: protocol-table-write is an authoring rule; the statement is ordinary SQL to the engine" },

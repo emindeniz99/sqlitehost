@@ -202,9 +202,26 @@ namespace SqliteHost.Tests.Fixtures
                 : value.GetInt64();
         }
 
+        /// <summary>
+        /// An optional string field, absent ONLY by being missing from the
+        /// object. An explicit JSON <c>null</c> is a type error
+        /// (docs/script-envelope.md), and it is the one shape
+        /// <see cref="JsonElement.GetString"/> does not catch by itself:
+        /// every other wrong kind throws, but a <c>JsonValueKind.Null</c>
+        /// hands back a C# <c>null</c> that is indistinguishable from the
+        /// absent field. So <c>{"scriptId": null}</c> read as "no scriptId"
+        /// here while the Java and TypeScript readers refused the payload —
+        /// the same envelope publishable through one SDK and not another,
+        /// which is exactly what the rule exists to prevent.
+        /// </summary>
         private static string GetString(JsonElement element, string property)
         {
-            return element.TryGetProperty(property, out JsonElement value) ? value.GetString() : null;
+            if (!element.TryGetProperty(property, out JsonElement value))
+            {
+                return null;
+            }
+            RejectNull(value, property);
+            return value.GetString();
         }
 
         private static List<string> GetStringList(JsonElement element, string property)
@@ -213,12 +230,26 @@ namespace SqliteHost.Tests.Fixtures
             {
                 return null;
             }
+            RejectNull(value, property);
             var list = new List<string>();
             foreach (JsonElement entry in value.EnumerateArray())
             {
+                // Same rule one level down: a null entry is not a string,
+                // and `GetString` would silently make it one.
+                RejectNull(entry, property + " entry");
                 list.Add(entry.GetString());
             }
             return list;
+        }
+
+        private static void RejectNull(JsonElement value, string what)
+        {
+            if (value.ValueKind == JsonValueKind.Null)
+            {
+                throw new InvalidDataException(
+                    what + " is null; an explicit JSON null is not an absent field"
+                    + " (docs/script-envelope.md).");
+            }
         }
     }
 }
