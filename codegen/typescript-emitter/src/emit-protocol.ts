@@ -14,6 +14,7 @@ import {
   BINDING_TYPE_COMPAT,
   ENGINE_V1,
   FEATURE_INLINE_FUNCTIONS,
+  FORBIDDEN_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
   FUNCTION_MIN_VERSION,
   FUNCTION_PREFIX_MIN_VERSION,
@@ -125,6 +126,14 @@ export function emitProtocol(): string {
       [...FORBIDDEN_LEADING_KEYWORDS],
       "Statement kinds a script may not use, matched on the statement's " +
         "first meaningful token.",
+    ),
+    constant(
+      "FORBIDDEN_FUNCTIONS",
+      "readonly string[]",
+      [...FORBIDDEN_FUNCTIONS],
+      "Built-ins a script may not call at all, because calling one does " +
+        "what the statement denylist exists to prevent. Matched wherever " +
+        "the identifier appears — as a call or bare in table position.",
     ),
     constant(
       "SYSTEM_TABLES",

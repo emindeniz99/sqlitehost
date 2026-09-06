@@ -357,6 +357,37 @@ class StatementDenylistTest {
     }
 
     @Test
+    void pragmaOptimizeIsDeniedBecauseItIsNotARead() throws IOException {
+        // The docs bless the pragma_* table-valued functions as ordinary
+        // reads. This one is not: it executes ANALYZE. Measured on sqlite3
+        // 3.51.0 — a database whose schema was `t,i` reads
+        // `t,i,sqlite_stat1` after `SELECT * FROM pragma_optimize`. That is
+        // DDL plus a write, performed by a SELECT, reaching the exact
+        // statement kind (ANALYZE) the leading-keyword denylist blocks. Both
+        // legal spellings must be caught: the call form and the bare
+        // table-position form, which functionCalls never saw.
+        for (String sql : List.of(
+                "SELECT * FROM pragma_optimize",
+                "SELECT * FROM pragma_optimize(0xfffe)",
+                "SELECT * FROM PRAGMA_OPTIMIZE",
+                "INSERT INTO script_vars (name, value_type, int_value)"
+                        + " SELECT 'n', 'int64', 1 FROM pragma_optimize")) {
+            List<ValidationFinding> found =
+                    findings(sql, ValidationCodes.FORBIDDEN_FUNCTION);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // The read-only pragma_* functions stay legal — that is the whole
+        // reason this is a named list rather than a `pragma_` prefix rule.
+        for (String sql : List.of(
+                "SELECT name FROM pragma_table_info('script_vars')",
+                "SELECT * FROM pragma_integrity_check",
+                "SELECT * FROM pragma_helper")) {
+            assertEquals(List.of(), findings(sql, ValidationCodes.FORBIDDEN_FUNCTION), sql);
+        }
+    }
+
+    @Test
     void sqlitesOwnTablesAreWriteProtectedToo() throws IOException {
         // The manifest cannot name these, so a manifest-only resolution
         // never saw them. `UPDATE sqlite_master SET sql = …` is the sharp

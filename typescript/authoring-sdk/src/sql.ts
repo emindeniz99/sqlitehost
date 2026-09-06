@@ -450,6 +450,30 @@ export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   return calls;
 }
 
+/**
+ * Every identifier token NOT immediately followed by `(` — a name used
+ * bare, which for a table-valued function is the argument-less spelling.
+ *
+ * `functionCalls` only ever saw `identifier(`, so a TVF written without an
+ * argument list was invisible to every rule that reads the call list:
+ * `SELECT * FROM pragma_optimize` runs ANALYZE, and
+ * `SELECT * FROM pragma_table_list` needs 3.37, and neither was seen. Both
+ * spellings are legal SQLite (`pragma_optimize(0xfffe)` too), so both have
+ * to be scanned. Callers filter by name — this returns every bare
+ * identifier, including ordinary tables and columns.
+ *
+ * Mirrors the Java SqlAnalyzer.bareIdentifiers.
+ */
+export function bareIdentifiers(tokens: SqlToken[]): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (isIdentToken(tokens[i]) && !isPunctAt(tokens[i + 1], "(")) {
+      names.push(tokens[i].value);
+    }
+  }
+  return names;
+}
+
 /** Count top-level arguments from just after `(` to the matching `)`. */
 function countArgs(tokens: SqlToken[], start: number): number {
   let depth = 1;

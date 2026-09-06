@@ -151,6 +151,13 @@ export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
 ];
 
 /**
+ * Built-ins a script may not call at all, because calling one does what
+ * the statement denylist exists to prevent. Matched wherever the
+ * identifier appears — as a call or bare in table position.
+ */
+export const FORBIDDEN_FUNCTIONS: readonly string[] = ["pragma_optimize"];
+
+/**
  * Tables SQLite itself owns. A write against one is a
  * protocol-table-write, alongside the manifest-derived runtime tables;
  * unlike those, these names are fixed rather than host-configurable.

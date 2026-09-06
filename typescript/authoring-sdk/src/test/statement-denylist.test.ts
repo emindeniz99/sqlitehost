@@ -382,6 +382,36 @@ test("EXPLAIN is a denied leading keyword", () => {
   assert.deepStrictEqual(forbidden("SELECT explain_id FROM script_vars"), []);
 });
 
+test("pragma_optimize is denied because it is not a read", () => {
+  // The docs bless the pragma_* table-valued functions as ordinary reads.
+  // This one is not: it executes ANALYZE. Measured on sqlite3 3.51.0 — a
+  // database whose schema was `t,i` reads `t,i,sqlite_stat1` after
+  // `SELECT * FROM pragma_optimize`. That is DDL plus a write, performed by
+  // a SELECT, reaching the exact statement kind (ANALYZE) the leading-keyword
+  // denylist blocks. Both legal spellings must be caught: the call form and
+  // the bare table-position form, which functionCalls never saw.
+  for (const sql of [
+    "SELECT * FROM pragma_optimize",
+    "SELECT * FROM pragma_optimize(0xfffe)",
+    "SELECT * FROM PRAGMA_OPTIMIZE",
+    "INSERT INTO script_vars (name, value_type, int_value)" +
+      " SELECT 'n', 'int64', 1 FROM pragma_optimize",
+  ]) {
+    const found = findings(sql, "forbidden-function");
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+  }
+  // The read-only pragma_* functions stay legal — that is the whole reason
+  // this is a named list rather than a `pragma_` prefix rule.
+  for (const sql of [
+    "SELECT name FROM pragma_table_info('script_vars')",
+    "SELECT * FROM pragma_integrity_check",
+    "SELECT * FROM pragma_helper",
+  ]) {
+    assert.deepStrictEqual(findings(sql, "forbidden-function"), [], sql);
+  }
+});
+
 test("SQLite's own tables are write-protected too", () => {
   // The manifest cannot name these, so a manifest-only resolution never saw
   // them. `UPDATE sqlite_master SET sql = …` is the sharp one: with

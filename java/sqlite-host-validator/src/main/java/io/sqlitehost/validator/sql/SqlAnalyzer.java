@@ -219,6 +219,31 @@ public final class SqlAnalyzer {
         return calls;
     }
 
+    /**
+     * Every {@link SqlToken.Kind#IDENT} token NOT immediately followed by
+     * {@code '('} — a name used bare, which for a table-valued function is
+     * the argument-less spelling.
+     *
+     * <p>{@link #functionCalls} only ever saw {@code identifier(}, so a TVF
+     * written without an argument list was invisible to every rule that
+     * reads the call list: {@code SELECT * FROM pragma_optimize} runs
+     * ANALYZE, and {@code SELECT * FROM pragma_table_list} needs 3.37, and
+     * neither was seen. Both spellings are legal SQLite
+     * ({@code pragma_optimize(0xfffe)} too), so both have to be scanned.
+     * Callers filter by name — this returns every bare identifier,
+     * including ordinary tables and columns.</p>
+     */
+    public static List<String> bareIdentifiers(List<SqlToken> tokens) {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens.get(i).kind() == SqlToken.Kind.IDENT
+                    && (i + 1 >= tokens.size() || !tokens.get(i + 1).isPunct("("))) {
+                names.add(tokens.get(i).text());
+            }
+        }
+        return names;
+    }
+
     /** Count top-level arguments from just after '(' to the matching ')'. */
     private static int countArgs(List<SqlToken> tokens, int start) {
         int depth = 1;

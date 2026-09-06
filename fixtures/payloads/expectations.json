@@ -981,6 +981,20 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-function-pragma-optimize.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }

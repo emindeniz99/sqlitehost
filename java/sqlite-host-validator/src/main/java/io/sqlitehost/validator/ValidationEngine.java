@@ -491,6 +491,31 @@ public final class ValidationEngine {
             SchemaIndex schema, Script script, List<SqlToken> tokens,
             String stepId, int statementIndex,
             Analysis analysis, List<ValidationFinding> findings) {
+        // forbidden-function: a built-in whose *call* is the hazard,
+        // whatever the engine version. `pragma_optimize` is the list: it
+        // executes ANALYZE — creating and populating sqlite_stat1 — from
+        // inside a SELECT the docs otherwise bless as an ordinary read.
+        // Both legal spellings count, `pragma_optimize` bare in table
+        // position and `pragma_optimize(0xfffe)` as a call, so the scan
+        // covers the call list and the bare identifiers. One finding per
+        // name per statement.
+        Set<String> forbiddenSeen = new HashSet<>();
+        List<String> namesUsed = new ArrayList<>();
+        for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
+            namesUsed.add(call.name());
+        }
+        namesUsed.addAll(SqlAnalyzer.bareIdentifiers(tokens));
+        for (String name : namesUsed) {
+            String nameLc = lower(name);
+            if (!Protocol.FORBIDDEN_FUNCTIONS.contains(nameLc) || !forbiddenSeen.add(nameLc)) {
+                continue;
+            }
+            findings.add(ValidationFinding.error(ValidationCodes.FORBIDDEN_FUNCTION,
+                    stepId, statementIndex,
+                    "'" + name + "' " + forbiddenFunctionReason(nameLc)
+                            + " (docs/validation.md)"));
+        }
+
         Set<String> reported = new HashSet<>();
         Set<String> reportedPortability = new HashSet<>();
         for (FunctionCall call : SqlAnalyzer.functionCalls(tokens)) {
@@ -610,6 +635,17 @@ public final class ValidationEngine {
                             + formatVersion(schema.minSqliteVersionNumber)
                             + " — raise the host's minSqliteVersion or avoid the function"));
         }
+    }
+
+    /** What this built-in does that makes calling it forbidden outright. */
+    private static String forbiddenFunctionReason(String nameLc) {
+        if ("pragma_optimize".equals(nameLc)) {
+            return "is not a read: it executes ANALYZE, creating and populating"
+                    + " sqlite_stat1 in the workspace — the statement kind the"
+                    + " forbidden-statement denylist exists to block, reached from"
+                    + " inside a SELECT";
+        }
+        return "may not be called from a script";
     }
 
     /** Which compile option decides this built-in, and what to do instead. */

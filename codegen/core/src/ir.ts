@@ -431,6 +431,33 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * SQLite built-in functions a script may not call at all (the
+ * forbidden-function lint, docs/validation.md) — not because of a version
+ * or a compile option, but because calling them does something the
+ * statement denylist exists to prevent.
+ *
+ * `pragma_optimize` is the whole list today, and it is the reason the list
+ * exists: the `pragma_*` table-valued functions are documented as ordinary
+ * reads, and every one that was checked is — except this one, which
+ * executes `ANALYZE`. Measured on sqlite3 3.51.0: after
+ * `SELECT * FROM pragma_optimize` a database whose schema was `t,i` reads
+ * `t,i,sqlite_stat1`. That is a CREATE plus a write, performed by a SELECT,
+ * reaching the exact statement kind (`ANALYZE`) FORBIDDEN_LEADING_KEYWORDS
+ * denies. Checked and clean, for the record: `pragma_foreign_keys(1)`
+ * cannot set (max 0 args), there is no `pragma_wal_checkpoint` /
+ * `pragma_shrink_memory` / `pragma_incremental_vacuum` TVF, and
+ * `pragma_integrity_check` / `pragma_quick_check` are genuine reads.
+ *
+ * Names are compared lowercased and matched wherever the identifier
+ * appears — as a call (`pragma_optimize(0xfffe)`) or bare in table position
+ * (`FROM pragma_optimize`), which are both legal spellings.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const FORBIDDEN_FUNCTIONS: readonly string[] = ["pragma_optimize"];
+
+/**
  * Statement kinds a script may not use, identified by the statement's FIRST
  * meaningful token (the forbidden-statement lint, docs/validation.md). Four
  * distinct hazards, all outside the script surface:

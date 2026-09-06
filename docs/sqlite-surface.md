@@ -148,9 +148,16 @@ semantics-changing pragmas (`foreign_keys`, `recursive_triggers`,
 change how the
 generated schema behaves, and `PRAGMA writable_schema=ON` lets a script
 rewrite `sqlite_master` and redefine or drop the runtime's own triggers
-and constraints. *Exception:* the `pragma_*` table-valued functions
-inside a `SELECT` (e.g. `pragma_table_info('t')`, 3.16+) are ordinary
-reads and stay legal.
+and constraints. *Exception:* the **read-only** `pragma_*` table-valued
+functions inside a `SELECT` (e.g. `pragma_table_info('t')`, 3.16+) are
+ordinary reads and stay legal — but not all of them are reads.
+`pragma_optimize` executes `ANALYZE`: measured on sqlite3 3.51.0, a
+database whose schema was `t,i` reads `t,i,sqlite_stat1` after
+`SELECT * FROM pragma_optimize`. It is denied by name
+(`forbidden-function`, `docs/validation.md`). Several are also
+version-gated — `pragma_table_list` is 3.37, `pragma_function_list` and
+`pragma_module_list` 3.30, `pragma_table_xinfo` 3.26 — and the version
+lint now sees them in table position too.
 
 **`EXPLAIN` and `EXPLAIN QUERY PLAN`.** Not because the opcodes are
 dangerous — a script discards rows anyway (§4) — but because `EXPLAIN` is

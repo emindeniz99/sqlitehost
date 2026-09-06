@@ -267,6 +267,7 @@ list lives in `docs/sqlite-surface.md`.
 | `unrecognized-statement` | error | the statement's **first meaningful token** is not an identifier, so `forbidden-statement` and `protocol-table-write` have nothing to anchor on. Both rules used to skip such a statement silently, which is fail-**open**: every legal script statement starts with an identifier (`SELECT`/`INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`WITH`/`VALUES`), so anything else is either unrunnable or a tokenizer/engine divergence — and one leading U+FEFF was exactly that. A parenthesised `(SELECT 1)` is not a counter-example: sqlite3 3.51.0 rejects it with `near "(": syntax error`. Blank `sql` is `invalid-envelope`, not this |
 | `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL), `EXPLAIN` (a prefix to any of them — see below). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
 | `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned **or** SQLite-owned table. Runtime-owned: any `result_*` table or result list child table, the host-call queue table, the runtime inputs table — resolved from the **manifest**, never from a name prefix, because all of those names are host-configurable (docs/naming.md). SQLite-owned: `sqlite_master`, `sqlite_schema`, `sqlite_temp_master`, `sqlite_temp_schema`, `sqlite_sequence` and `sqlite_stat1`..`sqlite_stat4` — a *fixed* list (`SYSTEM_TABLES` in `ir.ts`), because no manifest can rename them and a manifest-only resolution therefore missed every one |
+| `forbidden-function` | error | the SQL calls a built-in whose *call* is the hazard, whatever the engine version: `pragma_optimize`, which executes `ANALYZE` — creating and populating `sqlite_stat1` in the workspace — from inside a `SELECT`. Matched wherever the identifier appears, bare (`FROM pragma_optimize`) or called (`pragma_optimize(0xfffe)`), both being legal SQLite. Single-sourced as `FORBIDDEN_FUNCTIONS` in `ir.ts`; one finding per name per statement |
 
 Why these are errors rather than warnings:
 
@@ -359,12 +360,14 @@ What stays legal, and is pinned by tests in both validators:
 - `WITH … INSERT` — a CTE prefix is not a denied keyword, and the write
   target is read *after* walking the CTE prefix, so a dummy CTE can
   neither trip the lint nor smuggle a protocol write past it.
-- `pragma_table_info(...)` and the other `pragma_*` table-valued
-  functions inside a `SELECT`; a table named `pragma_helper`; a column
-  named `begin` or `created_at`; the string literal `'PRAGMA …'`;
-  `CASE … END`. Only the first token is treated as a statement keyword,
-  and only identifier tokens — a leading `'PRAGMA'` literal is a string,
-  not a statement.
+- `pragma_table_info(...)` and the other **read-only** `pragma_*`
+  table-valued functions inside a `SELECT`; a table named
+  `pragma_helper`; a column named `begin` or `created_at`; the string
+  literal `'PRAGMA …'`; `CASE … END`. Only the first token is treated as
+  a statement keyword, and only identifier tokens — a leading `'PRAGMA'`
+  literal is a string, not a statement. The exception is
+  `pragma_optimize`, which is not a read at all (`forbidden-function`
+  above).
 - **Reading** any runtime-owned table. Only writes are denied.
 - Writing **call tables** and their input list child tables (that is how
   a script makes a host call), `script_vars`, and `script_control`.

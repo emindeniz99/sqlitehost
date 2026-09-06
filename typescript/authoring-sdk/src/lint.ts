@@ -16,6 +16,7 @@ import {
 import {
   BINDING_TYPE_COMPAT,
   FEATURE_INLINE_FUNCTIONS,
+  FORBIDDEN_FUNCTIONS,
   FORBIDDEN_LEADING_KEYWORDS,
   FUNCTION_MIN_VERSION,
   FUNCTION_PREFIX_MIN_VERSION,
@@ -31,6 +32,7 @@ import type {
 } from "./manifest.js";
 import {
   analyzeInsert,
+  bareIdentifiers,
   callIdFilters,
   functionCalls,
   hasTrailingStatement,
@@ -63,6 +65,7 @@ export type LintCode =
   | "list-child-without-parent"
   | "undeclared-feature-use"
   | "unknown-function"
+  | "forbidden-function"
   | "function-arity-mismatch"
   | "nondeterministic-function"
   | "sqlite-version-too-low-for-function"
@@ -160,6 +163,18 @@ function nonportableReason(nameLc: string): string {
     "is only present when the device's SQLite was compiled with" +
     " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host and bind it instead"
   );
+}
+
+/** What this built-in does that makes calling it forbidden outright. */
+function forbiddenFunctionReason(nameLc: string): string {
+  if (nameLc === "pragma_optimize") {
+    return (
+      "is not a read: it executes ANALYZE, creating and populating sqlite_stat1" +
+      " in the workspace — the statement kind the forbidden-statement denylist" +
+      " exists to block, reached from inside a SELECT"
+    );
+  }
+  return "may not be called from a script";
 }
 
 /** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
@@ -565,6 +580,29 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // The same pass raises the determinism warning
       // (nondeterministic-function), which is about built-ins rather than
       // inline functions but reads the identical call list.
+      // forbidden-function: a built-in whose *call* is the hazard, whatever
+      // the engine version. `pragma_optimize` is the list: it executes
+      // ANALYZE — creating and populating sqlite_stat1 — from inside a
+      // SELECT the docs otherwise bless as an ordinary read. Both legal
+      // spellings count, `pragma_optimize` bare in table position and
+      // `pragma_optimize(0xfffe)` as a call, so the scan covers the call
+      // list and the bare identifiers. One finding per name per statement.
+      const forbiddenSeen = new Set<string>();
+      for (const name of [
+        ...functionCalls(tokens).map((call) => call.name),
+        ...bareIdentifiers(tokens),
+      ]) {
+        const nameLc = name.toLowerCase();
+        if (!FORBIDDEN_FUNCTIONS.includes(nameLc) || forbiddenSeen.has(nameLc)) continue;
+        forbiddenSeen.add(nameLc);
+        findings.push({
+          code: "forbidden-function",
+          severity: "error",
+          message: `"${name}" ${forbiddenFunctionReason(nameLc)} (docs/validation.md)`,
+          ...at,
+        });
+      }
+
       const reportedFunctions = new Set<string>();
       const reportedPortability = new Set<string>();
       for (const call of functionCalls(tokens)) {

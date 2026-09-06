@@ -115,6 +115,15 @@ public final class Protocol {
             "savepoint", "vacuum");
 
     /**
+     * Built-ins a script may not call at all
+     * ({@code ir.ts FORBIDDEN_FUNCTIONS}), because calling one does what the
+     * statement denylist exists to prevent. Matched wherever the identifier
+     * appears — as a call or bare in table position.
+     */
+    public static final Set<String> FORBIDDEN_FUNCTIONS = Set.of(
+            "pragma_optimize");
+
+    /**
      * Tables SQLite itself owns ({@code ir.ts SYSTEM_TABLES}). A write
      * against one is a protocol-table-write, alongside the manifest-derived
      * runtime tables; unlike those, these names are fixed rather than
