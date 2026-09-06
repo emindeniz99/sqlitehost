@@ -128,7 +128,11 @@ sealed class Conn : SqliteHost.ISqliteHostConnection
         System.Func<SqliteHost.ISqliteHostRow, object> mapper)
     {
         var rows = new System.Collections.Generic.List<object>();
-        if (sql.IndexOf("sqlite_version", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        // Two queries must yield a row for the run to complete: the
+        // sqlite_version() probe, and the control-table shape snapshot
+        // (an aggregate, so real SQLite always returns exactly one row).
+        if (sql.IndexOf("sqlite_version", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || sql.IndexOf("COUNT(*)", System.StringComparison.OrdinalIgnoreCase) >= 0)
         {
             rows.Add(mapper(new Row()));
         }
