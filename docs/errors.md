@@ -10,11 +10,11 @@ host application decides logging/telemetry policy.
 |---|---|
 | `Completed` | all steps executed, all calls drained |
 | `SkippedUnsupported` | compatibility precheck failed — clean skip, workspace never opened |
-| `FailedSql` | a statement failed to execute |
+| `FailedSql` | a statement failed to execute, or the queue/drain state it left behind was invalid |
 | `FailedBinding` | binding validation failed for a statement |
 | `FailedHandler` | a handler threw |
 | `FailedSchema` | workspace schema creation failed |
-| `FailedValidation` | the parsed script object is structurally invalid |
+| `FailedValidation` | the parsed script object is structurally invalid, or the control table carried an action the runtime does not recognize |
 | `FailedScript` | the script aborted itself via `script_control` action `fail` |
 
 ## Error codes
@@ -45,7 +45,7 @@ host application decides logging/telemetry policy.
 | `handler-error` | FailedHandler | handler threw — via the queue drain OR inside an inline function (the adapter reports the `SQLITEHOST_HANDLER_ERROR:` marker through the SQL error and the runtime maps it back); `Method` and `ErrorMessage` carry details |
 | `inline-registration-error` | FailedSchema | registering the host's inline scalar functions on a capable connection failed |
 | `result-write-error` | FailedSql | writing result rows failed |
-| `list-child-after-drain` | FailedSql | input list child rows appeared for a call that was already drained in an earlier step (the validator blocks this statically; the runtime detects it defensively by re-counting child rows of drained calls after each step) |
+| `list-child-after-drain` | FailedSql | input list child rows appeared for a call that was already drained in an earlier step (the validator's `list-child-later-step` rule blocks this statically only when `call_id` is a literal or a bound text value; a computed `call_id` skips that rule — see `docs/validation.md` — so the runtime is the only backstop for those, re-counting child rows of drained calls after each step; under `SQLITEHOST_SLIM` this runtime check is stripped and the condition is not detected at all) |
 
 Successful halts: `Status = Completed` with `Halted = true`,
 `HaltMessage` carrying the script's optional message, and `StepId` set
