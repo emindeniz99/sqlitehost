@@ -117,9 +117,6 @@ namespace SqliteHost.Adapters.Native
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int sqlite3_finalize(IntPtr statement);
 
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int sqlite3_reset(IntPtr statement);
-
         // ---- parameters ------------------------------------------------------
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -165,9 +162,6 @@ namespace SqliteHost.Adapters.Native
         // ---- columns -----------------------------------------------------------
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int sqlite3_column_count(IntPtr statement);
-
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int sqlite3_column_type(IntPtr statement, int index);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -192,9 +186,6 @@ namespace SqliteHost.Adapters.Native
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern IntPtr sqlite3_errmsg(IntPtr db);
-
-        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern int sqlite3_errcode(IntPtr db);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int sqlite3_extended_errcode(IntPtr db);
