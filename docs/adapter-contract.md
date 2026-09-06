@@ -94,6 +94,11 @@ and deleting the `-wal`/`-shm` of a database another process holds open
 corrupts that database. Point it at a temporary path, or use the
 in-memory default.
 
+The runtime uses the connection it gets back from one thread at a
+time and does not synchronize access to it (`docs/csharp-api.md`,
+Threading) — an adapter does not need to be thread-safe against the
+runtime itself.
+
 ## Binding resolution policy
 
 - Payload binding keys are **prefixless** (`"id"`).
