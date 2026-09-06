@@ -210,7 +210,7 @@ only expected finding is `sql-prepare-error`.
 
 | Code | Severity | Rule |
 |---|---|---|
-| `nondeterministic-function` | warning | the SQL calls a nondeterministic SQLite built-in, so replaying the payload would diverge from the original run: `random`/`randomblob` on every call, and `date`/`time`/`datetime`/`julianday`/`strftime` only when they read the wall clock — called with no arguments, or with a top-level `'now'` string literal (case-insensitive). Reproducible forms (`date(:day)`, `datetime('2020-01-01')`) are not flagged. One warning per offending call; the lists are single-sourced in `codegen/core/src/ir.ts` (docs/proposals/rule-parameters-as-data.md) |
+| `nondeterministic-function` | warning | the SQL calls a nondeterministic SQLite built-in, so replaying the payload would diverge from the original run: `random`/`randomblob` on every call, and `date`/`time`/`datetime`/`julianday`/`strftime` only when they read the wall clock — called with no arguments, or with a top-level `'now'` string literal (case-insensitive). Reproducible forms (`date(:day)`, `datetime('2020-01-01')`) are not flagged. The three wall-clock KEYWORDS — `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `CURRENT_TIME` — count too. SQLite spells them with no argument list (`current_timestamp()` is a syntax error), so they are matched against bare identifier tokens rather than parsed calls; a *delimited* spelling (`"current_date"`) is a column reference, not the keyword, and is never flagged. One warning per offending occurrence; the lists are single-sourced in `codegen/core/src/ir.ts` (`NONDETERMINISTIC_FUNCTIONS_ALWAYS`, `NONDETERMINISTIC_TIME_FUNCTIONS`, `NONDETERMINISTIC_TIME_KEYWORDS` — docs/proposals/rule-parameters-as-data.md) |
 
 ### Engine portability
 

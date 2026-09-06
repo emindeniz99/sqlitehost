@@ -23,6 +23,7 @@ import {
   FUNCTION_PREFIX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
   PENDING_STATUS,
   SYSTEM_TABLES,
@@ -102,6 +103,7 @@ export function emitJavaProtocolConstants(): EmittedFile {
     .join(",\n");
   const alwaysNames = NONDETERMINISTIC_FUNCTIONS_ALWAYS.map(javaString).join(", ");
   const timeNames = NONDETERMINISTIC_TIME_FUNCTIONS.map(javaString).join(", ");
+  const timeKeywords = NONDETERMINISTIC_TIME_KEYWORDS.map(javaString).join(", ");
   const minVersionEntries = Object.entries(FUNCTION_MIN_VERSION)
     .map(([name, version]) => `            Map.entry(${javaString(name)}, ${version})`)
     .join(",\n");
@@ -174,6 +176,15 @@ ${compatEntries});
      */
     public static final Set<String> NONDETERMINISTIC_TIME_FUNCTIONS =
             Set.of(${timeNames});
+
+    /**
+     * The wall-clock KEYWORDS ({@code ir.ts NONDETERMINISTIC_TIME_KEYWORDS}).
+     * SQLite spells these with no argument list, so a scan over parsed
+     * function calls never sees them; they are matched against bare
+     * identifier tokens instead, lowercased.
+     */
+    public static final Set<String> NONDETERMINISTIC_TIME_KEYWORDS =
+            Set.of(${timeKeywords});
 
     /**
      * SQLite built-ins introduced above the default floor

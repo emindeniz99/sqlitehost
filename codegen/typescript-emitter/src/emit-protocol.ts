@@ -20,6 +20,7 @@ import {
   FUNCTION_PREFIX_MIN_VERSION,
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
   SYSTEM_TABLES,
   type ScalarTypeIr,
@@ -94,6 +95,14 @@ export function emitProtocol(): string {
       "Date/time built-ins that are nondeterministic only when they read " +
         "the wall clock — called with no arguments, or with the time value " +
         "`'now'`.",
+    ),
+    constant(
+      "NONDETERMINISTIC_TIME_KEYWORDS",
+      "readonly string[]",
+      [...NONDETERMINISTIC_TIME_KEYWORDS],
+      "The wall-clock keywords, which SQLite spells with no argument list " +
+        "and which a call-only scan therefore never sees. Matched against " +
+        "bare identifier tokens, lowercased.",
     ),
     constant(
       "FUNCTION_MIN_VERSION",

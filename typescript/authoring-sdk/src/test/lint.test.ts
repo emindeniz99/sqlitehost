@@ -813,6 +813,43 @@ test("nondeterministic-function: one warning per offending call occurrence", () 
   assert.ok(warnings.every((finding) => finding.stepId === "s"));
 });
 
+test("nondeterministic-function: the wall-clock keywords warn without a call", () => {
+  // SQLite's grammar spells these three with no argument list — writing
+  // current_timestamp() is a syntax error — so a scan that only looks at
+  // parsed calls saw none of them, while `VALUES (CURRENT_TIMESTAMP)` is
+  // exactly as unreplayable as the `datetime('now')` the scan does flag.
+  for (const sql of [
+    "SELECT CURRENT_TIMESTAMP",
+    "SELECT current_date",
+    "INSERT INTO script_vars (name, value_type, text_value) VALUES ('t', 'text', Current_Time)",
+  ]) {
+    const warnings = nondeterministicWarnings(sql);
+    assert.equal(warnings.length, 1, `${sql}: ${JSON.stringify(warnings)}`);
+    assert.equal(warnings[0].severity, "warning", sql);
+    assert.match(warnings[0].message, /replay/i);
+  }
+  // One per occurrence, the same rule the call scan follows for random().
+  assert.equal(
+    nondeterministicWarnings("SELECT CURRENT_DATE, CURRENT_TIMESTAMP").length,
+    2,
+  );
+});
+
+test("nondeterministic-function: a quoted or prefixed clock name is not the keyword", () => {
+  // The keyword scan reads bare identifiers, so a delimited identifier
+  // spelling the same word is a column reference and must stay silent —
+  // otherwise a table with a `current_date` column becomes unlintable.
+  // Nor may a longer identifier that merely contains the name match.
+  for (const sql of [
+    'SELECT "current_date" FROM t',
+    "SELECT [current_timestamp] FROM t",
+    "SELECT current_timestamp_utc FROM t",
+    "SELECT 'CURRENT_TIMESTAMP' AS label",
+  ]) {
+    assert.deepStrictEqual(nondeterministicWarnings(sql), [], sql);
+  }
+});
+
 test("duplicate-input-name: two inputs sharing a name is an error", () => {
   const payload = JSON.parse(readFixture("payloads/invalid/duplicate-input-name.json"));
   const findings = lintScript(payload, manifest);

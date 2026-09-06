@@ -52,6 +52,17 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * The wall-clock keywords, which SQLite spells with no argument list
+ * and which a call-only scan therefore never sees. Matched against bare
+ * identifier tokens, lowercased.
+ */
+export const NONDETERMINISTIC_TIME_KEYWORDS: readonly string[] = [
+  "current_timestamp",
+  "current_date",
+  "current_time",
+];
+
+/**
  * SQLite built-ins introduced above the default contract floor, keyed
  * by the SQLITE_VERSION_NUMBER of the release that added them. The lint
  * compares each entry against the host manifest's

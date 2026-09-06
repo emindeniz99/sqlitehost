@@ -1043,6 +1043,20 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "valid/example-020-current-timestamp.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "nondeterministic-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ]
     }
   ]
 }

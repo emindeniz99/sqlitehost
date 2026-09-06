@@ -606,6 +606,29 @@ public final class ValidationEngine {
                         reportedPortability, findings);
             }
         }
+
+        // The wall-clock KEYWORDS. SQLite spells CURRENT_TIMESTAMP /
+        // CURRENT_DATE / CURRENT_TIME with no argument list —
+        // `current_timestamp()` is a syntax error — so the call scan above
+        // cannot see them, yet `VALUES (CURRENT_TIMESTAMP)` is exactly as
+        // unreplayable as the `datetime('now')` it does flag. Undelimited
+        // identifier tokens only: a keyword cannot be quoted, so
+        // "current_date" is a column reference (or, under SQLite's
+        // double-quote fallback, a string) and flagging it would make a
+        // table with such a column unlintable. One finding per occurrence,
+        // matching how a repeated random() reports.
+        for (SqlToken token : tokens) {
+            if (token.kind() == SqlToken.Kind.IDENT && !token.delimited()
+                    && Protocol.NONDETERMINISTIC_TIME_KEYWORDS.contains(lower(token.text()))) {
+                findings.add(ValidationFinding.warning(
+                        ValidationCodes.NONDETERMINISTIC_FUNCTION,
+                        stepId, statementIndex,
+                        "SQL reads the wall clock through the keyword '" + token.text()
+                                + "' — replaying this script would diverge from the"
+                                + " original run; compute the value in the host and"
+                                + " bind it instead"));
+            }
+        }
     }
 
     /**

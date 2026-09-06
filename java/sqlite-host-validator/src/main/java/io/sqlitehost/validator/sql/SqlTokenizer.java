@@ -93,7 +93,7 @@ public final class SqlTokenizer {
                     value.append(ch);
                     i++;
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 
@@ -115,7 +115,7 @@ public final class SqlTokenizer {
                     value.append(ch);
                     i++;
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 
@@ -131,7 +131,7 @@ public final class SqlTokenizer {
                 if (i < n) {
                     i++; // consume ']'
                 }
-                tokens.add(new SqlToken(SqlToken.Kind.IDENT, value.toString()));
+                tokens.add(SqlToken.delimitedIdent(value.toString()));
                 continue;
             }
 

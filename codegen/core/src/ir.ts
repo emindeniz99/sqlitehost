@@ -301,6 +301,26 @@ export const NONDETERMINISTIC_TIME_FUNCTIONS: readonly string[] = [
 ];
 
 /**
+ * The three wall-clock KEYWORDS. SQLite's grammar spells these without an
+ * argument list — `CURRENT_TIMESTAMP`, not `current_timestamp()`, which is a
+ * syntax error — so a determinism lint that only inspects function calls
+ * never sees them, even though `INSERT … VALUES (CURRENT_TIMESTAMP)` is
+ * exactly as unreplayable as `datetime('now')`, which it does flag.
+ *
+ * Kept as a separate list rather than folded into
+ * NONDETERMINISTIC_TIME_FUNCTIONS because the two are scanned differently:
+ * that list is matched against parsed calls with their argument counts, this
+ * one against bare identifier tokens. The names are compared lowercased —
+ * SQLite's tokenizer is case-insensitive for keywords, so `current_date` and
+ * `CURRENT_DATE` are the same token.
+ */
+export const NONDETERMINISTIC_TIME_KEYWORDS: readonly string[] = [
+  "current_timestamp",
+  "current_date",
+  "current_time",
+];
+
+/**
  * SQLite built-ins introduced ABOVE the default contract floor (3.19.3), keyed
  * by the SQLITE_VERSION_NUMBER of the release that added them. A script that
  * calls one of these runs fine on the validator's engine and then fails on a

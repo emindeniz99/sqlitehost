@@ -59,6 +59,15 @@ public final class Protocol {
             Set.of("date", "time", "datetime", "julianday", "strftime");
 
     /**
+     * The wall-clock KEYWORDS ({@code ir.ts NONDETERMINISTIC_TIME_KEYWORDS}).
+     * SQLite spells these with no argument list, so a scan over parsed
+     * function calls never sees them; they are matched against bare
+     * identifier tokens instead, lowercased.
+     */
+    public static final Set<String> NONDETERMINISTIC_TIME_KEYWORDS =
+            Set.of("current_timestamp", "current_date", "current_time");
+
+    /**
      * SQLite built-ins introduced above the default floor
      * ({@code ir.ts FUNCTION_MIN_VERSION}), keyed by the SQLITE_VERSION_NUMBER
      * of the release that added them. The validator compares each entry
