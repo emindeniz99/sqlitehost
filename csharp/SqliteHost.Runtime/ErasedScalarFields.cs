@@ -5,13 +5,58 @@ namespace SqliteHost
     /// <summary>
     /// The single home of the scalar column mapping rules, in type-erased
     /// form. Classic typed registration (<see cref="ScalarFields"/>) and
-    /// the compact profile both lower to these factories, so read/write and
-    /// null semantics cannot drift between profiles. Every factory is
-    /// non-generic: its closures cost one shared display class for the
-    /// whole assembly, never per method.
+    /// the compact profile both lower to these factories, and the ultra
+    /// profile's own column read (<see cref="UltraFields"/>) delegates to
+    /// <see cref="ReadColumn"/> here, so read/write and null semantics
+    /// cannot drift between profiles. Every factory is non-generic: its
+    /// closures cost one shared display class for the whole assembly,
+    /// never per method.
     /// </summary>
     internal static class ErasedScalarFields
     {
+        /// <summary>
+        /// Reads one declared column as a binding value — the ultra
+        /// profile's entry into the same mapping the typed factories below
+        /// use, so a REAL column means the same thing in all three
+        /// profiles. Non-finite doubles reach the caller raw: the
+        /// finiteness rule belongs to the JSON envelope, not to a value the
+        /// engine just handed back (SqliteHostBindingValue.Float64FromColumn).
+        /// </summary>
+        public static SqliteHostBindingValue ReadColumn(
+            ISqliteHostRow row,
+            int index,
+            HostScalarType scalarType,
+            bool optional)
+        {
+            if (optional && row.IsNull(index))
+            {
+                return SqliteHostBindingValue.Null();
+            }
+            switch (scalarType)
+            {
+                case HostScalarType.Int32:
+                    return SqliteHostBindingValue.Int32(row.GetInt32(index));
+                case HostScalarType.Int64:
+                    return SqliteHostBindingValue.Int64(row.GetInt64(index));
+                case HostScalarType.Boolean:
+                    return SqliteHostBindingValue.Bool(row.GetBool(index));
+                case HostScalarType.String:
+                {
+                    string text = row.GetText(index);
+                    return text == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Text(text);
+                }
+                case HostScalarType.Bytes:
+                {
+                    byte[] blob = row.GetBlob(index);
+                    return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
+                }
+                case HostScalarType.Float32:
+                    return SqliteHostBindingValue.Float32FromColumn(row.GetFloat32(index));
+                default:
+                    return SqliteHostBindingValue.Float64FromColumn(row.GetFloat64(index));
+            }
+        }
+
         public static ErasedReadField Int(string sqlName, Action<object, int> setter)
         {
             return new ErasedReadField(sqlName, HostScalarType.Int32, false,
