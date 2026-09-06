@@ -37,7 +37,8 @@ host application decides logging/telemetry policy.
 | `sql-error` | FailedSql | statement execution failed (includes SQLite errors such as the UNIQUE violation from a duplicate `call_id`) |
 | `missing-binding` | FailedBinding | SQL references a parameter with no binding (when `ValidateBindings`) |
 | `unused-binding` | FailedBinding | binding not referenced by the SQL (when `ValidateBindings`) |
-| `max-pending-calls-exceeded` | FailedSql | queue drain found more than `MaxPendingCallsPerStep` pending calls after a step |
+| `max-pending-calls-exceeded` | FailedSql | a step's drain reached more than `MaxPendingCallsPerStep` pending calls in total, counting calls enqueued *during* the drain — which is also what bounds the re-drain loop |
+| `undrained-calls` | FailedSql | the run reached its end (completed or halted) with a row still `pending` in the queue. The per-step drain re-reads the pending set until it comes back empty, so this is the backstop for a drain that cannot see what the queue holds — `Completed` never means "all calls drained except one" |
 | `unknown-queued-method` | FailedSql | queue row references a method with no registered spec (schema/spec mismatch) |
 | `call-row-missing` | FailedSql | queue row exists but the parent call row is missing |
 | `script-abort` | FailedScript | the script wrote action `fail` into the control table; `ErrorMessage` carries the script's message; the current step's pending calls are not drained. A row written by a *handler* is `handler-wrote-control` instead — the drain snapshots the table around every handler invocation, so the attribution is measured rather than assumed |

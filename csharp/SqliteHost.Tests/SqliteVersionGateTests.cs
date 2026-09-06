@@ -225,10 +225,32 @@ namespace SqliteHost.Tests
                     _factory.VersionQueryCount++;
                     return new List<object> { mapper(new FakeVersionRow(_versionString)) };
                 }
+                if (sql.Contains("COUNT(*)"))
+                {
+                    // An aggregate always yields exactly one row; the
+                    // runtime's end-of-run "anything still pending?" check
+                    // relies on that, and so must a fake standing in for an
+                    // engine.
+                    return new List<object> { mapper(new FakeCountRow()) };
+                }
                 return new List<object>();   // e.g. the pending_host_calls drain query
             }
 
             public void Dispose() => IsDisposed = true;
+        }
+
+        /// <summary>One aggregate row reading zero.</summary>
+        private sealed class FakeCountRow : ISqliteHostRow
+        {
+            public long GetInt64(int index) => 0;
+            public bool IsNull(int index) => false;
+            public SqliteHostStorageClass GetStorageClass(int index) => SqliteHostStorageClass.Integer;
+            public string GetText(int index) => throw new NotSupportedException();
+            public int GetInt32(int index) => throw new NotSupportedException();
+            public bool GetBool(int index) => throw new NotSupportedException();
+            public byte[] GetBlob(int index) => throw new NotSupportedException();
+            public float GetFloat32(int index) => throw new NotSupportedException();
+            public double GetFloat64(int index) => throw new NotSupportedException();
         }
 
         private sealed class FakeVersionRow : ISqliteHostRow
