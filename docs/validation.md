@@ -153,6 +153,15 @@ is a one-method host at `apiLevel` 2 that exists for this rule.
 Manifests are never hand-written, so it is emitted and byte-pinned by
 `tests/cross-language-golden/run.mjs` like the sample host.
 
+`typespec/examples/syntax-floor-host-methods.tsp` is a third host on the
+same footing, and it is there for the mirror-image reason: every other
+manifest declares the default 3.19.3 floor, so a payload using
+above-floor SQL could only ever be an *error* case and nothing pinned the
+other direction — that raising `minSqliteVersion` actually silences
+`sqlite-version-too-low-for-syntax` in **both** validators. It declares
+3.39.0, the newest version any `SYNTAX_MIN_VERSION` entry names, so one
+host clears every detector.
+
 One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
 whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader
 sees the token and rejects it; TypeScript's lint runs on a value that
@@ -234,6 +243,7 @@ instead of on a player's device.
 | Code | Severity | Rule |
 |---|---|---|
 | `sqlite-version-too-low-for-function` | error | the SQL calls a built-in introduced *after* the host's `minSqliteVersionNumber`. Resolved from an exact-name table first, then the longest matching family prefix, both single-sourced in `codegen/core/src/ir.ts` (`FUNCTION_MIN_VERSION`, `FUNCTION_PREFIX_MIN_VERSION`). Fix by raising the host's `minSqliteVersion` or dropping the function. One finding per distinct name per statement |
+| `sqlite-version-too-low-for-syntax` | error | the SQL uses a **grammar** construct introduced after the host's `minSqliteVersionNumber` — the same promise as the row above, for the half of the surface that is not a function call. Each construct is a token pattern in the shared analyzers, keyed by a stable feature id whose version and wording are single-sourced in `ir.ts` (`SYNTAX_MIN_VERSION`); the table of ids is below. Fix by raising the host's `minSqliteVersion` or rewriting the statement. One finding per feature per statement, so a statement using two constructs reports twice |
 | `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in; `soundex` needs `-DSQLITE_SOUNDEX` and `sqlite_offset` needs `-DSQLITE_ENABLE_OFFSET_SQL_FUNC`, neither of which stock builds set. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
 
 Every version in the table is sourced from the sqlite.org changelog for
@@ -270,17 +280,53 @@ registered by the host adapter through `sqlite3_create_function`, so
 neither the engine's version nor its compile options decide whether it
 exists.
 
-**Known limit — keyword-level syntax is not detected.** Above-floor
-*syntax* (`RETURNING` 3.35, `ON CONFLICT … DO UPDATE` 3.24, `TRUE`/
-`FALSE` literals 3.23, `STRICT` 3.37, `RIGHT JOIN` 3.39, generated
-columns 3.31) is **not** flagged. These validators tokenize; they do not
-parse a grammar, and every cheap token-level test for them is
-false-positive-prone: a column or alias legitimately named `returning`
-tokenizes identically to the keyword, and `ON CONFLICT` is *pre-floor*
-syntax inside a `CREATE TABLE` constraint. Since both codes here are
-errors that block publication, a false positive is as damaging as a
-miss, so these are documented rather than guessed at. The enumerated
-list lives in `docs/sqlite-surface.md`.
+#### Syntax versions
+
+`sqlite-version-too-low-for-syntax` covers these constructs. The version
+is the release sqlite.org's changelog names for that feature, checked
+entry by entry; the id is stable and appears in `SYNTAX_MIN_VERSION`
+alongside the description the message quotes.
+
+| Feature id | Introduced | Token pattern |
+|---|---|---|
+| `insert-alias` | 3.24.0 | `AS` immediately after the target name of an `INSERT`/`REPLACE` |
+| `upsert` | 3.24.0 | `ON CONFLICT` inside an `INSERT`/`REPLACE` |
+| `window-functions` | 3.25.0 | `OVER` followed by `(` |
+| `aggregate-filter` | 3.30.0 | `FILTER` followed by `(` `WHERE` |
+| `nulls-first-last` | 3.30.0 | `NULLS` followed by `FIRST`/`LAST` |
+| `update-from` | 3.33.0 | `FROM` at paren depth 0 of an `UPDATE` |
+| `returning` | 3.35.0 | `RETURNING` at paren depth 0 of a write, in clause position |
+| `materialized-cte` | 3.35.0 | `AS [NOT] MATERIALIZED` followed by `(` |
+| `json-arrow-operators` | 3.38.0 | `-` followed by a `>`-leading operator token (`->`, `->>`) |
+| `right-full-join` | 3.39.0 | `RIGHT`/`FULL` followed by `JOIN`/`OUTER` |
+| `is-distinct-from` | 3.39.0 | `IS [NOT] DISTINCT FROM` |
+
+**A delimited identifier is never a keyword.** Every pattern above
+matches only *bare* identifier tokens, because SQLite has no way to write
+a keyword delimited: `"full"` is a name (or, under the double-quote
+fallback, a string), so `SELECT * FROM t "full" JOIN u ON 1` is ordinary
+3.19.3 SQL and stays silent. That single rule is what makes a
+token-level test safe enough for a code that blocks publication, and it
+is the same line the determinism lint draws for `"current_date"`.
+The statement-scoped patterns add a second guard: `ON CONFLICT` is
+*pre-floor* syntax in a `CREATE TABLE` constraint, so `upsert` only looks
+inside an INSERT, and a top-level `FROM` is only an `UPDATE … FROM` when
+the statement's verb is `UPDATE`.
+
+**The residual false positive, stated rather than hidden.** SQLite keeps
+`RETURNING` usable as an identifier, so a column literally named
+`returning`, written bare at paren depth 0 of a write statement in a spot
+that reads like clause position (`… WHERE returning IS NULL`), is
+reported. Spelling it `"returning"` is the escape.
+
+**Deliberately not detected**, one reason each: generated columns
+(`GENERATED ALWAYS AS`, 3.31.0), `STRICT` and `WITHOUT ROWID` (3.37.0)
+and `VACUUM INTO` (3.27.0) appear only inside statements
+`forbidden-statement` already refuses, so a detector could only add a
+second finding to an already-rejected statement; `TRUE`/`FALSE` (3.23.0)
+tokenize identically to a column reference, which is exactly what a
+pre-3.23 engine parses them as. The full above-floor inventory,
+including the rows nothing enforces, is in `docs/sqlite-surface.md`.
 
 ### Statement denylist
 

@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-insert-alias",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "raise-a-var-through-an-aliased-insert",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars AS v (name, value_type, int_value) VALUES ('tier', 'int64', 1)",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

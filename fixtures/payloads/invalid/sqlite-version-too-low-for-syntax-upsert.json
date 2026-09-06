@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-upsert",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "upsert-a-var",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars (name, value_type, int_value) VALUES ('tier', 'int64', 1) ON CONFLICT(name) DO NOTHING",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

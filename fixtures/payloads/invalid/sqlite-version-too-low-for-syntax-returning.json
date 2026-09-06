@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-returning",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "delete-a-var-and-return-it",
+      "statements": [
+        {
+          "sql": "DELETE FROM script_vars WHERE name = 'tier' RETURNING name",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

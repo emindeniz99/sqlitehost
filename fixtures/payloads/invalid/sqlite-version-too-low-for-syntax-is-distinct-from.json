@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-is-distinct-from",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "compare-a-var-with-is-distinct-from",
+      "statements": [
+        {
+          "sql": "SELECT name FROM script_vars WHERE int_value IS NOT DISTINCT FROM 1",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

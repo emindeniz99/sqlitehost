@@ -102,10 +102,13 @@ builds, not a build output, and emission is deterministic.
   pnpm -r run build
   node codegen/manifest-emitter/dist/cli.js \
       typespec/examples/sample-host-methods.tsp generated --base-name sample-host
-  # Conformance-only second host: manifest + DDL, no language emitters.
+  # Conformance-only extra hosts: manifest + DDL, no language emitters.
   node codegen/manifest-emitter/dist/cli.js \
       typespec/examples/high-api-host-methods.tsp generated \
       --base-name high-api-host
+  node codegen/manifest-emitter/dist/cli.js \
+      typespec/examples/syntax-floor-host-methods.tsp generated \
+      --base-name syntax-floor-host
   node codegen/csharp-emitter/dist/cli.js     generated/sample-host.manifest.json generated/csharp
   node codegen/java-emitter/dist/cli.js       generated/sample-host.manifest.json generated/java
   node codegen/typescript-emitter/dist/cli.js generated/sample-host.manifest.json generated/ts \

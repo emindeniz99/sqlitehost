@@ -48,14 +48,21 @@ namespace SqliteHost.Tests.Fixtures
         /// directory-driven suite existed: <c>example-011-insert-alias</c>
         /// spells <c>INSERT INTO t AS alias</c>, which arrived with UPSERT in
         /// 3.24.0 and is a syntax error on 3.19.3 — the floor
-        /// docs/compatibility.md documents and the engine matrix runs. Both
-        /// validators accept the payload, because their layer-3 prepare uses
-        /// whatever engine the validator happens to link; neither has a
-        /// version rule for SYNTAX (the
-        /// <c>sqlite-version-too-low-for-function</c> lint covers functions
-        /// only). So this table is the record of a real corpus gap, not a
-        /// test convenience: it is the reason the fixture skips on the two
-        /// below-3.24 matrix legs instead of failing them.</para>
+        /// docs/compatibility.md documents and the engine matrix runs. It is
+        /// the reason the fixture skips on the below-3.24 matrix legs instead
+        /// of failing them.</para>
+        ///
+        /// <para>Both validators used to ACCEPT that payload, which is how it
+        /// reached the valid corpus: their layer-3 prepare uses whatever
+        /// engine the validator happens to link, and the only version rule
+        /// covered function names. They no longer do —
+        /// <c>sqlite-version-too-low-for-syntax</c> reports the alias against
+        /// a 3.19.3 floor — so the fixture's conformance case now binds to
+        /// <c>syntax-floor-host.manifest.json</c>, a host that declares a
+        /// floor above 3.24.0. The C# side is unaffected by that: this suite
+        /// executes payloads against its own test host, and what this table
+        /// records is the ENGINE the SQL needs, not the floor a manifest
+        /// declares.</para>
         /// </summary>
         // >>> valid-engine-floors (parsed by scripts/check-fixture-corpus.mjs)
         internal static readonly IReadOnlyDictionary<string, int> ValidEngineFloors =
@@ -177,6 +184,17 @@ namespace SqliteHost.Tests.Fixtures
                 { "sqlite-version-too-low-for-function-pragma-table-list.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test decides whether the function exists" },
                 { "sqlite-version-too-low-for-function-quoted.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test decides whether the function exists" },
                 { "sqlite-version-too-low-for-function.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test decides whether the function exists" },
+                { "sqlite-version-too-low-for-syntax-aggregate-filter.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-insert-alias.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-is-distinct-from.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-json-arrow.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-materialized-cte.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-nulls-first-last.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-returning.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-right-full-join.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-update-from.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-upsert.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
+                { "sqlite-version-too-low-for-syntax-window-functions.json", "lint-only: the code is a portability warning about the AUTHOR's floor; the engine under test parses the syntax fine, which is exactly why a static rule has to catch it" },
                 { "undeclared-method-use-bracket.json", "lint-only: undeclared-method-use is an authoring rule; requiredMethods is a claim the runtime checks, not an allow-list" },
                 { "undeclared-method-use.json", "lint-only: undeclared-method-use is an authoring rule; requiredMethods is a claim the runtime checks, not an allow-list" },
                 { "unknown-column.json", "post-envelope: SQLite refuses to prepare the statement" },

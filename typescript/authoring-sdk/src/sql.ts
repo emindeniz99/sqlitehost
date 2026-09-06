@@ -756,6 +756,212 @@ export function writeTarget(tokens: SqlToken[]): string | null {
   return null;
 }
 
+/**
+ * A BARE keyword: an identifier token written without any quoting form.
+ *
+ * Every syntax detector below tests keywords through this and never through
+ * `identEquals`, and that distinction is the whole false-positive story. A
+ * SQLite keyword cannot be written delimited — `"full"` is a column or table
+ * name (or, under the double-quote fallback, a string), never the FULL of
+ * `FULL JOIN` — so `SELECT * FROM t "full" JOIN u ON 1` is ordinary 3.19.3
+ * SQL that a text-level match would reject. Since this lint is an ERROR that
+ * blocks publication, a false positive costs as much as a miss. The
+ * determinism lint draws the same line for `CURRENT_DATE`.
+ */
+function bareKeyword(token: SqlToken | undefined, word: string): boolean {
+  return token !== undefined && token.kind === "identifier" && token.value.toLowerCase() === word;
+}
+
+/** Statement verbs that may carry a RETURNING clause. */
+const RETURNING_VERBS = new Set(["insert", "replace", "update", "delete"]);
+
+/**
+ * The statement's verb after an optional `WITH …` CTE prefix, lowercased, or
+ * null when the statement does not start with an identifier. The anchor the
+ * statement-scoped detectors (upsert, returning, update-from) need, and the
+ * same anchoring `writeTarget` uses — scanning for the verb anywhere in the
+ * token stream would read `SELECT "update" FROM t` as an UPDATE.
+ */
+function anchoredVerb(tokens: SqlToken[]): string | null {
+  const pos = skipCtePrefix(tokens);
+  const token = tokens[pos];
+  return isIdentToken(token) ? token.value.toLowerCase() : null;
+}
+
+/**
+ * Whether the statement writes `INSERT INTO <table> AS <alias>` — SQLite
+ * 3.24.0 syntax, which arrived with UPSERT so the DO UPDATE clause could name
+ * the target (`SYNTAX_MIN_VERSION insert-alias`).
+ *
+ * Anchored exactly like `writeTarget`: verb, optional `OR …` conflict clause,
+ * `INTO`, the qualified name, and only then the `AS`. Matching `AS` anywhere
+ * after an INSERT would catch every `INSERT INTO t SELECT x AS y FROM u`.
+ */
+function hasInsertAlias(tokens: SqlToken[]): boolean {
+  let pos = skipCtePrefix(tokens);
+  if (!identEquals(tokens[pos], "insert") && !identEquals(tokens[pos], "replace")) return false;
+  pos++;
+  for (let guard = 0; guard < 2 && !identEquals(tokens[pos], "into"); guard++) {
+    if (!isIdentToken(tokens[pos])) return false;
+    pos++;
+  }
+  if (!identEquals(tokens[pos], "into")) return false;
+  pos++;
+  if (!isNameToken(tokens[pos])) return false;
+  pos++;
+  while (isPunctAt(tokens[pos], ".") && isNameToken(tokens[pos + 1])) pos += 2;
+  return bareKeyword(tokens[pos], "as");
+}
+
+/**
+ * Whether a bare `returning` at `index` is the RETURNING clause rather than a
+ * column that happens to be spelled that way. SQLite keeps RETURNING usable
+ * as an identifier, so position is all there is to go on:
+ *
+ * - it is preceded by the END of the preceding clause — a `)`, or any
+ *   non-punctuation token (a name, literal or parameter). Anything else
+ *   (`SET x = returning`, `(returning`, `a || returning`) is an expression
+ *   operand;
+ * - it is followed by the START of a result list — `*`, `(`, or a
+ *   non-punctuation token. `WHERE returning > 0` and `SET returning = 1` are
+ *   both excluded by that.
+ *
+ * The residual, and it is documented in docs/validation.md rather than
+ * papered over: a column literally named `returning`, used bare at depth 0 of
+ * a write statement in a spot that passes both tests — `WHERE returning IS
+ * NULL` — is still reported. Spelling it `"returning"` is the escape, the
+ * same one the determinism lint gives `"current_date"`.
+ */
+function isReturningClause(tokens: SqlToken[], index: number): boolean {
+  const before = tokens[index - 1];
+  if (before !== undefined && before.kind === "punct" && before.value !== ")") return false;
+  const after = tokens[index + 1];
+  if (after !== undefined && after.kind === "punct" && after.value !== "*" && after.value !== "(") {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The `SYNTAX_MIN_VERSION` feature ids the statement uses, first occurrence
+ * first, deduplicated — the input to the sqlite-version-too-low-for-syntax
+ * lint (docs/validation.md).
+ *
+ * Token patterns, not a grammar. The version half of the SQLite contract
+ * cannot be enforced by preparing the statement (docs/validation.md §3: the
+ * validator's engine is always far newer than the floor), so the only thing
+ * left is to recognize the constructs lexically. Each detector is written to
+ * be wrong in the SILENT direction wherever the token stream is ambiguous,
+ * because the finding is an error.
+ *
+ * Deliberately not detected, for one reason each: `GENERATED ALWAYS AS`
+ * (3.31.0), `STRICT` / `WITHOUT ROWID` (3.37.0) and `VACUUM INTO` (3.27.0)
+ * only occur in statements `forbidden-statement` already refuses, so a
+ * detector could only ever pile a second finding onto a rejected statement;
+ * `TRUE` / `FALSE` (3.23.0) tokenize identically to a column reference, which
+ * is exactly what a pre-3.23 engine parses them as.
+ *
+ * Mirrors the Java SqlAnalyzer.syntaxFeatures token for token.
+ */
+export function syntaxFeatures(tokens: SqlToken[]): string[] {
+  const features: string[] = [];
+  const seen = new Set<string>();
+  const add = (feature: string): void => {
+    if (seen.has(feature)) return;
+    seen.add(feature);
+    features.push(feature);
+  };
+
+  if (hasInsertAlias(tokens)) add("insert-alias");
+
+  const verb = anchoredVerb(tokens);
+  const isInsert = verb === "insert" || verb === "replace";
+  const canReturn = verb !== null && RETURNING_VERBS.has(verb);
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    // `->` and `->>`. The two tokenizers split them differently — the Java
+    // one folds `>>` into a single operator token, this one emits every
+    // unrecognized character on its own — so the pattern both agree on is
+    // `-` followed by a punct token that STARTS with `>`. Whitespace is gone
+    // by now, so `a - > b` matches too; that is a syntax error on every
+    // engine, which makes over-matching there the harmless direction.
+    if (
+      isPunctAt(token, "-") &&
+      tokens[i + 1] !== undefined &&
+      tokens[i + 1].kind === "punct" &&
+      tokens[i + 1].value.startsWith(">")
+    ) {
+      add("json-arrow-operators");
+    }
+    if (isPunctAt(token, "(")) {
+      depth++;
+      continue;
+    }
+    if (isPunctAt(token, ")")) {
+      depth--;
+      continue;
+    }
+    if (bareKeyword(token, "over") && isPunctAt(tokens[i + 1], "(")) {
+      add("window-functions");
+    }
+    if (
+      bareKeyword(token, "filter") &&
+      isPunctAt(tokens[i + 1], "(") &&
+      bareKeyword(tokens[i + 2], "where")
+    ) {
+      add("aggregate-filter");
+    }
+    if (
+      bareKeyword(token, "nulls") &&
+      (bareKeyword(tokens[i + 1], "first") || bareKeyword(tokens[i + 1], "last"))
+    ) {
+      add("nulls-first-last");
+    }
+    // `AS [NOT] MATERIALIZED (`. The trailing `(` is what separates the CTE
+    // hint from a result column aliased `materialized`.
+    if (bareKeyword(token, "as")) {
+      const skipNot = bareKeyword(tokens[i + 1], "not") ? 1 : 0;
+      if (
+        bareKeyword(tokens[i + 1 + skipNot], "materialized") &&
+        isPunctAt(tokens[i + 2 + skipNot], "(")
+      ) {
+        add("materialized-cte");
+      }
+    }
+    if (
+      (bareKeyword(token, "right") || bareKeyword(token, "full")) &&
+      (bareKeyword(tokens[i + 1], "join") || bareKeyword(tokens[i + 1], "outer"))
+    ) {
+      add("right-full-join");
+    }
+    if (bareKeyword(token, "is")) {
+      const skipNot = bareKeyword(tokens[i + 1], "not") ? 1 : 0;
+      if (
+        bareKeyword(tokens[i + 1 + skipNot], "distinct") &&
+        bareKeyword(tokens[i + 2 + skipNot], "from")
+      ) {
+        add("is-distinct-from");
+      }
+    }
+    // UPSERT is an INSERT clause. The other `ON CONFLICT` in SQLite is a
+    // column/table CONSTRAINT clause, which is pre-floor syntax and lives in
+    // a CREATE TABLE the statement denylist already refuses.
+    if (isInsert && bareKeyword(token, "on") && bareKeyword(tokens[i + 1], "conflict")) {
+      add("upsert");
+    }
+    if (canReturn && depth === 0 && bareKeyword(token, "returning") && isReturningClause(tokens, i)) {
+      add("returning");
+    }
+    // A top-level FROM in an UPDATE. Every pre-3.33 FROM inside an UPDATE
+    // belongs to a subquery, and a subquery is parenthesized.
+    if (verb === "update" && depth === 0 && bareKeyword(token, "from")) {
+      add("update-from");
+    }
+  }
+  return features;
+}
+
 const SELECT_TERMINATORS = new Set([
   "from",
   "where",

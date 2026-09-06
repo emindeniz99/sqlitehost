@@ -1,0 +1,16 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-materialized-cte",
+  "requiredApiLevel": 1,
+  "steps": [
+    {
+      "id": "read-a-materialized-cte",
+      "statements": [
+        {
+          "sql": "WITH c AS MATERIALIZED (SELECT 1 AS x) SELECT x FROM c",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

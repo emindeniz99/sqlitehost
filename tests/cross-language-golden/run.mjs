@@ -86,6 +86,53 @@ check("core: high-api DDL from IR equals snapshot", () => {
   assert.equal(core.generateSchemaScript(core.parseManifest(highApiManifestBytes)), highApiDdlBytes);
 });
 
+// 2c. The third, conformance-only host: the sample host's smallest useful
+//     slice under a RAISED SQLite floor (3.39.0), so the corpus can pin the
+//     other half of sqlite-version-too-low-for-syntax — that raising
+//     `minSqliteVersion` silences the rule in both validators. Pinned here
+//     like the other two, minus the language emitters.
+const syntaxFloorManifestBytes = readFileSync(
+  join(root, "fixtures/manifests/syntax-floor-host.manifest.json"),
+  "utf8",
+);
+const syntaxFloorDdlBytes = readFileSync(
+  join(root, "fixtures/schemas/syntax-floor-host.ddl.sql"),
+  "utf8",
+);
+const syntaxFloorCompiled = await frontend.compileHostLibrary(
+  join(root, "typespec/examples/syntax-floor-host-methods.tsp"),
+);
+const syntaxFloorErrors = syntaxFloorCompiled.diagnostics.filter((d) => d.severity === "error");
+assert.equal(
+  syntaxFloorErrors.length,
+  0,
+  "syntax-floor .tsp compiled with errors: " + JSON.stringify(syntaxFloorErrors, null, 2),
+);
+check("frontend: syntax-floor-host-methods.tsp -> IR equals canonical manifest IR", () => {
+  assert.deepEqual(syntaxFloorCompiled.ir, core.parseManifest(syntaxFloorManifestBytes));
+});
+check("manifest emitter: byte-identical syntax-floor manifest", () => {
+  assert.equal(manifestEmitter.emitManifest(syntaxFloorCompiled.ir), syntaxFloorManifestBytes);
+});
+check("manifest emitter: byte-identical syntax-floor DDL snapshot", () => {
+  assert.equal(manifestEmitter.emitDdl(syntaxFloorCompiled.ir), syntaxFloorDdlBytes);
+});
+check("core: syntax-floor DDL from IR equals snapshot", () => {
+  assert.equal(
+    core.generateSchemaScript(core.parseManifest(syntaxFloorManifestBytes)),
+    syntaxFloorDdlBytes,
+  );
+});
+check("the syntax-floor host actually declares a raised floor", () => {
+  // The whole reason the host exists. If it ever drifts back to the default
+  // 3.19.3, every "silent above the floor" fixture keeps passing for the
+  // wrong reason, which is the failure mode a conformance corpus cannot see.
+  assert.ok(
+    syntaxFloorCompiled.ir.library.minSqliteVersionNumber >
+      core.parseManifest(manifestBytes).library.minSqliteVersionNumber,
+  );
+});
+
 // 3. C# emitter vs vendored sources.
 const csharpGoldens = {
   "HostMethodDtos.g.cs": "csharp/SqliteHost.Generated.Sample/HostMethodDtos.g.cs",

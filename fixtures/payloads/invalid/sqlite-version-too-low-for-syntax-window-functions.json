@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-window-functions",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "count-vars-through-a-window",
+      "statements": [
+        {
+          "sql": "SELECT count(*) OVER () FROM script_vars",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

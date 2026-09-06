@@ -3,6 +3,7 @@ package io.sqlitehost.validator.sql;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -345,6 +346,251 @@ public final class SqlAnalyzer {
             }
         }
         return names;
+    }
+
+    /**
+     * A BARE keyword: an {@link SqlToken.Kind#IDENT} written without any
+     * quoting form.
+     *
+     * <p>Every syntax detector below tests keywords through this and never
+     * through {@link SqlToken#isIdent}, and that distinction is the whole
+     * false-positive story. A SQLite keyword cannot be written delimited —
+     * {@code "full"} is a column or table name (or, under the double-quote
+     * fallback, a string), never the FULL of {@code FULL JOIN} — so
+     * {@code SELECT * FROM t "full" JOIN u ON 1} is ordinary 3.19.3 SQL that
+     * a text-level match would reject. Since this lint is an ERROR that
+     * blocks publication, a false positive costs what a miss costs. The
+     * determinism lint draws the same line for {@code CURRENT_DATE}.</p>
+     */
+    private static boolean isBareKeyword(List<SqlToken> tokens, int index, String word) {
+        if (index < 0 || index >= tokens.size()) {
+            return false;
+        }
+        SqlToken token = tokens.get(index);
+        return token.kind() == SqlToken.Kind.IDENT && !token.delimited()
+                && token.text().equalsIgnoreCase(word);
+    }
+
+    private static boolean isPunctAt(List<SqlToken> tokens, int index, String symbol) {
+        return index >= 0 && index < tokens.size() && tokens.get(index).isPunct(symbol);
+    }
+
+    /** Statement verbs that may carry a RETURNING clause. */
+    private static final Set<String> RETURNING_VERBS =
+            Set.of("insert", "replace", "update", "delete");
+
+    /**
+     * The statement's verb after an optional {@code WITH …} CTE prefix,
+     * lowercased, or {@code null} when the statement does not start with an
+     * identifier — the anchor the statement-scoped detectors (upsert,
+     * returning, update-from) need. Same anchoring as {@link #writeTarget}:
+     * scanning for the verb anywhere in the stream would read
+     * {@code SELECT "update" FROM t} as an UPDATE.
+     */
+    private static String anchoredVerb(List<SqlToken> tokens) {
+        int pos = skipCtePrefix(tokens);
+        if (pos >= tokens.size() || tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+            return null;
+        }
+        return tokens.get(pos).text().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Whether the statement writes {@code INSERT INTO <table> AS <alias>} —
+     * SQLite 3.24.0 syntax, which arrived with UPSERT so the DO UPDATE clause
+     * could name the target.
+     *
+     * <p>Anchored exactly like {@link #writeTarget}: verb, optional
+     * {@code OR …} conflict clause, {@code INTO}, the qualified name, and only
+     * then the {@code AS}. Matching {@code AS} anywhere after an INSERT would
+     * catch every {@code INSERT INTO t SELECT x AS y FROM u}.</p>
+     */
+    private static boolean hasInsertAlias(List<SqlToken> tokens) {
+        int pos = skipCtePrefix(tokens);
+        if (pos >= tokens.size()
+                || !(tokens.get(pos).isIdent("insert") || tokens.get(pos).isIdent("replace"))) {
+            return false;
+        }
+        pos++;
+        for (int guard = 0; guard < 2 && pos < tokens.size()
+                && !tokens.get(pos).isIdent("into"); guard++) {
+            if (tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+                return false;
+            }
+            pos++;
+        }
+        if (pos >= tokens.size() || !tokens.get(pos).isIdent("into")) {
+            return false;
+        }
+        pos++;
+        if (pos >= tokens.size() || !isName(tokens.get(pos))) {
+            return false;
+        }
+        pos++;
+        while (isPunctAt(tokens, pos, ".") && pos + 1 < tokens.size()
+                && isName(tokens.get(pos + 1))) {
+            pos += 2;
+        }
+        return isBareKeyword(tokens, pos, "as");
+    }
+
+    /**
+     * Whether a bare {@code returning} at {@code index} is the RETURNING
+     * clause rather than a column that happens to be spelled that way. SQLite
+     * keeps RETURNING usable as an identifier, so position is all there is:
+     *
+     * <ul>
+     *   <li>it is preceded by the END of the preceding clause — a {@code )},
+     *       or any non-punctuation token (a name, literal or parameter).
+     *       Anything else ({@code SET x = returning}, {@code (returning},
+     *       {@code a || returning}) is an expression operand;</li>
+     *   <li>it is followed by the START of a result list — {@code *},
+     *       {@code (}, or a non-punctuation token, which excludes
+     *       {@code WHERE returning > 0} and {@code SET returning = 1}.</li>
+     * </ul>
+     *
+     * <p>The residual is documented in docs/validation.md rather than papered
+     * over: a column literally named {@code returning}, used bare at depth 0
+     * of a write statement in a spot that passes both tests
+     * ({@code WHERE returning IS NULL}), is still reported. Spelling it
+     * {@code "returning"} is the escape, the same one the determinism lint
+     * gives {@code "current_date"}.</p>
+     */
+    private static boolean isReturningClause(List<SqlToken> tokens, int index) {
+        if (index > 0) {
+            SqlToken before = tokens.get(index - 1);
+            if (before.kind() == SqlToken.Kind.PUNCT && !before.isPunct(")")) {
+                return false;
+            }
+        }
+        if (index + 1 < tokens.size()) {
+            SqlToken after = tokens.get(index + 1);
+            if (after.kind() == SqlToken.Kind.PUNCT
+                    && !after.isPunct("*") && !after.isPunct("(")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The {@code SYNTAX_MIN_VERSION} feature ids the statement uses, first
+     * occurrence first, deduplicated — the input to the
+     * sqlite-version-too-low-for-syntax lint (docs/validation.md).
+     *
+     * <p>Token patterns, not a grammar. The version half of the SQLite
+     * contract cannot be enforced by preparing the statement
+     * (docs/validation.md §3: the validator's engine is always far newer than
+     * the floor), so the only thing left is to recognize the constructs
+     * lexically. Each detector is written to be wrong in the SILENT direction
+     * wherever the token stream is ambiguous, because the finding is an
+     * error.</p>
+     *
+     * <p>Deliberately not detected, for one reason each:
+     * {@code GENERATED ALWAYS AS} (3.31.0), {@code STRICT} /
+     * {@code WITHOUT ROWID} (3.37.0) and {@code VACUUM INTO} (3.27.0) only
+     * occur in statements forbidden-statement already refuses, so a detector
+     * could only pile a second finding onto a rejected statement;
+     * {@code TRUE} / {@code FALSE} (3.23.0) tokenize identically to a column
+     * reference, which is exactly what a pre-3.23 engine parses them as.</p>
+     *
+     * <p>Mirrors the TypeScript {@code syntaxFeatures} token for token.</p>
+     */
+    public static List<String> syntaxFeatures(List<SqlToken> tokens) {
+        List<String> features = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+
+        if (hasInsertAlias(tokens) && seen.add("insert-alias")) {
+            features.add("insert-alias");
+        }
+
+        String verb = anchoredVerb(tokens);
+        boolean isInsert = "insert".equals(verb) || "replace".equals(verb);
+        boolean canReturn = verb != null && RETURNING_VERBS.contains(verb);
+        int depth = 0;
+        for (int i = 0; i < tokens.size(); i++) {
+            SqlToken token = tokens.get(i);
+            // `->` and `->>`. The two tokenizers split them differently —
+            // this one folds `>>` into a single operator token, the
+            // TypeScript one emits every unrecognized character on its own —
+            // so the pattern both agree on is `-` followed by a punct token
+            // that STARTS with `>`. Whitespace is gone by now, so `a - > b`
+            // matches too; that is a syntax error on every engine, which
+            // makes over-matching there the harmless direction.
+            if (token.isPunct("-") && i + 1 < tokens.size()
+                    && tokens.get(i + 1).kind() == SqlToken.Kind.PUNCT
+                    && tokens.get(i + 1).text().startsWith(">")
+                    && seen.add("json-arrow-operators")) {
+                features.add("json-arrow-operators");
+            }
+            if (token.isPunct("(")) {
+                depth++;
+                continue;
+            }
+            if (token.isPunct(")")) {
+                depth--;
+                continue;
+            }
+            if (isBareKeyword(tokens, i, "over") && isPunctAt(tokens, i + 1, "(")
+                    && seen.add("window-functions")) {
+                features.add("window-functions");
+            }
+            if (isBareKeyword(tokens, i, "filter") && isPunctAt(tokens, i + 1, "(")
+                    && isBareKeyword(tokens, i + 2, "where")
+                    && seen.add("aggregate-filter")) {
+                features.add("aggregate-filter");
+            }
+            if (isBareKeyword(tokens, i, "nulls")
+                    && (isBareKeyword(tokens, i + 1, "first")
+                            || isBareKeyword(tokens, i + 1, "last"))
+                    && seen.add("nulls-first-last")) {
+                features.add("nulls-first-last");
+            }
+            // `AS [NOT] MATERIALIZED (`. The trailing `(` is what separates
+            // the CTE hint from a result column aliased `materialized`.
+            if (isBareKeyword(tokens, i, "as")) {
+                int skipNot = isBareKeyword(tokens, i + 1, "not") ? 1 : 0;
+                if (isBareKeyword(tokens, i + 1 + skipNot, "materialized")
+                        && isPunctAt(tokens, i + 2 + skipNot, "(")
+                        && seen.add("materialized-cte")) {
+                    features.add("materialized-cte");
+                }
+            }
+            if ((isBareKeyword(tokens, i, "right") || isBareKeyword(tokens, i, "full"))
+                    && (isBareKeyword(tokens, i + 1, "join")
+                            || isBareKeyword(tokens, i + 1, "outer"))
+                    && seen.add("right-full-join")) {
+                features.add("right-full-join");
+            }
+            if (isBareKeyword(tokens, i, "is")) {
+                int skipNot = isBareKeyword(tokens, i + 1, "not") ? 1 : 0;
+                if (isBareKeyword(tokens, i + 1 + skipNot, "distinct")
+                        && isBareKeyword(tokens, i + 2 + skipNot, "from")
+                        && seen.add("is-distinct-from")) {
+                    features.add("is-distinct-from");
+                }
+            }
+            // UPSERT is an INSERT clause. The other `ON CONFLICT` in SQLite
+            // is a column/table CONSTRAINT clause, which is pre-floor syntax
+            // living in a CREATE TABLE the statement denylist already
+            // refuses.
+            if (isInsert && isBareKeyword(tokens, i, "on")
+                    && isBareKeyword(tokens, i + 1, "conflict")
+                    && seen.add("upsert")) {
+                features.add("upsert");
+            }
+            if (canReturn && depth == 0 && isBareKeyword(tokens, i, "returning")
+                    && isReturningClause(tokens, i) && seen.add("returning")) {
+                features.add("returning");
+            }
+            // A top-level FROM in an UPDATE. Every pre-3.33 FROM inside an
+            // UPDATE belongs to a subquery, and a subquery is parenthesized.
+            if ("update".equals(verb) && depth == 0 && isBareKeyword(tokens, i, "from")
+                    && seen.add("update-from")) {
+                features.add("update-from");
+            }
+        }
+        return features;
     }
 
     private static boolean isNowLiteral(SqlToken token) {

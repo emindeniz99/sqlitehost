@@ -1,0 +1,20 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-update-from",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars",
+    "scriptInputs"
+  ],
+  "steps": [
+    {
+      "id": "update-a-var-from-another-table",
+      "statements": [
+        {
+          "sql": "UPDATE script_vars SET int_value = 1 FROM script_inputs WHERE script_vars.name = 'tier'",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}
