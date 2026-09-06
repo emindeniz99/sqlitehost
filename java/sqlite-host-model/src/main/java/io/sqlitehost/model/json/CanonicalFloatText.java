@@ -25,15 +25,37 @@ import java.math.RoundingMode;
  * JDK 19 and later. CI builds on 17, 21 and 25.
  *
  * <p>The shortest digit string is therefore found here rather than
- * borrowed: round the value's exact decimal expansion to 1, 2, ... 17
- * significant digits and take the first that parses back to the identical
- * double. That is deliberately the slow, obviously-correct formulation;
- * envelopes are written at authoring time, not in a hot loop.
+ * borrowed: for 1, 2, ... 17 significant digits, take the two decimals of
+ * that length which bracket the value's exact decimal expansion, keep the
+ * ones that parse back to the identical double, and stop at the first
+ * length where one does. That is deliberately the slow,
+ * obviously-correct formulation; envelopes are written at authoring time,
+ * not in a hot loop.
+ *
+ * <p>Both brackets have to be tried, not just the nearest decimal. At a
+ * power of two the round-tripping interval is asymmetric — the gap to the
+ * neighbouring double below is half the gap above — so the nearest
+ * 16-digit decimal can fall outside the narrow lower half while the
+ * 16-digit decimal just above the value round-trips. Rounding once with
+ * {@code HALF_EVEN} misses that one and spells the value with 17 digits;
+ * ECMAScript spells {@code 2^-1018} {@code 7.120236347223045e-307}, not
+ * {@code 7.1202363472230444e-307}.
  */
 public final class CanonicalFloatText {
 
     /** Every finite double round-trips through 17 significant digits. */
     private static final int MAX_SIGNIFICANT_DIGITS = 17;
+
+    /**
+     * The two roundings that bracket a positive value: {@code FLOOR}
+     * gives the largest decimal of that length at or below it,
+     * {@code CEILING} the smallest at or above. Any other decimal of the
+     * same length is further away than one of these, and the closest
+     * round-tripping one is what ECMAScript asks for, so no other
+     * candidate can win.
+     */
+    private static final RoundingMode[] BRACKETS = {
+            RoundingMode.FLOOR, RoundingMode.CEILING};
 
     private CanonicalFloatText() {
     }
@@ -58,15 +80,38 @@ public final class CanonicalFloatText {
             return "-" + of(-value);
         }
         BigDecimal exact = new BigDecimal(value);
-        for (int digits = 1; digits < MAX_SIGNIFICANT_DIGITS; digits++) {
-            String candidate = format(exact.round(
-                    new MathContext(digits, RoundingMode.HALF_EVEN)));
-            if (Double.parseDouble(candidate) == value) {
-                return candidate;
+        for (int digits = 1; digits <= MAX_SIGNIFICANT_DIGITS; digits++) {
+            BigDecimal best = null;
+            for (RoundingMode bracket : BRACKETS) {
+                BigDecimal candidate = exact.round(new MathContext(digits, bracket));
+                if (Double.parseDouble(format(candidate)) == value
+                        && (best == null || closerToExact(candidate, best, exact))) {
+                    best = candidate;
+                }
+            }
+            if (best != null) {
+                return format(best);
             }
         }
-        return format(exact.round(
-                new MathContext(MAX_SIGNIFICANT_DIGITS, RoundingMode.HALF_EVEN)));
+        throw new AssertionError(
+                "no round-tripping spelling within " + MAX_SIGNIFICANT_DIGITS
+                        + " significant digits: " + value);
+    }
+
+    /**
+     * Whether {@code candidate} is the spelling ECMAScript prefers over
+     * {@code incumbent}: the one closer to the exact value, and on a tie —
+     * the value sits exactly between the two brackets — the one whose last
+     * digit is even.
+     */
+    private static boolean closerToExact(
+            BigDecimal candidate, BigDecimal incumbent, BigDecimal exact) {
+        int byDistance = candidate.subtract(exact).abs()
+                .compareTo(incumbent.subtract(exact).abs());
+        if (byDistance != 0) {
+            return byDistance < 0;
+        }
+        return !candidate.stripTrailingZeros().unscaledValue().testBit(0);
     }
 
     /**
