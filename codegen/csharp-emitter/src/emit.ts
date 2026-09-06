@@ -14,6 +14,13 @@ import {
   CONTROL_ACTION_FAIL,
   CONTROL_ACTION_HALT,
   DEFAULT_MIN_SQLITE_VERSION_NUMBER,
+  deriveCallTable,
+  deriveInputColumn,
+  deriveInputListTable,
+  deriveQueueTrigger,
+  deriveResultColumn,
+  deriveResultListTable,
+  deriveResultTable,
   ENGINE_V1,
   FEATURE_INLINE_FUNCTIONS,
   FEATURES_V1,
@@ -24,6 +31,7 @@ import {
   type HostLibraryIr,
   type HostMethodIr,
   type ListFieldIr,
+  type NamingIr,
   type ObjectShapeIr,
   type ScalarFieldIr,
 } from "@sqlite-host/codegen-core";
@@ -269,20 +277,67 @@ export function emitUltraHandlerInterface(
  * Every physical name in a generated host comes from the IR, so the
  * schema SQL this emitter writes and the spec the runtime executes can
  * never name two different tables.
+ *
+ * A spec carries a name only where the manifest's resolved name differs
+ * from what the naming rules derive for it. The runtime's
+ * NamingDerivation is a second copy of those rules, so on a manifest the
+ * frontend produced the override would restate what the runtime already
+ * computes, and this project measures the app in bytes
+ * (tests/app-size-bench). A hand-written or rewritten manifest is where
+ * the two can disagree, and that is where these calls appear. The
+ * comparison runs codegen/core's naming module rather than a local copy,
+ * so no third derivation can drift in here.
  */
-function columnCall(field: ScalarFieldIr): string {
-  return `.Column(${csharpString(field.column)})`;
+function columnCall(
+  naming: NamingIr,
+  isInput: boolean,
+  field: ScalarFieldIr,
+): string[] {
+  const derived = isInput
+    ? deriveInputColumn(naming, field.sqlName)
+    : deriveResultColumn(naming, field.sqlName);
+  return field.column === derived
+    ? []
+    : [`.Column(${csharpString(field.column)})`];
 }
 
-function childTableCall(listField: ListFieldIr): string {
-  return `.ChildTable(${csharpString(listField.childTable)})`;
+function childTableCall(
+  naming: NamingIr,
+  isInput: boolean,
+  methodName: string,
+  listField: ListFieldIr,
+): string[] {
+  const derived = isInput
+    ? deriveInputListTable(naming, methodName, listField.sqlName)
+    : deriveResultListTable(naming, methodName, listField.sqlName);
+  return listField.childTable === derived
+    ? []
+    : [`.ChildTable(${csharpString(listField.childTable)})`];
 }
 
-function tablesCall(method: HostMethodIr): string {
-  return (
+/**
+ * `.Tables` is all or nothing: the three names travel together, so one
+ * divergence emits all three rather than growing the pinned builder
+ * surface with two more per-component overloads.
+ */
+function tablesCall(naming: NamingIr, method: HostMethodIr): string[] {
+  const name = method.methodName;
+  if (
+    method.callTable === deriveCallTable(naming, name) &&
+    method.resultTable === deriveResultTable(naming, name) &&
+    method.queueTrigger === deriveQueueTrigger(naming, name)
+  ) {
+    return [];
+  }
+  return [
     `.Tables(${csharpString(method.callTable)}, ` +
-    `${csharpString(method.resultTable)}, ${csharpString(method.queueTrigger)})`
-  );
+      `${csharpString(method.resultTable)}, ${csharpString(method.queueTrigger)})`,
+  ];
+}
+
+/** Indent side-channel calls onto the fluent chain. */
+function indented(calls: string[], indent: string): string[] {
+  return calls.map((call) => `${indent}${call}`);
 }
 
 /** One fluent field call, possibly spanning extra lines for a list. */
@@ -301,14 +356,19 @@ function resultScalarCall(field: ScalarFieldIr): string {
   return `.${builderMethod(field)}(${csharpString(field.sqlName)}, x => x.${pascalCase(field.propertyName)})`;
 }
 
-function shapeCalls(shape: ObjectShapeIr, isInput: boolean): FieldCall[] {
+function shapeCalls(
+  naming: NamingIr,
+  methodName: string,
+  shape: ObjectShapeIr,
+  isInput: boolean,
+): FieldCall[] {
   const calls: FieldCall[] = [];
   const scalarCall = isInput ? inputScalarCall : resultScalarCall;
   for (const field of shape.fields) {
     calls.push({
       first: scalarCall(field),
       itemLines: [],
-      after: [columnCall(field)],
+      after: columnCall(naming, isInput, field),
     });
   }
   for (const listField of shape.listFields) {
@@ -316,14 +376,14 @@ function shapeCalls(shape: ObjectShapeIr, isInput: boolean): FieldCall[] {
     const accessor = isInput ? `(x, v) => x.${pascal} = v` : `x => x.${pascal}`;
     const itemLines = listField.itemFields.flatMap((field) => [
       scalarCall(field),
-      columnCall(field),
+      ...columnCall(naming, isInput, field),
     ]);
     // Close the item lambda on its last line.
     itemLines[itemLines.length - 1] += ")";
     calls.push({
       first: `.List<${listField.itemModelName}>(${csharpString(listField.sqlName)}, ${accessor}, item => item`,
       itemLines,
-      after: [childTableCall(listField)],
+      after: childTableCall(naming, isInput, methodName, listField),
     });
   }
   return calls;
@@ -335,11 +395,13 @@ function shapeCalls(shape: ObjectShapeIr, isInput: boolean): FieldCall[] {
  * lambda would not compile).
  */
 function fieldBlock(
+  naming: NamingIr,
+  methodName: string,
   group: "Inputs" | "Results",
   shape: ObjectShapeIr,
   isInput: boolean,
 ): string[] {
-  const calls = shapeCalls(shape, isInput);
+  const calls = shapeCalls(naming, methodName, shape, isInput);
   if (calls.length === 0) {
     return [];
   }
@@ -375,7 +437,7 @@ function inlineArgs(method: HostMethodIr): string {
   return `${csharpString(inline.functionName)}, ${inline.minArgs}, ${inline.maxArgs}`;
 }
 
-function specMethod(method: HostMethodIr): string {
+function specMethod(naming: NamingIr, method: HostMethodIr): string {
   // Inline scalar-function exposure sits between .Results and .Handler
   // (docs/csharp-api.md); non-inline methods emit nothing.
   const inline =
@@ -388,9 +450,9 @@ function specMethod(method: HostMethodIr): string {
     "            return HostMethod",
     `                .For<IGeneratedHostHandlers, ${method.input.modelName}, ${method.result.modelName}>(${csharpString(method.methodName)})`,
     `                .ApiLevel(${method.apiLevel})`,
-    `                ${tablesCall(method)}`,
-    ...fieldBlock("Inputs", method.input, true),
-    ...fieldBlock("Results", method.result, false),
+    ...indented(tablesCall(naming, method), "                "),
+    ...fieldBlock(naming, method.methodName, "Inputs", method.input, true),
+    ...fieldBlock(naming, method.methodName, "Results", method.result, false),
     ...inline,
     `                .Handler((handlers, input) => handlers.${method.handlerName}(input))`,
     "                .Build();",
@@ -435,7 +497,10 @@ export function emitMethodSpecs(
   ir: HostLibraryIr,
   ns: string = generatedNamespace(ir),
 ): string {
-  return specsFile(ns, [buildAllMember(ir), ...ir.methods.map(specMethod)]);
+  return specsFile(ns, [
+    buildAllMember(ir),
+    ...ir.methods.map((method) => specMethod(ir.naming, method)),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,6 +573,7 @@ function configureItemMember(
  * configure, item readers), invoke.
  */
 function compactSpecMembers(
+  naming: NamingIr,
   method: HostMethodIr,
   seenItemAccessors: Set<string>,
 ): string[] {
@@ -527,28 +593,34 @@ function compactSpecMembers(
       "            return CompactHostMethod",
       `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
       `                .ApiLevel(${method.apiLevel})`,
-      `                ${tablesCall(method)}`,
+      ...indented(tablesCall(naming, method), "                "),
       `                .CreateInput(Create${op}Input)`,
       ...method.input.fields.flatMap((field) => [
         `                .Input${builderMethod(field)}(${csharpString(field.sqlName)}, Set${op}${pascalCase(field.propertyName)})`,
-        `                ${columnCall(field)}`,
+        ...indented(columnCall(naming, true, field), "                "),
       ]),
       ...method.input.listFields.flatMap((listField) => {
         const list = pascalCase(listField.propertyName);
         return [
           `                .InputList(${csharpString(listField.sqlName)}, Create${op}${list}Item, Assign${op}${list}, Configure${op}${list}Item)`,
-          `                ${childTableCall(listField)}`,
+          ...indented(
+            childTableCall(naming, true, method.methodName, listField),
+            "                ",
+          ),
         ];
       }),
       ...method.result.fields.flatMap((field) => [
         `                .Result${builderMethod(field)}(${csharpString(field.sqlName)}, Read${op}${pascalCase(field.propertyName)})`,
-        `                ${columnCall(field)}`,
+        ...indented(columnCall(naming, false, field), "                "),
       ]),
       ...method.result.listFields.flatMap((listField) => {
         const list = pascalCase(listField.propertyName);
         return [
           `                .ResultList(${csharpString(listField.sqlName)}, Read${op}${list}, Configure${op}${list}Item)`,
-          `                ${childTableCall(listField)}`,
+          ...indented(
+            childTableCall(naming, false, method.methodName, listField),
+            "                ",
+          ),
         ];
       }),
       ...inline,
@@ -595,7 +667,7 @@ function compactSpecMembers(
         "ICompactListItemFieldsBuilder",
         listField.itemFields.flatMap((field) => [
           `.${builderMethod(field)}(${csharpString(field.sqlName)}, Set${item}${pascalCase(field.propertyName)})`,
-          columnCall(field),
+          ...columnCall(naming, true, field),
         ]),
       ),
     );
@@ -665,7 +737,7 @@ function compactSpecMembers(
         "ICompactListItemResultFieldsBuilder",
         listField.itemFields.flatMap((field) => [
           `.${builderMethod(field)}(${csharpString(field.sqlName)}, Read${item}${pascalCase(field.propertyName)})`,
-          columnCall(field),
+          ...columnCall(naming, false, field),
         ]),
       ),
     );
@@ -703,7 +775,9 @@ export function emitCompactMethodSpecs(
   const seenItemAccessors = new Set<string>();
   return specsFile(ns, [
     buildAllMember(ir),
-    ...ir.methods.flatMap((m) => compactSpecMembers(m, seenItemAccessors)),
+    ...ir.methods.flatMap((m) =>
+      compactSpecMembers(ir.naming, m, seenItemAccessors),
+    ),
   ]);
 }
 
@@ -716,7 +790,7 @@ export function emitCompactMethodSpecs(
  * field calls need no accessors, so only Configure{Op}{List}Item (input
  * lists then result lists) and the Invoke{Op} handler thunk remain.
  */
-function ultraSpecMembers(method: HostMethodIr): string[] {
+function ultraSpecMembers(naming: NamingIr, method: HostMethodIr): string[] {
   const op = method.operationName;
   const members: string[] = [];
 
@@ -731,22 +805,28 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
       "            return UltraHostMethod",
       `                .For<IGeneratedHostHandlers>(${csharpString(method.methodName)})`,
       `                .ApiLevel(${method.apiLevel})`,
-      `                ${tablesCall(method)}`,
+      ...indented(tablesCall(naming, method), "                "),
       ...method.input.fields.flatMap((field) => [
         `                .Input${builderMethod(field)}(${csharpString(field.sqlName)})`,
-        `                ${columnCall(field)}`,
+        ...indented(columnCall(naming, true, field), "                "),
       ]),
       ...method.input.listFields.flatMap((listField) => [
         `                .InputList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
-        `                ${childTableCall(listField)}`,
+        ...indented(
+          childTableCall(naming, true, method.methodName, listField),
+          "                ",
+        ),
       ]),
       ...method.result.fields.flatMap((field) => [
         `                .Result${builderMethod(field)}(${csharpString(field.sqlName)})`,
-        `                ${columnCall(field)}`,
+        ...indented(columnCall(naming, false, field), "                "),
       ]),
       ...method.result.listFields.flatMap((listField) => [
         `                .ResultList(${csharpString(listField.sqlName)}, Configure${op}${pascalCase(listField.propertyName)}Item)`,
-        `                ${childTableCall(listField)}`,
+        ...indented(
+          childTableCall(naming, false, method.methodName, listField),
+          "                ",
+        ),
       ]),
       ...inline,
       `                .Handler(Invoke${op})`,
@@ -755,9 +835,9 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
     ].join("\n"),
   );
 
-  for (const listField of [
-    ...method.input.listFields,
-    ...method.result.listFields,
+  for (const [listField, isInput] of [
+    ...method.input.listFields.map((l) => [l, true] as const),
+    ...method.result.listFields.map((l) => [l, false] as const),
   ]) {
     members.push(
       configureItemMember(
@@ -765,7 +845,7 @@ function ultraSpecMembers(method: HostMethodIr): string[] {
         "IUltraListItemFieldsBuilder",
         listField.itemFields.flatMap((field) => [
           `.${builderMethod(field)}(${csharpString(field.sqlName)})`,
-          columnCall(field),
+          ...columnCall(naming, isInput, field),
         ]),
       ),
     );
@@ -789,7 +869,7 @@ export function emitUltraMethodSpecs(
 ): string {
   return specsFile(ns, [
     buildAllMember(ir),
-    ...ir.methods.flatMap(ultraSpecMembers),
+    ...ir.methods.flatMap((m) => ultraSpecMembers(ir.naming, m)),
   ]);
 }
 

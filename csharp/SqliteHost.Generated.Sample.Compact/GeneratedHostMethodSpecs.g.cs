@@ -24,12 +24,9 @@ namespace Example.Game.Generated.Compact
             return CompactHostMethod
                 .For<IGeneratedHostHandlers>("getValue")
                 .ApiLevel(1)
-                .Tables("call_get_value", "result_get_value", "trg_call_get_value_queue")
                 .CreateInput(CreateGetValueInput)
                 .InputText("key", SetGetValueKey)
-                .Column("input_key")
                 .ResultLong("value", ReadGetValueValue)
-                .Column("result_value")
                 .Inline("fn_get_value", 1, 1)
                 .Handler(InvokeGetValue)
                 .Build();
@@ -60,14 +57,10 @@ namespace Example.Game.Generated.Compact
             return CompactHostMethod
                 .For<IGeneratedHostHandlers>("setValue")
                 .ApiLevel(1)
-                .Tables("call_set_value", "result_set_value", "trg_call_set_value_queue")
                 .CreateInput(CreateSetValueInput)
                 .InputText("key", SetSetValueKey)
-                .Column("input_key")
                 .InputLong("value", SetSetValueValue)
-                .Column("input_value")
                 .ResultBool("success", ReadSetValueSuccess)
-                .Column("result_success")
                 .Handler(InvokeSetValue)
                 .Build();
         }
@@ -102,14 +95,10 @@ namespace Example.Game.Generated.Compact
             return CompactHostMethod
                 .For<IGeneratedHostHandlers>("getValues")
                 .ApiLevel(1)
-                .Tables("call_get_values", "result_get_values", "trg_call_get_values_queue")
                 .CreateInput(CreateGetValuesInput)
                 .InputOptionalLong("default_value", SetGetValuesDefaultValue)
-                .Column("input_default_value")
                 .InputList("keys", CreateGetValuesKeysItem, AssignGetValuesKeys, ConfigureGetValuesKeysItem)
-                .ChildTable("call_get_values__input_keys")
                 .ResultList("entries", ReadGetValuesEntries, ConfigureGetValuesEntriesItem)
-                .ChildTable("result_get_values__result_entries")
                 .Handler(InvokeGetValues)
                 .Build();
         }
@@ -132,8 +121,7 @@ namespace Example.Game.Generated.Compact
         private static void ConfigureGetValuesKeysItem(ICompactListItemFieldsBuilder item)
         {
             item
-                .Text("key", SetKeyQueryItemKey)
-                .Column("input_key");
+                .Text("key", SetKeyQueryItemKey);
         }
 
         private static void SetKeyQueryItemKey(object item, string value)
@@ -170,11 +158,8 @@ namespace Example.Game.Generated.Compact
         {
             item
                 .Text("key", ReadValueEntryItemKey)
-                .Column("result_key")
                 .Long("value", ReadValueEntryItemValue)
-                .Column("result_value")
-                .Bool("found", ReadValueEntryItemFound)
-                .Column("result_found");
+                .Bool("found", ReadValueEntryItemFound);
         }
 
         private static string ReadValueEntryItemKey(object item)
@@ -202,16 +187,11 @@ namespace Example.Game.Generated.Compact
             return CompactHostMethod
                 .For<IGeneratedHostHandlers>("putBlob")
                 .ApiLevel(1)
-                .Tables("call_put_blob", "result_put_blob", "trg_call_put_blob_queue")
                 .CreateInput(CreatePutBlobInput)
                 .InputText("key", SetPutBlobKey)
-                .Column("input_key")
                 .InputBlob("data", SetPutBlobData)
-                .Column("input_data")
                 .InputOptionalText("note", SetPutBlobNote)
-                .Column("input_note")
                 .ResultBool("stored", ReadPutBlobStored)
-                .Column("result_stored")
                 .Handler(InvokePutBlob)
                 .Build();
         }
@@ -251,16 +231,11 @@ namespace Example.Game.Generated.Compact
             return CompactHostMethod
                 .For<IGeneratedHostHandlers>("recordScore")
                 .ApiLevel(1)
-                .Tables("call_record_score", "result_record_score", "trg_call_record_score_queue")
                 .CreateInput(CreateRecordScoreInput)
                 .InputText("key", SetRecordScoreKey)
-                .Column("input_key")
                 .InputDouble("score", SetRecordScoreScore)
-                .Column("input_score")
                 .InputOptionalFloat("weight", SetRecordScoreWeight)
-                .Column("input_weight")
                 .ResultDouble("average", ReadRecordScoreAverage)
-                .Column("result_average")
                 .Handler(InvokeRecordScore)
                 .Build();
         }

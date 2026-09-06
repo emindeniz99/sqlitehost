@@ -525,8 +525,7 @@ test("smoke IR: method specs carry optional/list field-builder calls", () => {
   assert.match(specs, /\.OptionalFloat\("weight", \(x, v\) => x\.Weight = v\)/);
   assert.match(specs, /\.Float\("ratio", x => x\.Ratio\)/);
   assert.match(specs, /\.List<TagItem>\("tags", x => x\.Tags, item => item/);
-  // The item lambda now closes on the item field's resolved column.
-  assert.match(specs, /\.Text\("label", x => x\.Label\)\n\s+\.Column\("out_label"\)\)/);
+  assert.match(specs, /\.Text\("label", x => x\.Label\)\)\)/);
   assert.match(specs, /handlers\.ArchiveReport\(input\)/);
 });
 
@@ -539,7 +538,7 @@ test("smoke IR: inline methods emit .Inline between .Results and .Handler, other
   // golden could catch drifting.
   assert.match(
     specs,
-    /\.Double\("score", x => x\.Score\)\n\s+\.Column\("out_score"\)\)\n\s+\.Inline\("udf_lookup_score", 1, 2\)\n\s+\.Handler\(\(handlers, input\) => handlers\.LookupScore\(input\)\)/,
+    /\.Double\("score", x => x\.Score\)\)\n\s+\.Inline\("udf_lookup_score", 1, 2\)\n\s+\.Handler\(\(handlers, input\) => handlers\.LookupScore\(input\)\)/,
   );
   // The ineligible (mutating, list-carrying) method emits no .Inline.
   const archiveSpec = specs.slice(
@@ -811,5 +810,24 @@ for (const profile of ["classic", "compact", "ultra"] as const) {
       assert.ok(!schema.includes(name), `schema still derives ${name}`);
       assert.ok(!specs.includes(name), `specs still derive ${name}`);
     }
+  });
+}
+
+for (const profile of ["classic", "compact", "ultra"] as const) {
+  test(`${profile} profile: a derivable name costs no bytes`, () => {
+    // The complement of the three tests above, and the reason they are
+    // not visible in the committed goldens: on a frontend-produced
+    // manifest every resolved name equals what the naming rules derive,
+    // the runtime's NamingDerivation recomputes it, and the spec says
+    // nothing. tests/app-size-bench measures the difference.
+    const specs = emitCSharp(sampleIr(), { profile }).find(
+      (f) => f.path === "GeneratedHostMethodSpecs.g.cs",
+    )!.contents;
+    assert.ok(!specs.includes(".Tables("), "specs restate derived tables");
+    assert.ok(!specs.includes(".Column("), "specs restate derived columns");
+    assert.ok(
+      !specs.includes(".ChildTable("),
+      "specs restate derived child tables",
+    );
   });
 }

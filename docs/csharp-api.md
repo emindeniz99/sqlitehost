@@ -489,11 +489,20 @@ everything else in a descriptor is logical. They exist because a
 generated host ships its own schema SQL: the manifest already resolved
 every table and column (`callTable`, `resultTable`, `queueTrigger`,
 `column`, `childTable`), and a runtime that re-derived them instead
-could answer differently from the DDL the same host created. Generated
-code emits all of them, in all three profiles; a hand-written
-definition omits them and the naming derivation supplies each one
-(`docs/naming.md`), which is why the derivation stays the documented
-default rather than a second source of truth.
+could answer differently from the DDL the same host created.
+
+A spec carries a name only where the manifest's resolved name differs
+from what the naming rules derive (`docs/naming.md`). Generated code
+therefore emits none of these calls for a manifest the TypeSpec
+frontend produced — every name there is derivable, the runtime's
+derivation reproduces it, and a literal per method and per field would
+cost app-size bytes to restate what the runtime already computes
+(`tests/app-size-bench` pins that). The calls appear where a manifest
+was hand-written or rewritten and the two disagree, and a hand-written
+definition may use them the same way. That makes the derivation
+load-bearing for generated hosts rather than a fallback for
+hand-written ones, and it is pinned against the frontend's own manifest
+by `NamingDerivationManifestTests`.
 
 `Column` and `ChildTable` name the declaration immediately before the
 call — the scalar field and the list field respectively — and throw
@@ -773,7 +782,7 @@ where the accessors cost real bytes; measured in
 |---|---|
 | `HostMethodDtos.g.cs` | input/result/item DTO classes — plain classes, public auto-properties, `List<T>` properties initialized to `new List<T>()` |
 | `IGeneratedHostHandlers.g.cs` | handler interface, one method per op: `GetValueResult GetValue(GetValueInput input);` |
-| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API — every physical name the manifest resolved is emitted with it (`.Tables(...)` after `.ApiLevel`, `.Column(...)` after each scalar field, `.ChildTable(...)` after each list field), so the spec and `GeneratedSchemaSql.g.cs` cannot name different tables |
+| `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API — a physical name the naming rules would not derive is emitted with it (`.Tables(...)` after `.ApiLevel`, `.Column(...)` after the scalar field, `.ChildTable(...)` after the list field), so the spec and `GeneratedSchemaSql.g.cs` cannot name different tables; a frontend-produced manifest derives every name and emits none of the three |
 | `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all eleven naming values explicitly (six prefixes, the queue/inputs/vars/control table names, the function prefix), followed by a `.Columns(...)` block emitting all fourteen column identifiers |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
 
