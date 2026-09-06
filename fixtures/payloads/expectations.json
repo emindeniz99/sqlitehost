@@ -51,6 +51,18 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-015-colon-suffix-parameter.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-016-paren-suffix-parameter.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-007-mixed-prefix.json",
       "valid": true,
       "errors": [],

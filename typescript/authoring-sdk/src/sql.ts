@@ -55,6 +55,15 @@ function isParamPart(ch: string): boolean {
   // '_', '$', and any character above 0x7f. Cutting the name at its ASCII
   // head would report missing-binding for a name the author never wrote,
   // and the adapter conformance suite requires non-ASCII names to bind.
+  //
+  // Two further characters can appear *inside* a name and are handled by the
+  // scan loop rather than here, because they are only legal in position: a
+  // doubled colon (`:a::b`) and one trailing parenthesised group (`$a(1)`).
+  // Both come from SQLite's TCL variable syntax, are compiled in by default,
+  // and apply to every prefix — verified against the sqlite3 CLI 3.51.0,
+  // where `:a::b` and `$a(1)` each bind as a *single* parameter whose name
+  // carries the suffix. Splitting them, as this scanner used to, accepts the
+  // payload that fails on every device and rejects the only one that runs.
   return isIdentPart(ch) || ch > "\u007f";
 }
 
@@ -162,9 +171,40 @@ export function tokenizeSql(sql: string): SqlToken[] {
       continue;
     }
     if (ch === ":" || ch === "@" || ch === "$") {
+      // SQLite's variable grammar (see isParamPart for the two suffix forms).
       let j = i + 1;
-      while (j < n && isParamPart(sql[j])) j++;
-      if (j > i + 1) {
+      let idChars = 0;
+      let illegal = false;
+      while (j < n) {
+        const c = sql[j];
+        if (isParamPart(c)) {
+          idChars++;
+          j++;
+        } else if (c === "(" && idChars > 0) {
+          // A single trailing '(...)' group closes the name.
+          j++;
+          while (j < n && sql[j] !== ")" && !isSqlWhitespace(sql[j])) j++;
+          if (j < n && sql[j] === ")") {
+            j++;
+          } else {
+            illegal = true;
+          }
+          break;
+        } else if (c === ":" && sql[j + 1] === ":") {
+          j += 2;
+        } else {
+          break;
+        }
+      }
+      if (illegal) {
+        // SQLite lexes an unterminated '(' group as one illegal token;
+        // consume the same span so the stray '(' cannot unbalance the paren
+        // depth the statement analysis tracks.
+        tokens.push({ kind: "punct", value: sql.slice(i, j) });
+        i = j;
+        continue;
+      }
+      if (idChars > 0) {
         tokens.push({
           kind: "parameter",
           value: sql.slice(i + 1, j),
