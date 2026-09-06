@@ -25,8 +25,10 @@
 # exist inside a composite action. Every action used here stays SHA-pinned
 # with its tag in a trailing comment, exactly as in the workflow.
 #
-# NOT HERE: `actions/checkout`. A local action cannot be resolved before
-# the repository is on the runner, so each calling job checks out first.
+# NOT HERE: `actions/checkout`. Every step below operates on the
+# repository's files, so each calling job checks out first — and does so
+# before the `uses: $/.github/actions/unity-xcodeproj` line that reaches
+# this file.
 # Nor the macOS-only "this leg failed" summary note: it belongs to the
 # non-blocking macOS job and has no Linux counterpart to share.
 name: Unity iOS Xcode project for one bench row

@@ -254,10 +254,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # The thirteen steps both hosts share. It has to come after the
-      # checkout: a local action cannot be resolved before the repository
-      # is on the runner.
-      - uses: ./.github/actions/unity-xcodeproj
+      # The thirteen steps both hosts share. `$/` rather than `./`: the
+      # self-repository form GitHub added in July 2026 resolves the action
+      # from this repository at the running commit instead of from whatever
+      # the workspace happens to hold, which is what lets a "fully pinned"
+      # policy see it at all. It still has to come after the checkout —
+      # every step inside operates on the repository's files.
+      - uses: $/.github/actions/unity-xcodeproj
         with:
           row: ${{ matrix.row }}
           host: linux
@@ -307,8 +310,9 @@ jobs:
           persist-credentials: false
 
       # The same thirteen steps the Linux job runs, with the three inputs
-      # that genuinely differ by host.
-      - uses: ./.github/actions/unity-xcodeproj
+      # that genuinely differ by host. `$/` for the reason given on the
+      # Linux job's copy.
+      - uses: $/.github/actions/unity-xcodeproj
         with:
           row: ${{ matrix.row }}
           host: macos

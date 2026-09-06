@@ -303,8 +303,11 @@ jobs:
         with:
           python-version: "3.12"
       # Pinned: an unpinned install turns a zizmor release into a
-      # surprise red build. Bumping it is a deliberate commit.
-      - run: pip install zizmor==1.29.0
+      # surprise red build. Bumping it is a deliberate commit — 1.30.0
+      # added the `self-repository` audit, which the two local-action
+      # `uses:` lines in ios-size-bench.yml were fixed for in the same
+      # change as this bump.
+      - run: pip install zizmor==1.30.0
       # --config explicitly rather than relying on zizmor's discovery of
       # .github/zizmor.yml: discovery is relative to the git root, so the
       # same command behaves differently depending on where it is run from.
