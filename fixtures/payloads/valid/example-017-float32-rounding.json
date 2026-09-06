@@ -1,0 +1,36 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-017",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "typedNamedBindings",
+    "splitResultTables"
+  ],
+  "requiredMethods": [
+    "recordScore"
+  ],
+  "steps": [
+    {
+      "id": "record",
+      "statements": [
+        {
+          "sql": "INSERT INTO call_record_score (call_id, input_key, input_score, input_weight) VALUES (:callId, 'score-key', :score, :weight)",
+          "bindings": {
+            "callId": {
+              "type": "text",
+              "value": "weight-1"
+            },
+            "score": {
+              "type": "float64",
+              "value": 0.1
+            },
+            "weight": {
+              "type": "float32",
+              "value": 0.1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

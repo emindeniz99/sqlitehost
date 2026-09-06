@@ -2,7 +2,17 @@
  * Canonical script envelope serialization: pinned key order (as in
  * docs/script-envelope.md), 2-space indentation, LF, trailing newline.
  * Parsing a canonical payload and serializing it again reproduces the
- * original bytes (fixtures/payloads/valid are the golden inputs).
+ * original bytes whenever every float32 in it is already representable
+ * as an IEEE-754 single (fixtures/payloads/valid are the golden inputs).
+ *
+ * That qualifier is the float32 contract, not a weakness in this file.
+ * `float32` is round-to-nearest on parse (docs/script-envelope.md), so a
+ * value the wire spells 0.1 is the number 0.10000000149011612 by the
+ * time it reaches here, and re-serializing writes what the engine will
+ * actually store. Round-tripping the wider double instead would keep the
+ * bytes and lose the agreement with the Java and C# readers, which is
+ * the property that matters. A second pass is byte-stable for every
+ * payload: rounding a single-representable value is the identity.
  */
 
 import type {

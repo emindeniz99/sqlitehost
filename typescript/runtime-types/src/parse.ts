@@ -10,6 +10,7 @@ import {
   BINDING_TYPES,
   SCRIPT_ENGINE_V1,
   type BindingType,
+  type BindingValue,
   type Script,
 } from "./generated/envelope.js";
 import {
@@ -276,6 +277,35 @@ export class ScriptParseError extends Error {
 }
 
 /**
+ * Round every float32 binding to the IEEE-754 single the engine will
+ * hold, in place. `float32` on the wire is a JSON number — a double —
+ * and docs/script-envelope.md says it is "parsed via round-to-nearest",
+ * so 0.1 becomes 0.10000000149011612 before anything reads it. The Java
+ * and C# readers narrow through their `float` types and get exactly
+ * that; leaving the double alone here made the same envelope mean two
+ * different numbers depending on which SDK opened it.
+ *
+ * Safe to mutate: the object came from this function's own JSON.parse.
+ */
+function roundFloat32Bindings(script: Script): void {
+  const round = (value: BindingValue): void => {
+    if (value !== null && typeof value === "object" && value.type === "float32") {
+      value.value = Math.fround(value.value);
+    }
+  };
+  for (const input of script.inputs ?? []) {
+    round(input.value);
+  }
+  for (const step of script.steps) {
+    for (const statement of step.statements) {
+      for (const binding of Object.values(statement.bindings ?? {})) {
+        round(binding);
+      }
+    }
+  }
+}
+
+/**
  * Parse a script envelope from JSON text with structural validation.
  * Throws ScriptParseError (carrying `invalid-envelope` /
  * `duplicate-step-id` findings) when the payload is malformed, and
@@ -287,5 +317,7 @@ export function parseScript(json: string): Script {
   if (findings.length > 0) {
     throw new ScriptParseError(findings);
   }
-  return value as Script;
+  const script = value as Script;
+  roundFloat32Bindings(script);
+  return script;
 }
