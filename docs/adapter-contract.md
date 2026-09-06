@@ -42,7 +42,14 @@ failures:
   as exceptions (preferably `SqliteHostAdapterException`, carrying the
   native SQLite error code when available). The runtime maps them to
   `sql-error` / `FailedSql` and copies the code into
-  `SqliteHostRunResult.SqliteErrorCode`.
+  `SqliteHostRunResult.SqliteErrorCode`. That code is the **extended**
+  result code (`sqlite3_extended_errcode`) where the wrapper exposes
+  one, and reduces to the primary code where it does not — the shipped
+  native adapter reports `1555` for a duplicate key, Microsoft.Data.Sqlite
+  reports `19`. Adapters are not required to reach the extended code;
+  they are required to leave its low byte intact, which is the primary
+  code and the part a host can branch on
+  (`ConstraintViolation_SurfacesAConstraintResultCode`).
 - Malformed SQL, missing tables, and missing columns must never look
   like success with zero rows.
 - `Execute` must step a row-producing statement to completion (until
@@ -216,7 +223,7 @@ a handler a coerced argument.
 
 `SqliteHost.Conformance` (source: `csharp/SqliteHost.Conformance/`) is
 a shippable netstandard2.0 library containing
-`AdapterConformanceTestsBase` — the xunit contract suite (32 core
+`AdapterConformanceTestsBase` — the xunit contract suite (33 core
 tests + an optional scalar-function capability section on capable
 adapters),
 fully self-contained (it builds its own minimal probe host through the

@@ -59,8 +59,15 @@ Failure context fields: `StepId` and `StatementIndex` are set for
 statement-scoped failures (`StatementIndex` is `-1` otherwise);
 `Method` is set for call-scoped failures; `BindingName` is set for
 `missing-binding`/`unused-binding`; `SqliteErrorCode` carries the
-native SQLite error code when the adapter surfaced one via
-`SqliteHostAdapterException` (`0` = not available);
+extended result code (`sqlite3_extended_errcode`) when the adapter
+surfaced one via `SqliteHostAdapterException`, reducing to the primary
+code on adapters whose wrapper exposes only that (`0` = not available).
+The same duplicate-key violation therefore reports `1555`
+(`SQLITE_CONSTRAINT_PRIMARYKEY`) through the native adapter and `19`
+(`SQLITE_CONSTRAINT`) through Microsoft.Data.Sqlite. Branch on the low
+byte — `code & 0xFF` is the primary code and is the same everywhere;
+the conformance suite pins exactly that
+(`ConstraintViolation_SurfacesAConstraintResultCode`);
 `ExecutedCallCount` always counts successfully completed handler
 invocations through the queue drain — counted when the handler returns
 and its result row is written, so a failure in the queue bookkeeping

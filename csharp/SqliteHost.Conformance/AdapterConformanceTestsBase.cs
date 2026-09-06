@@ -87,6 +87,26 @@ namespace SqliteHost.Conformance
             Assert.Empty(rows);   // and nothing was silently inserted
         }
 
+        [SkippableFact]
+        public void ConstraintViolation_SurfacesAConstraintResultCode()
+        {
+            // SqliteErrorCode is the EXTENDED result code where the wrapper
+            // exposes one, and reduces to the primary code where it does
+            // not — this same violation reports 1555
+            // (SQLITE_CONSTRAINT_PRIMARYKEY) through the native adapter and
+            // 19 (SQLITE_CONSTRAINT) through Microsoft.Data.Sqlite. So the
+            // portable assertion is on the low byte, which is the rule a
+            // host can actually branch on (docs/errors.md).
+            using ISqliteHostConnection connection = Open();
+            connection.Execute("CREATE TABLE scratch (a INTEGER PRIMARY KEY)", null);
+            connection.Execute("INSERT INTO scratch (a) VALUES (1)", null);
+
+            var ex = Assert.ThrowsAny<SqliteHostAdapterException>(
+                () => connection.Execute("INSERT INTO scratch (a) VALUES (1)", null));
+
+            Assert.Equal(19, ex.SqliteErrorCode & 0xFF);   // SQLITE_CONSTRAINT
+        }
+
         // ---- lifecycle and result shape ---------------------------------
 
         [SkippableFact]
