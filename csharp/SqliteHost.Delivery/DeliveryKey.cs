@@ -41,6 +41,12 @@ namespace SqliteHost.Delivery
         private const int MinimumRsaModulusBytes = 256;
 
         /// <summary>
+        /// Width bound for the public exponent, in significant bytes. 65537
+        /// needs three; nothing legitimate needs more than a machine word.
+        /// </summary>
+        private const int MaximumRsaExponentBytes = 8;
+
+        /// <summary>
         /// An RSA public key for <c>rsa-sha256</c> (RSASSA-PKCS#1 v1.5 over
         /// SHA-256). Only <see cref="RSAParameters.Modulus"/> and
         /// <see cref="RSAParameters.Exponent"/> are used. The modulus must
@@ -55,15 +61,39 @@ namespace SqliteHost.Delivery
             {
                 throw new ArgumentException("RSA public key needs a non-empty modulus and exponent.", "publicKey");
             }
+            // Leading zeros are legal padding in a big-endian integer, and
+            // real producers emit them: Java's BigInteger.toByteArray()
+            // prepends a sign byte, and HSM/KMS and JWK-adjacent tooling
+            // emit fixed-width fields. So the floor is measured on the
+            // SIGNIFICANT bytes, and the padding is dropped rather than
+            // rejected — .NET wants the modulus at its true width anyway.
+            byte[] modulus = TrimLeadingZeros(publicKey.Modulus);
             // A too-small modulus is the misconfiguration that fails OPEN:
             // verification keeps succeeding while the private key is within
             // reach of factoring, so an attacker mints envelopes the app
             // accepts. Rejected here for the same reason as a mistyped id.
-            if (publicKey.Modulus.Length < MinimumRsaModulusBytes)
+            // Comparing the ENCODED length instead would wave through a
+            // 1024-bit modulus left-padded to 256 bytes, which is exactly
+            // the shape the misconfiguration arrives in.
+            if (modulus.Length < MinimumRsaModulusBytes)
             {
                 throw new ArgumentException(
                     "RSA public key must be at least 2048 bits (a " + MinimumRsaModulusBytes
-                    + "-byte modulus); this one is " + (publicKey.Modulus.Length * 8) + " bits.",
+                    + "-byte modulus); this one is " + (modulus.Length * 8) + " bits.",
+                    "publicKey");
+            }
+            // Every RSA modulus is a product of two odd primes, so an even
+            // one is not a modulus at all. Unlike the two checks around it
+            // this one fails CLOSED at run time — Verify would return
+            // bad-signature for every envelope forever — which is precisely
+            // the silent degrade this constructor promises not to allow. It
+            // is the shape a truncated, mis-base64'd or wrong-field config
+            // produces, and it must be a startup failure, not a mystery in
+            // production.
+            if ((modulus[modulus.Length - 1] & 1) == 0)
+            {
+                throw new ArgumentException(
+                    "RSA public key modulus must be odd; this one is even, which no RSA modulus is.",
                     "publicKey");
             }
             // A degenerate exponent fails OPEN the same way. e=1 makes RSA
@@ -72,17 +102,30 @@ namespace SqliteHost.Delivery
             // has no inverse mod phi(n), so it is not an RSA exponent at
             // all. Both are typos or tampering, never a key
             // generateDeliveryKeyPair() minted.
-            if (!IsUsableRsaExponent(publicKey.Exponent))
+            byte[] exponent = TrimLeadingZeros(publicKey.Exponent);
+            if (!IsUsableRsaExponent(exponent))
             {
                 throw new ArgumentException(
                     "RSA public key exponent must be odd and greater than 1.",
                     "publicKey");
             }
+            // No real public exponent is wider than a machine word (65537
+            // is three bytes, and 2^64 is already far beyond anything a
+            // generator emits). A wide one is odd and greater than 1, so
+            // the check above waves it through, and it is another spelling
+            // of a mis-decoded config that would fail closed at run time.
+            if (exponent.Length > MaximumRsaExponentBytes)
+            {
+                throw new ArgumentException(
+                    "RSA public key exponent must be at most " + MaximumRsaExponentBytes
+                    + " significant bytes; this one is " + exponent.Length + ".",
+                    "publicKey");
+            }
             var key = new DeliveryKey(keyId, ScriptEnvelopeAlgorithms.RsaSha256);
             key.RsaPublicKey = new RSAParameters
             {
-                Modulus = Copy(publicKey.Modulus),
-                Exponent = Copy(publicKey.Exponent)
+                Modulus = modulus,
+                Exponent = exponent
             };
             return key;
         }
@@ -163,6 +206,24 @@ namespace SqliteHost.Delivery
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// The significant bytes of a big-endian unsigned integer, always as
+        /// a fresh array (key material is copied out of caller-owned buffers
+        /// by construction). An all-zero input trims to length 0, which the
+        /// modulus floor then rejects.
+        /// </summary>
+        private static byte[] TrimLeadingZeros(byte[] value)
+        {
+            int start = 0;
+            while (start < value.Length && value[start] == 0)
+            {
+                start++;
+            }
+            var trimmed = new byte[value.Length - start];
+            Buffer.BlockCopy(value, start, trimmed, 0, trimmed.Length);
+            return trimmed;
         }
 
         private static byte[] DecodeBase64(string value, string parameterName)

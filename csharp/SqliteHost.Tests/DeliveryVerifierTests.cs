@@ -400,6 +400,306 @@ namespace SqliteHost.Tests
             Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
         }
 
+        [Fact]
+        public void MissingExpiresAtIsRejectedByDefaultPolicy()
+        {
+            // An envelope with no expiresAt never dies. Revocation in this
+            // design is an app update, so expiresAt is the ONLY thing
+            // bounding the window in which a key an attacker held for an
+            // hour keeps minting scripts the app accepts. An app that
+            // caches must not take one, and the option surface defaults to
+            // that policy: reaching for it is choosing policy, and this is
+            // the policy worth choosing.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.MissingExpiry,
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).Reason);
+        }
+
+        [Fact]
+        public void MissingExpiresAtIsAcceptedByTheWirePolicy()
+        {
+            // deliveryVersion 1 defines an empty expiresAt as "never
+            // expires", and the cross-language golden corpus pins it
+            // (valid-hmac.envelope). The three-argument overload keeps
+            // implementing the format as specified; RequireExpiry is app
+            // policy layered on top, exactly like the rollback rule.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).IsValid);
+            var permissive = new ScriptEnvelopeVerificationOptions { RequireExpiry = false };
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, permissive).IsValid);
+        }
+
+        [Fact]
+        public void PresentExpiresAtSatisfiesTheDefaultPolicy()
+        {
+            byte[] envelope = Build(Payload("{}"), expiresAt: (Now + 1000L).ToString());
+            Assert.True(
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).IsValid);
+        }
+
+        [Fact]
+        public void SignatureIsCheckedBeforeTheExpiryRequirement()
+        {
+            // Same rule as every other post-signature check: an unsigned
+            // envelope must report bad-signature, not a policy verdict on
+            // header fields nobody has verified.
+            byte[] envelope = Build(Payload("{}"), expiresAt: "");
+            envelope[envelope.Length - 6] ^= 0x01;
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.BadSignature,
+                ScriptEnvelopeVerifier.Verify(
+                    envelope, Keys(), Now, new ScriptEnvelopeVerificationOptions()).Reason);
+        }
+
+        [Fact]
+        public void IssuedAtAtTheSkewCeiling_Verifies()
+        {
+            // The ceiling is inclusive, like expiresAt. A backend clock a
+            // few minutes ahead of the device is ordinary, and rejecting it
+            // would make the check a source of outages rather than a bound.
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 300000L).ToString());
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).IsValid);
+        }
+
+        [Fact]
+        public void IssuedAtBeyondTheSkewCeiling_IsIssuedInFuture()
+        {
+            // One millisecond past the ceiling is the other side of the
+            // boundary. A distinct reason matters operationally: the answer
+            // is "check the signer's clock", not "retry the download".
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 300001L).ToString());
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void MaxIssuedAtEnvelope_CannotFreezeAScriptIdForever()
+        {
+            // The lockout this bound exists for. issuedAt = 2^53-1 is what
+            // an attacker mints during a key compromise, or what a signer
+            // emits with microseconds in a milliseconds field. The app's
+            // MUST rule is "accept only a strictly greater issuedAt", so
+            // one such envelope pins the high-water mark at the maximum and
+            // every legitimate envelope for that scriptId afterwards is
+            // rejected by the app's own defence, with no recovery short of
+            // shipping a build that wipes the cache.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void SignatureIsCheckedBeforeTheIssuedAtCeiling()
+        {
+            // Same rule as expiry: until the signature verifies, issuedAt is
+            // an integer an attacker typed. Reporting issued-in-future for
+            // an unsigned envelope would act on an unverified header field
+            // and hand out an oracle for the device clock.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            envelope[envelope.Length - 6] ^= 0x01;
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.BadSignature,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void ExpiryIsReportedBeforeTheIssuedAtCeiling()
+        {
+            // Both bounds broken at once keeps reporting `expired`: the
+            // normative verification order in the proposal is what apps
+            // branch on, and the new check is appended to it, not spliced
+            // into the middle.
+            byte[] envelope = Build(
+                Payload("{}"), issuedAt: (Now + 300001L).ToString(), expiresAt: (Now - 1).ToString());
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.Expired,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now).Reason);
+        }
+
+        [Fact]
+        public void ACallerCanWidenOrDisableTheIssuedAtCeiling()
+        {
+            // A fleet whose devices have no reliable clock at all must be
+            // able to opt out, or the bound becomes a reason not to upgrade.
+            byte[] envelope = Build(Payload("{}"), issuedAt: "9007199254740991");
+            var wide = new ScriptEnvelopeVerificationOptions
+            {
+                MaxIssuedAtSkewMs = long.MaxValue,
+                RequireExpiry = false
+            };
+            Assert.True(ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, wide).IsValid);
+        }
+
+        [Fact]
+        public void ACallerCanTightenTheIssuedAtCeiling()
+        {
+            byte[] envelope = Build(Payload("{}"), issuedAt: (Now + 1000L).ToString());
+            var tight = new ScriptEnvelopeVerificationOptions
+            {
+                MaxIssuedAtSkewMs = 999,
+                RequireExpiry = false
+            };
+            Assert.Equal(
+                ScriptEnvelopeFailureReason.IssuedInFuture,
+                ScriptEnvelopeVerifier.Verify(envelope, Keys(), Now, tight).Reason);
+        }
+
+        [Fact]
+        public void EvenRsaModulus_ThrowsAtConstruction()
+        {
+            // Every RSA modulus is a product of two odd primes, so an even
+            // one is not a modulus at all. Accepting it degrades the app to
+            // "nothing verifies" at run time, which is the silent failure
+            // DeliveryKey's throw-at-construction contract promises not to
+            // allow, and it is the shape a truncated or mis-decoded config
+            // produces.
+            var modulus = Modulus(256);
+            modulus[255] = 0x02;
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(modulus), "AQAB"));
+        }
+
+        [Fact]
+        public void AllZeroRsaModulus_ThrowsAtConstruction()
+        {
+            // A wrong-field or truncated config reads as 256 zero bytes.
+            // It has no significant bytes at all, so it fails the floor
+            // rather than reaching Verify and returning bad-signature for
+            // every envelope forever.
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(new byte[256]), "AQAB"));
+        }
+
+        [Fact]
+        public void AllOnesRsaModulus_IsAcceptedBecauseTheCheckIsStructuralOnly()
+        {
+            // Boundary marker, not an endorsement. 2^2048-1 is odd and has
+            // a non-zero top byte, so it satisfies every structural
+            // property an RSA modulus has; separating it from a real one
+            // needs factoring-grade analysis, which this constructor
+            // deliberately does not attempt (same non-goal as the exponent
+            // check: reject degenerate shapes, do not audit key quality).
+            // Recorded here so a future reader does not assume every
+            // unusable modulus is caught.
+            var modulus = new byte[256];
+            for (int i = 0; i < modulus.Length; i++) { modulus[i] = 0xff; }
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(modulus), "AQAB");
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Fact]
+        public void OversizedRsaExponent_ThrowsAtConstruction()
+        {
+            // A 256-byte exponent is odd and greater than 1, so the
+            // degenerate-exponent check waves it through; no real public
+            // exponent is anywhere near that wide, and the value is another
+            // spelling of a mis-decoded config that fails closed at run time.
+            var exponent = new byte[256];
+            exponent[0] = 0x01;
+            exponent[255] = 0x01;
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), Convert.ToBase64String(exponent)));
+        }
+
+        [Fact]
+        public void RsaExponentPaddedToTheKeyWidth_IsAccepted()
+        {
+            // The exponent bound is on significant bytes for the same
+            // reason the modulus floor is: 65537 written as a fixed-width
+            // field is still 65537.
+            var exponent = new byte[256];
+            exponent[253] = 0x01;
+            exponent[255] = 0x01;
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(Modulus(256)), Convert.ToBase64String(exponent));
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Fact]
+        public void RsaModulusWithALeadingZeroByte_IsAcceptedAtItsTrueBitLength()
+        {
+            // Java's BigInteger.toByteArray() prepends a 0x00 sign byte to a
+            // 2048-bit modulus, so a legitimate key from the Java side of
+            // this project arrives as 257 bytes. Rejecting leading-zero
+            // padding would lock out a producer we ship; the floor has to
+            // count significant bytes, not array length.
+            var padded = new byte[257];
+            Buffer.BlockCopy(Modulus(256), 0, padded, 1, 256);
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(padded), "AQAB");
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Theory]
+        [InlineData(1)]   // 2040 bits dressed as 256 bytes
+        [InlineData(128)] // a 1024-bit modulus left-padded to the floor
+        public void RsaModulusZeroPaddedUpToTheFloor_ThrowsAtConstruction(int leadingZeros)
+        {
+            // The floor exists to catch the one misconfiguration that fails
+            // OPEN. Counting encoded bytes defeats it with the most likely
+            // shape of that misconfiguration: HSM/KMS and JWK-adjacent
+            // tooling emit fixed-width zero-padded moduli, so a 1024-bit key
+            // arrives as 256 bytes and .NET verifies signatures made by the
+            // factorable private half.
+            var padded = new byte[256];
+            Buffer.BlockCopy(Modulus(256 - leadingZeros), 0, padded, leadingZeros, 256 - leadingZeros);
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(padded), "AQAB"));
+        }
+
+        [Fact]
+        public void ZeroPaddedModulusVerifiesARealRsaSignature()
+        {
+            // The padded form is not merely tolerated at construction: the
+            // key it produces must verify the same bytes the unpadded form
+            // does, or "accepted" would only mean "accepted and then broken".
+            using (var rsa = RSA.Create(2048))
+            {
+                RSAParameters parameters = rsa.ExportParameters(false);
+                var padded = new byte[parameters.Modulus.Length + 1];
+                Buffer.BlockCopy(parameters.Modulus, 0, padded, 1, parameters.Modulus.Length);
+
+                byte[] envelope = BuildRsaSigned(rsa, Payload("{}"));
+                var keys = new List<DeliveryKey>
+                {
+                    DeliveryKey.Rsa(
+                        KeyId,
+                        Convert.ToBase64String(padded),
+                        Convert.ToBase64String(parameters.Exponent))
+                };
+                Assert.True(ScriptEnvelopeVerifier.Verify(envelope, keys, Now).IsValid);
+            }
+        }
+
+        /// <summary>
+        /// The same envelope <see cref="Build"/> makes, signed with a real
+        /// RSA private key instead of the HMAC secret.
+        /// </summary>
+        private static byte[] BuildRsaSigned(RSA privateKey, byte[] payload)
+        {
+            string headerText = "sqlite-host-delivery/1\n"
+                + "alg=rsa-sha256\n"
+                + "kid=" + KeyId + "\n"
+                + "scriptId=unit-script\n"
+                + "issuedAt=" + IssuedAt + "\n"
+                + "expiresAt=\n"
+                + "minApiLevel=\n"
+                + "payloadLength=" + payload.Length + "\n\n";
+            var signed = new List<byte>();
+            signed.AddRange(Encoding.ASCII.GetBytes(headerText));
+            signed.AddRange(payload);
+            signed.Add((byte)'\n');
+            byte[] signedBytes = signed.ToArray();
+            string signature = Convert.ToBase64String(privateKey.SignData(
+                signedBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+            var envelope = new List<byte>(signedBytes);
+            envelope.AddRange(Encoding.ASCII.GetBytes("sig=" + signature + "\n"));
+            return envelope.ToArray();
+        }
+
         /// <summary>
         /// A stand-in modulus of exactly <paramref name="byteLength"/> bytes,
         /// high bit set so its byte length is also its true bit length.

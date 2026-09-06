@@ -79,6 +79,42 @@ namespace SqliteHost.Tests
             Assert.Contains("date", ex.Message);
         }
 
+        [Fact]
+        public void DuplicateJsonKey_IsRejectedByTheTestJsonLoader()
+        {
+            // An object may not repeat a key (docs/script-envelope.md).
+            // JsonDocument resolves one as last-wins, so a payload the Java
+            // and TypeScript readers refuse would otherwise load fine here —
+            // and "the validator judged the same document the device runs"
+            // is the property the whole delivery path rests on.
+            const string json = @"{
+              ""engine"": ""sqlite-host-v1"",
+              ""requiredApiLevel"": 1,
+              ""steps"": [
+                { ""id"": ""only"", ""statements"": [
+                  { ""sql"": ""ATTACH 'x' AS y"", ""sql"": ""SELECT 1"" } ] }
+              ]
+            }";
+            var ex = Assert.Throws<InvalidDataException>(() => ScriptEnvelopeJson.Parse(json));
+            Assert.Contains("duplicate object key", ex.Message);
+        }
+
+        [Fact]
+        public void RepeatedKeyNameInSiblingObjects_Loads()
+        {
+            // Guard against over-tightening: the rule is per object, so two
+            // steps both carrying an "id" are ordinary.
+            const string json = @"{
+              ""engine"": ""sqlite-host-v1"",
+              ""requiredApiLevel"": 1,
+              ""steps"": [
+                { ""id"": ""a"", ""statements"": [ { ""sql"": ""SELECT 1"" } ] },
+                { ""id"": ""b"", ""statements"": [ { ""sql"": ""SELECT 2"" } ] }
+              ]
+            }";
+            Assert.Equal(2, ScriptEnvelopeJson.Parse(json).Steps.Count);
+        }
+
         [SkippableFact]
         public void Example007_MixedPrefixSameName_RunsCompleted()
         {

@@ -5,7 +5,7 @@
  *
  * Usage: demo.mjs <payload.json> [manifest.json]
  * Exit code: 0 when the payload is publishable (no errors), 1 otherwise,
- * 2 on usage/IO problems.
+ * 2 on usage, IO or malformed-input problems.
  */
 
 import { readFileSync } from "node:fs";
@@ -97,12 +97,25 @@ export function runDemo(argv: string[], print: (line: string) => void): number {
     return 2;
   }
 
-  const manifest = parseHostManifest(manifestJson);
-  printReference(loadHostMetadata(manifest), print);
+  // Everything past this point parses caller-supplied JSON.
+  // parseHostManifest checks four fields and then casts, and JSON.parse
+  // throws on anything that is not JSON at all, so pointing the demo at
+  // the wrong file used to dump a Node stack trace — which reads as a
+  // broken tool rather than a wrong argument, and prints internal paths
+  // while doing it. Exit 2 for the same reason an unreadable file does:
+  // the input was wrong, which is a different answer from `this payload
+  // is not publishable` (1).
+  try {
+    const manifest = parseHostManifest(manifestJson);
+    printReference(loadHostMetadata(manifest), print);
 
-  print("");
-  print(`Lint findings for ${payloadPath}:`);
-  const findings = lintScript(JSON.parse(payloadJson), manifest);
-  printFindings(findings, print);
-  return isPublishable(findings) ? 0 : 1;
+    print("");
+    print(`Lint findings for ${payloadPath}:`);
+    const findings = lintScript(JSON.parse(payloadJson), manifest);
+    printFindings(findings, print);
+    return isPublishable(findings) ? 0 : 1;
+  } catch (error) {
+    print(`error: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
+  }
 }
