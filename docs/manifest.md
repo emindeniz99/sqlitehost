@@ -25,13 +25,24 @@ indent, LF, trailing newline. Committed snapshot:
 ## Method descriptor
 
 `operationName` (TypeSpec op), `methodName` (protocol name),
-`handlerName`, `apiLevel`, `mutates` (default true; false = inline
-eligible), resolved `callTable`/`resultTable`/`queueTrigger`,
+`handlerName`, `apiLevel`, `mutates`, resolved
+`callTable`/`resultTable`/`queueTrigger`,
 `input`/`result` shapes, and `inline` (function exposure block —
 `functionName`, `minArgs`, `maxArgs`, `args`, `returns` — or null): `modelName`, scalar
 `fields` (`propertyName`, `sqlName`, `column`, `scalarType`,
 `optional`), and `listFields` (`propertyName`, `sqlName`, `childTable`,
 `itemModelName`, `itemFields`).
+
+`mutates` is authoring provenance, not a contract. It records what
+`@hostMethod` declared. The inline-eligibility decision is made once, in
+the frontend, and is materialized as the `inline` block; after that
+nothing acts on `mutates`. It is carried, not read: the Java manifest
+reader requires the key and stores it on `MethodDescriptor`, the
+TypeScript metadata type declares it, and no emitter, runtime or
+validator branches on it anywhere. A manifest whose `mutates` is `true`
+beside a non-null `inline` still emits the inline function and nothing
+warns. To learn whether a method is exposed as a function, read
+`inline !== null`.
 
 All physical names in the manifest are **resolved** — consumers
 (validators, DDL generators, editors) never re-derive naming. The
@@ -41,6 +52,24 @@ configurable per host via `@hostLibrary` (see `docs/naming.md`); one
 each producing its own manifest and generated artifacts (each library
 is an independent runtime definition with its own workspace — e.g.
 dev/prod or per-screen feature APIs).
+
+## Loading a manifest
+
+`parseManifest` (`codegen/core/src/manifest.ts`) validates structure
+before returning an IR, and every emitter CLI funnels through it: keys
+present and typed, no unknown top-level keys, `manifestVersion` 1, a
+positive integral `apiLevel` per library and per method with no method
+above its library's level, `minArgs <= maxArgs <= args.length`, unique
+method names, unique table names (compared lowercased, as SQLite
+resolves them) and unique `sqlName`s within a shape. Problems are
+reported together, each with its JSON path, because a hand-edited or
+merge-conflicted manifest rarely has just one.
+
+What it deliberately does **not** check is whether a resolved name is
+what the naming conventions would derive. A manifest carries resolved
+names precisely so a host can keep a legacy table or column name.
+`parseManifestUnchecked` skips the whole check and exists for test
+fixtures that build deliberately non-conforming IRs.
 
 ## Consumers
 

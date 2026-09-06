@@ -546,3 +546,30 @@ test("CLI exits non-zero on bad usage", () => {
   assert.equal(run.status, 2);
   assert.match(run.stderr, /usage: sqlite-host-emit-typescript/);
 });
+
+// ---------------------------------------------------------------------------
+// --base-name containment (round-3 audit finding 6)
+// ---------------------------------------------------------------------------
+
+for (const baseName of ["../../../../ESCAPED2", "a/b", "1x", ""]) {
+  test(`CLI rejects --base-name ${JSON.stringify(baseName)}`, () => {
+    // baseName lands in a path segment AND in a generated identifier
+    // (metadataConstName), so '1x' produced `export const _1X_METADATA`
+    // and a traversing value wrote the module outside <out-dir>.
+    const outDir = scratchDir("basename-reject");
+    const run = spawnSync(
+      process.execPath,
+      [
+        join(packageRoot, "dist/cli.js"),
+        join(projectRoot, "fixtures/manifests/sample-host.manifest.json"),
+        outDir,
+        "--base-name",
+        baseName,
+      ],
+      { encoding: "utf8" },
+    );
+    rmSync(outDir, { recursive: true, force: true });
+    assert.notEqual(run.status, 0, `stdout: ${run.stdout}`);
+    assert.match(run.stderr, /--base-name/);
+  });
+}

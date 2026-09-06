@@ -268,7 +268,7 @@ Argument shapes (from each CLI's usage string):
 | CLI (bin name) | Usage |
 |---|---|
 | `sqlite-host-emit-manifest` | `<entrypoint.tsp> <out-dir> [--base-name <name>]` |
-| *(no bin — run `codegen/csharp-emitter/dist/cli.js`)* | `<manifest.json> <out-dir> [--profile classic\|compact\|ultra] [--namespace <ns>] [--dto-fields]` |
+| `sqlite-host-emit-csharp` | `<manifest.json> <out-dir> [--profile classic\|compact\|ultra] [--namespace <ns>] [--dto-fields]` |
 | `sqlite-host-emit-java` | `<manifest.json> <out-dir> [--class-name <name>]` |
 | `sqlite-host-emit-typescript` | `<manifest.json> <out-dir> [--base-name <name>]` |
 
@@ -292,11 +292,10 @@ root — the generated package is the namespace, and Java ties the file
 name to the class name, so otherwise the second run overwrites the
 first.
 
-`--base-name` defaults to `sample-host` — pass your own. The bin
-names come from each emitter's `package.json` and matter once the
+`--base-name` defaults to `sample-host` — pass your own. All four bin
+names come from the emitters' `package.json` files and matter once the
 emitter packages are installable dependencies; today the `node
-…/dist/cli.js` form is the reliable invocation (note the C# emitter
-currently declares no `bin` entry at all).
+…/dist/cli.js` form is the reliable invocation.
 
 ### B.3 Where the outputs go
 
