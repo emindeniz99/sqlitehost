@@ -131,13 +131,24 @@ if (!result.IsValid)
 
 // Rollback defence — the library cannot do this for you, because it
 // has no storage. Persist LastIssuedAt per scriptId.
-if (result.IssuedAtUnixMs <= LastIssuedAt(result.ScriptId))
+if (result.IssuedAtUnixMs.Value <= LastIssuedAt(result.ScriptId))
 {
     return; // stale or replayed; keep the newer script
 }
 
 SaveScript(result.ScriptId, result.Payload, result.IssuedAtUnixMs.Value);
 ```
+
+`IssuedAtUnixMs` is a `long?`, null only when `IsValid` is false — the
+`.Value` above is guarded by the `IsValid` check two lines earlier, but
+write it explicitly rather than relying on the lifted `<=` operator: a
+comparison against a null nullable is `false`, not an error, so a bare
+`result.IssuedAtUnixMs <= …` would silently pass a null through instead
+of throwing.
+
+`result.ScriptId` may contain `.` and `:` (the verifier's charset for
+`scriptId` allows them alongside letters, digits, `_` and `-`) — do not
+use it as a filesystem path component without sanitizing it first.
 
 `Verify` never throws — not on truncated downloads, not on an HTML
 error page, not on `null`. It returns a reason instead:

@@ -637,10 +637,19 @@ lexical binding validation (`ValidateBindings` remains settable but is
 ignored; `missing-binding`/`unused-binding` never fire), ultra
 result-shape enforcement, and list-child-after-drain probing.
 Functional semantics — schema creation, execution, drain order, the
-version gate, halt/control, error mapping — are identical; measured
-savings in `docs/compatibility.md`. Use it only for final size-critical
-builds and keep CI/dev builds full: the stripped checks are the
-fail-loud layer that catches authoring bugs.
+version gate, halt/control — are identical; measured savings in
+`docs/compatibility.md`. Error mapping is not identical for the two
+binding codes: with `ValidateBindings` stripped, a SQL parameter with
+no matching binding is never caught before execution, so the run
+reports `FailedSql`/`sql-error` (with `BindingName` unset) instead of
+`FailedBinding`/`missing-binding`; a binding the SQL never references
+is simply not checked, so the statement runs as if it were absent and
+the run can report `Completed` instead of `FailedBinding`/
+`unused-binding`. Both codes are therefore unreachable from a SLIM
+runtime — the validators are the only place left that can still raise
+them, before a script ships (`docs/validation.md`). Use SLIM only for
+final size-critical builds and keep CI/dev builds full: the stripped
+checks are the fail-loud layer that catches authoring bugs.
 
 ### Runtime lifecycle (pinned semantics)
 
@@ -677,6 +686,17 @@ fail-loud layer that catches authoring bugs.
    an action other than `halt`/`fail` (`FailedValidation` /
    `invalid-control-action`).
 9. Return `SqliteHostRunResult`; dispose the workspace connection.
+
+### Threading
+
+`SqliteHostRuntime<THandlers>` and the workspace connection it opens
+are used from one thread at a time — the runtime does no locking or
+synchronization of its own. Calling `Run`/`Execute`/
+`ValidateEnvironment` concurrently on the same instance, or disposing
+the connection while one of them is in flight, is undefined behavior.
+The caller owns serializing access to a given runtime instance (a
+per-call runtime, or an external lock); running two runtimes over two
+independent connections concurrently is fine.
 
 ## Generated code shape (target of the C# emitter)
 
