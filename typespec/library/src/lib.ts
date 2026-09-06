@@ -40,6 +40,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Handler name "${"name"}" is not a valid identifier ([A-Za-z_][A-Za-z0-9_]*).`,
       },
     },
+    "reserved-word-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`${"kind"} "${"name"}" is a reserved word in ${"languages"}; the emitters interpolate it into generated source and no emitter escapes or prefixes it (Java has no escape at all for a keyword package segment), so the generated code would not compile. Pick another name.`,
+      },
+    },
     "invalid-sql-name": {
       severity: "error",
       messages: {

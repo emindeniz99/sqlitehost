@@ -32,6 +32,7 @@ import {
   getSqlName,
   IDENTIFIER,
   reportDiagnostic,
+  reservedWordLanguages,
   SQL_NAME,
   type HostMethodOptions,
 } from "@sqlite-host/typespec";
@@ -237,6 +238,27 @@ export function validateHostLibraryInterface(
     iface.namespace !== undefined ? getNamespaceFullName(iface.namespace) : "";
   if (namespaceName.length === 0) {
     error(ctx, "missing-namespace", { name: iface.name }, iface);
+  } else {
+    // ...and no segment of it may be a target-language keyword. The C#
+    // emitter writes the namespace as authored; the Java emitter
+    // LOWERCASES it into a package declaration, so `New.Thing` reaches
+    // javac as `package new.thing.generated;`. Neither language can
+    // escape a keyword there.
+    for (const segment of namespaceName.split(".")) {
+      const languages = reservedWordLanguages(segment, segment.toLowerCase());
+      if (languages.length > 0) {
+        error(
+          ctx,
+          "reserved-word-name",
+          {
+            kind: "Namespace segment",
+            name: segment,
+            languages: languages.join(" and "),
+          },
+          iface,
+        );
+      }
+    }
   }
 
   // functionPrefix must be a non-empty ASCII name fragment

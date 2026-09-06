@@ -6,6 +6,7 @@ import type {
   Program,
 } from "@typespec/compiler";
 import { reportDiagnostic, stateKeys } from "./lib.js";
+import { reservedWordLanguages } from "./reserved.js";
 
 /** Resolved `@hostLibrary` options (naming keys stay optional here; the frontend applies defaults). */
 export interface HostLibraryOptions {
@@ -164,6 +165,23 @@ export function $hostMethod(
       format: { name: opts.handler },
       target: context.decoratorTarget,
     });
+  } else {
+    // IDENTIFIER is the TypeSpec/SQL shape; a name that satisfies it can
+    // still be a target-language keyword. The C# emitter interpolates
+    // the handler name raw into the handler interface member and both
+    // call sites, with no @-verbatim path.
+    const languages = reservedWordLanguages(opts.handler);
+    if (languages.length > 0) {
+      reportDiagnostic(context.program, {
+        code: "reserved-word-name",
+        format: {
+          kind: "Handler name",
+          name: opts.handler,
+          languages: languages.join(" and "),
+        },
+        target: context.decoratorTarget,
+      });
+    }
   }
   checkApiLevel(context, opts.apiLevel);
   context.program.stateMap(stateKeys.hostMethod).set(target, opts);

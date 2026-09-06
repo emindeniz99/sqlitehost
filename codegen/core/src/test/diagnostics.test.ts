@@ -1196,3 +1196,60 @@ test("an explicit @sqlName rescues a property name that cannot be derived", asyn
   );
   assert.equal(result.ir?.methods[0].input.fields[0].sqlName, "weird_name");
 });
+
+// ---------------------------------------------------------------------------
+// Target-language reserved words (round-3 audit finding 2)
+// ---------------------------------------------------------------------------
+
+test("rejects a namespace segment that is a Java keyword once lowercased", async () => {
+  // The Java emitter lowercases the library namespace straight into a
+  // package declaration, so `New.Thing` emits `package new.thing.generated;`.
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace New.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("rejects a namespace segment that is a keyword in both languages", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace \`int\`.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("accepts a namespace segment that only resembles a keyword", async () => {
+  const result = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Newer.Thing;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({ name: "doIt", handler: "DoIt" })
+      op DoIt(input: In): Out;
+    }
+    model In { key: string; }
+    model Out { value: int64; }
+  `);
+  assert.equal(result.ir?.library.namespace, "Newer.Thing");
+});
