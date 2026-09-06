@@ -763,6 +763,21 @@ namespace SqliteHost
                             stepId, call.Method);
                     }
 
+                    // The queue row's status is ordinary data, so it is not
+                    // an at-most-once guarantee: a script that clears the
+                    // result row and re-marks the row pending gets the
+                    // handler invoked again. The run's own record of what it
+                    // has drained is the half a script cannot write
+                    // (docs/errors.md call-already-drained).
+                    if (!state.DrainedQueueIds.Add(call.QueueId))
+                    {
+                        return Failure(state, SqliteHostRunStatus.FailedSql, "call-already-drained",
+                            "Queue row " + call.QueueId + " (call '" + call.CallId
+                            + "', method '" + call.Method
+                            + "') was drained earlier in this run and is pending again.",
+                            stepId, call.Method);
+                    }
+
                     // The control table is the script's channel, and the runtime
                     // only ever reads it — so a row that appears while a handler
                     // runs is the HOST's, not the script's. Without this
@@ -1147,6 +1162,7 @@ namespace SqliteHost
                 ExecutedCallCount = 0;
                 InlineCallCount = 0;
                 Calls = enableDiagnostics ? new List<SqliteHostCallDiagnostic>() : null;
+                DrainedQueueIds = new HashSet<long>();
 #if !SQLITEHOST_SLIM
                 DrainedListCalls = new List<DrainedListCall>();
 #endif
@@ -1181,6 +1197,9 @@ namespace SqliteHost
             }
 
             public List<SqliteHostCallDiagnostic> Calls { get; }
+
+            /// <summary>Queue ids this run has already drained; a repeat is refused.</summary>
+            public HashSet<long> DrainedQueueIds { get; }
 
 #if !SQLITEHOST_SLIM
             /// <summary>Drained calls with input list fields, for list-child-after-drain detection.</summary>

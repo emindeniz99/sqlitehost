@@ -38,6 +38,7 @@ host application decides logging/telemetry policy.
 | `missing-binding` | FailedBinding | SQL references a parameter with no binding (when `ValidateBindings`) |
 | `unused-binding` | FailedBinding | binding not referenced by the SQL (when `ValidateBindings`) |
 | `max-pending-calls-exceeded` | FailedSql | a step's drain reached more than `MaxPendingCallsPerStep` pending calls in total, counting calls enqueued *during* the drain — which is also what bounds the re-drain loop |
+| `call-already-drained` | FailedSql | a queue row this run already drained is `pending` again. The queue row's `status` is ordinary data, so it is not by itself an at-most-once guarantee; the run keeps its own set of drained `queue_id`s, which a script cannot write. `Method` is set |
 | `undrained-calls` | FailedSql | the run reached its end (completed or halted) with a row still `pending` in the queue. The per-step drain re-reads the pending set until it comes back empty, so this is the backstop for a drain that cannot see what the queue holds — `Completed` never means "all calls drained except one" |
 | `unknown-queued-method` | FailedSql | queue row references a method with no registered spec (schema/spec mismatch) |
 | `call-row-missing` | FailedSql | queue row exists but the parent call row is missing |

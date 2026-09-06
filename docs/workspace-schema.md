@@ -98,6 +98,10 @@ For each method (naming derives from host-level conventions, see
   placeholders); duplicate `(call_id, item_index)` pairs fail at
   insert time through the primary-key constraint (`sql-error`);
   an empty list maps to an empty DTO list, never null.
+  At-most-once per queue row is the runtime's guarantee, not the
+  schema's: `status` is ordinary data a statement can rewrite, so the
+  runtime also remembers which `queue_id`s it has drained and refuses a
+  repeat (`call-already-drained`, `docs/errors.md`).
 - **Queue trigger** `trg_call_<method>_queue`:
 
 ```sql

@@ -124,6 +124,42 @@ namespace SqliteHost.Tests
             Assert.Empty(handlers.Log);
         }
 
+        /// <summary>
+        /// pending_host_calls.call_id is UNIQUE and
+        /// docs/workspace-schema.md describes one result row written per
+        /// successful handler invocation, which reads as an at-most-once
+        /// guarantee. The drain's only idempotence was the queue row's
+        /// status column — ordinary data — so a script that cleared the
+        /// result row and re-marked the queue row pending got the handler
+        /// invoked again, once per later step, and the run still reported
+        /// Completed. Both statements it needs are denied by
+        /// protocol-table-write, so this too is defence in depth; the cost
+        /// is one HashSet per run.
+        /// </summary>
+        [SkippableFact]
+        public void QueueRowMarkedPendingAgain_IsRefused_NotReplayed()
+        {
+            var handlers = new FakeGameHandlers();
+            var runtime = CreateRuntime(handlers, new TestWorkspaceFactory());
+            var script = Scripts.New(
+                Scripts.Step("emit",
+                    Scripts.Statement(
+                        "INSERT INTO call_set_value (call_id, input_key, input_value) VALUES ('s-1','k',1)")),
+                Scripts.Step("replay",
+                    Scripts.Statement("DELETE FROM result_set_value WHERE call_id = 's-1'"),
+                    Scripts.Statement(
+                        "UPDATE pending_host_calls SET status = 'pending' WHERE call_id = 's-1'")));
+
+            SqliteHostRunResult result = runtime.Run(script);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
+            Assert.Equal("call-already-drained", result.ErrorCode);
+            Assert.Equal("setValue", result.Method);
+            Assert.Equal("replay", result.StepId);
+            Assert.Equal(new[] { "setValue:k:1" }, handlers.Log);   // exactly once
+            Assert.Equal(1, result.ExecutedCallCount);
+        }
+
         /// <summary>Workspace whose drain query never sees the pending rows it asks for.</summary>
         private sealed class HidingWorkspaceFactory : ISqliteHostConnectionFactory, IDisposable
         {
