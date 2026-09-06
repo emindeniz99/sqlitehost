@@ -110,6 +110,13 @@
       "warnings": []
     },
     {
+      "payload": "valid/example-021-above-floor-syntax.json",
+      "manifest": "../manifests/syntax-floor-host.manifest.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "payload": "valid/example-012-bracket-target.json",
       "valid": true,
       "errors": [],

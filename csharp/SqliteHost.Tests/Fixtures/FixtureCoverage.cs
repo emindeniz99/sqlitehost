@@ -69,6 +69,13 @@ namespace SqliteHost.Tests.Fixtures
             new Dictionary<string, int>(StringComparer.Ordinal)
             {
                 { "example-011-insert-alias.json", 3024000 },
+                // Every construct sqlite-version-too-low-for-syntax knows
+                // about, in one script, under the host that declares a floor
+                // high enough to permit them. The validators prove the rule
+                // stays silent there; this table is what makes the RUNTIME
+                // prove the same script actually runs, and 3.39.0 is the
+                // newest of the eleven (RIGHT JOIN, IS DISTINCT FROM).
+                { "example-021-above-floor-syntax.json", 3039000 },
             };
         // <<< valid-engine-floors
 

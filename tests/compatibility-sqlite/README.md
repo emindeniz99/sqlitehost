@@ -239,6 +239,21 @@ the counts are platform-independent because every skip below is a
 - **2 more below 3.24:** `example-011-insert-alias` needs the UPSERT-era
   `INSERT INTO t AS alias`, which 3.19.3 cannot parse
   (`FixtureCoverage.ValidEngineFloors`).
+- **2 more below 3.39:** `example-021-above-floor-syntax`, the payload
+  that exercises every construct `sqlite-version-too-low-for-syntax`
+  knows about, needs the newest of them (`RIGHT JOIN`,
+  `IS DISTINCT FROM`). Same table, same mechanism.
+
+**The counts above predate `example-021` and have not been re-measured**
+— it landed with the syntax version lint and no matrix run has happened
+since. The arithmetic is exact: one valid payload is 4 tests, one per
+adapter, so every leg gains 4 Total and 2 Skipped (System.Data.SQLite and
+sqlite-net, which skip whole under the override); a leg on an engine
+below 3.39 skips the other 2 as well instead of passing them. That also
+splits the first row, whose two engines no longer behave alike: `newest`
+gains 2 Passed, `3.28.0` gains 2 Skipped. Both stay far inside the
+ceilings below, which is why they are not being adjusted on paper —
+replace the table with real numbers on the next full matrix run.
 - **173 more below the floor:** every runtime-driven test on the two
   overridable adapters, skipping itself through `SampleHostFloor` because
   the `sqlite-version-too-low` gate would refuse the run anyway. 68 of
