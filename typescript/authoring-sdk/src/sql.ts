@@ -498,6 +498,35 @@ function isIdentToken(token: SqlToken | undefined): token is SqlToken {
   );
 }
 
+/**
+ * Every token kind SQLite accepts where a **name** is required (a table,
+ * a column): the two identifier kinds plus a single-quoted string.
+ *
+ * The string case is SQLite's documented MySQL-compatibility misfeature —
+ * "If a keyword in single quotes is used in a context where an identifier is
+ * allowed but where a string literal is not allowed, then the token is
+ * understood to be an identifier" (sqlite.org/lang_keywords.html). Verified
+ * against the sqlite3 CLI 3.51.0: `DELETE FROM 'pending_host_calls'`,
+ * `UPDATE 'result_get_value' SET …`, `INSERT INTO 'result_get_value' (…)`
+ * and `DELETE FROM main.'pending_host_calls'` all compile and run. Treating
+ * `'…'` as a value-only token in name position left every one of them
+ * invisible to protocol-table-write, the INSERT analysis and result-read
+ * lineage — a one-character bypass of the whole denylist.
+ *
+ * This is deliberately NOT used in value position: `resolveExpression` and
+ * the call-id atoms must keep reading `'x'` as the literal it is there, or
+ * static call-id resolution changes meaning. Mirrors the Java
+ * SqlAnalyzer.isName.
+ */
+function isNameToken(token: SqlToken | undefined): token is SqlToken {
+  return (
+    token !== undefined &&
+    (token.kind === "identifier" ||
+      token.kind === "quoted-identifier" ||
+      token.kind === "string")
+  );
+}
+
 function identEquals(token: SqlToken | undefined, word: string): boolean {
   return isIdentToken(token) && token.value.toLowerCase() === word;
 }
@@ -590,13 +619,18 @@ function skipCtePrefix(tokens: SqlToken[]): number {
   return pos;
 }
 
-/** Read `[schema.]table` at `start`, keeping the last component (lowercased). */
+/**
+ * Read `[schema.]table` at `start`, keeping the last component (lowercased).
+ * Both components accept every name token, single-quoted included — SQLite
+ * resolves `main.'pending_host_calls'` as a name, and stopping at `main`
+ * reported the harmless schema as the write target.
+ */
 function qualifiedName(tokens: SqlToken[], start: number): string | null {
   let pos = start;
-  if (!isIdentToken(tokens[pos])) return null;
+  if (!isNameToken(tokens[pos])) return null;
   let name = tokens[pos].value;
   pos++;
-  while (isPunctAt(tokens[pos], ".") && isIdentToken(tokens[pos + 1])) {
+  while (isPunctAt(tokens[pos], ".") && isNameToken(tokens[pos + 1])) {
     name = tokens[pos + 1].value;
     pos += 2;
   }
@@ -683,17 +717,15 @@ export function analyzeInsert(
   if (!keywordAt(tokens, i, "into")) return null;
   i++;
   let nameToken = tokens[i];
-  if (
-    nameToken === undefined ||
-    (nameToken.kind !== "identifier" && nameToken.kind !== "quoted-identifier")
-  ) {
+  if (!isNameToken(nameToken)) {
     return null;
   }
   i++;
   // schema-qualified name: keep the rightmost part
   while (tokens[i]?.kind === "punct" && tokens[i]?.value === ".") {
-    nameToken = tokens[i + 1];
-    if (nameToken === undefined) return null;
+    const next = tokens[i + 1];
+    if (!isNameToken(next)) return null;
+    nameToken = next;
     i += 2;
   }
   const table = nameToken.value.toLowerCase();
@@ -715,7 +747,7 @@ export function analyzeInsert(
     i++;
     while (i < tokens.length && !(tokens[i].kind === "punct" && tokens[i].value === ")")) {
       const token = tokens[i];
-      if (token.kind === "identifier" || token.kind === "quoted-identifier") {
+      if (isNameToken(token)) {
         columns.push(token.value.toLowerCase());
       }
       i++;

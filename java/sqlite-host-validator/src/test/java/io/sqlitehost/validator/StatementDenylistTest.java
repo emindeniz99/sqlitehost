@@ -332,6 +332,40 @@ class StatementDenylistTest {
     }
 
     @Test
+    void aSingleQuotedNameIsATableName() throws IOException {
+        // SQLite's MySQL-compatibility rule: a single-quoted token in a
+        // position where a name is required IS the name
+        // (sqlite.org/lang_keywords.html). Verified running against the
+        // generated schema on sqlite3 3.51.0 — each of these deletes,
+        // forges or rewrites for real. Reading `'…'` as value-only here
+        // was a one-character bypass of the entire denylist: every one of
+        // them reported nothing at all in both validators.
+        assertEquals(1, protocolWrite("DELETE FROM 'pending_host_calls'").size());
+        assertEquals(1, protocolWrite("UPDATE 'result_get_value' SET result_value = 1").size());
+        assertEquals(1, protocolWrite(
+                "INSERT INTO 'result_get_value' (call_id, status, result_value)"
+                        + " VALUES ('x', 'done', 1)").size());
+        // …and it survives schema qualification, where the '.'-follower is
+        // the name that counts.
+        assertEquals(1, protocolWrite("DELETE FROM main.'pending_host_calls'").size());
+    }
+
+    @Test
+    void aSingleQuotedValueStaysALiteral() throws IOException {
+        // The other half of the same rule, and the reason name-capability
+        // is positional rather than a token kind: in VALUE position `'…'`
+        // is a string, so storing a protocol table's name as text is an
+        // ordinary write to the script's own scratch table. Reading it as
+        // a name here would reject the payload AND change static call-id
+        // resolution, which reads the same literals.
+        assertEquals(List.of(), protocolWrite(
+                "INSERT INTO script_vars (name, value_type, text_value)"
+                        + " VALUES ('watched_table', 'text', 'pending_host_calls')"));
+        assertEquals(List.of(), protocolWrite(
+                "UPDATE script_vars SET text_value = 'result_get_value' WHERE name = 'w'"));
+    }
+
+    @Test
     void theMessageNamesTheTableAndItsRole() throws IOException {
         // "protocol-table-write" alone does not tell an author which of the
         // several runtime-owned tables they touched, or why it is owned.

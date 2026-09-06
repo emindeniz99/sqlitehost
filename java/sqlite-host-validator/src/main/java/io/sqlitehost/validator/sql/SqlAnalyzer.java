@@ -22,6 +22,33 @@ public final class SqlAnalyzer {
     }
 
     /**
+     * Whether the token may stand where SQLite requires a <b>name</b> (a
+     * table, a column): an identifier in any of its quoting forms, or a
+     * single-quoted string.
+     *
+     * <p>The string case is SQLite's documented MySQL-compatibility
+     * misfeature — "If a keyword in single quotes is used in a context where
+     * an identifier is allowed but where a string literal is not allowed,
+     * then the token is understood to be an identifier"
+     * (sqlite.org/lang_keywords.html). Verified against the sqlite3 CLI
+     * 3.51.0: {@code DELETE FROM 'pending_host_calls'},
+     * {@code UPDATE 'result_get_value' SET …},
+     * {@code INSERT INTO 'result_get_value' (…)} and
+     * {@code DELETE FROM main.'pending_host_calls'} all compile and run.
+     * Requiring {@link SqlToken.Kind#IDENT} in name position left every one
+     * of them invisible to protocol-table-write, the INSERT analysis and
+     * result-read lineage — a one-character bypass of the whole denylist.</p>
+     *
+     * <p>Deliberately NOT used in <em>value</em> position: {@link #isAtom}
+     * and the call-id resolution must keep reading {@code 'x'} as the literal
+     * it is there, or static call-id resolution changes meaning. Mirrors the
+     * TypeScript {@code isNameToken}.</p>
+     */
+    public static boolean isName(SqlToken token) {
+        return token.kind() == SqlToken.Kind.IDENT || token.kind() == SqlToken.Kind.STRING;
+    }
+
+    /**
      * Parse the statement as an INSERT, or return {@code null} when it
      * is not one. Handles {@code INSERT [OR …] INTO <table>} with an
      * optional column list, followed by {@code VALUES (…) [, (…)]…},
@@ -48,7 +75,7 @@ public final class SqlAnalyzer {
             return null;
         }
         int pos = into + 1;
-        if (tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+        if (!isName(tokens.get(pos))) {
             return null;
         }
         String table = tokens.get(pos).text();
@@ -56,7 +83,7 @@ public final class SqlAnalyzer {
         // Schema-qualified name: keep the last component.
         while (pos + 1 < tokens.size()
                 && tokens.get(pos).isPunct(".")
-                && tokens.get(pos + 1).kind() == SqlToken.Kind.IDENT) {
+                && isName(tokens.get(pos + 1))) {
             table = tokens.get(pos + 1).text();
             pos += 2;
         }
@@ -79,7 +106,7 @@ public final class SqlAnalyzer {
             columns = new ArrayList<>();
             pos++;
             while (pos < tokens.size() && !tokens.get(pos).isPunct(")")) {
-                if (tokens.get(pos).kind() == SqlToken.Kind.IDENT) {
+                if (isName(tokens.get(pos))) {
                     columns.add(tokens.get(pos).text());
                 }
                 pos++;
@@ -470,17 +497,23 @@ public final class SqlAnalyzer {
         return tokens.size();
     }
 
-    /** Read {@code [schema.]table} at {@code start}, keeping the last component. */
+    /**
+     * Read {@code [schema.]table} at {@code start}, keeping the last
+     * component. Both components accept every name token, single-quoted
+     * included — SQLite resolves {@code main.'pending_host_calls'} as a name,
+     * and stopping at {@code main} reported the harmless schema as the write
+     * target.
+     */
     private static String qualifiedName(List<SqlToken> tokens, int start) {
         int pos = start;
-        if (pos >= tokens.size() || tokens.get(pos).kind() != SqlToken.Kind.IDENT) {
+        if (pos >= tokens.size() || !isName(tokens.get(pos))) {
             return null;
         }
         String name = tokens.get(pos).text();
         pos++;
         while (pos + 1 < tokens.size()
                 && tokens.get(pos).isPunct(".")
-                && tokens.get(pos + 1).kind() == SqlToken.Kind.IDENT) {
+                && isName(tokens.get(pos + 1))) {
             name = tokens.get(pos + 1).text();
             pos += 2;
         }

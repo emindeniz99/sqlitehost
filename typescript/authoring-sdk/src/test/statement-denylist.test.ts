@@ -308,6 +308,47 @@ test("a single statement, terminated or not, is not multiple-statements", () => 
   }
 });
 
+test("a single-quoted name is a table name", () => {
+  // SQLite's MySQL-compatibility rule: a single-quoted token in a position
+  // where a name is required IS the name (sqlite.org/lang_keywords.html).
+  // Verified running against the generated schema on sqlite3 3.51.0 — each of
+  // these deletes, forges or rewrites for real. Reading `'…'` as value-only
+  // here was a one-character bypass of the entire denylist: every one of them
+  // reported nothing at all in both validators.
+  assert.equal(protocolWrite("DELETE FROM 'pending_host_calls'").length, 1);
+  assert.equal(protocolWrite("UPDATE 'result_get_value' SET result_value = 1").length, 1);
+  assert.equal(
+    protocolWrite(
+      "INSERT INTO 'result_get_value' (call_id, status, result_value)" +
+        " VALUES ('x', 'done', 1)",
+    ).length,
+    1,
+  );
+  // …and it survives schema qualification, where the `.`-follower is the
+  // name that counts.
+  assert.equal(protocolWrite("DELETE FROM main.'pending_host_calls'").length, 1);
+});
+
+test("a single-quoted value stays a literal", () => {
+  // The other half of the same rule, and the reason name-capability is
+  // positional rather than a token kind: in VALUE position `'…'` is a string,
+  // so storing a protocol table's name as text is an ordinary write to the
+  // script's own scratch table. Reading it as a name here would reject the
+  // payload AND change static call-id resolution, which reads the same
+  // literals.
+  assert.deepStrictEqual(
+    protocolWrite(
+      "INSERT INTO script_vars (name, value_type, text_value)" +
+        " VALUES ('watched_table', 'text', 'pending_host_calls')",
+    ),
+    [],
+  );
+  assert.deepStrictEqual(
+    protocolWrite("UPDATE script_vars SET text_value = 'result_get_value' WHERE name = 'w'"),
+    [],
+  );
+});
+
 test("the message names the table and its role", () => {
   // "protocol-table-write" alone does not tell an author which of the several
   // runtime-owned tables they touched, or why it is owned.

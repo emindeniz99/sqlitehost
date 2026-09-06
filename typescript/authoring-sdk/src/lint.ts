@@ -637,7 +637,17 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // statically resolvable call-id filters (mirrors the Java engine).
       const readMethods: string[] = [];
       for (const token of tokens) {
-        if (token.kind !== "identifier" && token.kind !== "quoted-identifier") continue;
+        // Single-quoted names count: SQLite resolves `FROM 'result_get_value'`
+        // as the table, so a lineage scan that only looked at identifier
+        // tokens went silent on the quoted spelling of the same read
+        // (docs/validation.md — the four quoting forms).
+        if (
+          token.kind !== "identifier" &&
+          token.kind !== "quoted-identifier" &&
+          token.kind !== "string"
+        ) {
+          continue;
+        }
         const table = token.value.toLowerCase();
         const method = resultTables.get(table) ?? resultChildTables.get(table);
         if (method !== undefined && !readMethods.includes(method)) {

@@ -355,7 +355,11 @@ public final class ValidationEngine {
         // statically resolvable call-id filters (manifest columns.callId).
         Set<String> readMethods = new LinkedHashSet<>();
         for (SqlToken token : tokens) {
-            if (token.kind() != SqlToken.Kind.IDENT) {
+            // Single-quoted names count: SQLite resolves
+            // `FROM 'result_get_value'` as the table, so a lineage scan that
+            // only looked at IDENT tokens went silent on the quoted spelling
+            // of the same read (docs/validation.md — the four quoting forms).
+            if (!SqlAnalyzer.isName(token)) {
                 continue;
             }
             MethodDescriptor method = schema.resultTables.get(lower(token.text()));

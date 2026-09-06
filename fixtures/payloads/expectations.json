@@ -837,6 +837,82 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-delete.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-insert.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-update.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-single-quoted-qualified.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/result-read-single-quoted-unknown-call.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "result-read-unknown-call",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-019-single-quoted-literal.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
     }
   ]
 }

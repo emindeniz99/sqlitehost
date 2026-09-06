@@ -332,12 +332,27 @@ can reach it.
 
 Both codes carry `"validators": ["java", "typescript"]` in
 `fixtures/payloads/expectations.json`, and the TypeScript rule lives in
-`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all three
-quoting forms for a result table — `"…"`, `` `…` `` and `[…]` — so
+`typescript/authoring-sdk/src/lint.ts`. Both tokenizers resolve all four
+quoting forms for a result table — `"…"`, `` `…` ``, `[…]` and `'…'` — so
 `invalid/result-read-unknown-call-bracket.json` expects both. That case
 read `["java"]` until the matrix became exact: the TypeScript tokenizer
 had grown bracket support and containment could not see that the
 `validators` list had gone stale.
+
+The fourth form is SQLite's MySQL-compatibility misfeature, and it is a
+name only *by position*: "if a keyword in single quotes is used in a
+context where an identifier is allowed but where a string literal is not
+allowed, then the token is understood to be an identifier"
+(sqlite.org/lang_keywords.html). So `DELETE FROM 'pending_host_calls'`,
+`UPDATE 'result_get_value' SET …`, `INSERT INTO 'result_get_value' (…)`
+and `DELETE FROM main.'pending_host_calls'` all name tables and are
+resolved as such — while the identical token in *value* position stays
+the string literal it looks like, which is what keeps static `call_id`
+resolution reading `call_id = 'c1'` as the id `c1`. Both validators make
+that distinction positionally (`isNameToken` / `SqlAnalyzer.isName`); a
+token-kind gate is what let one quote character silence
+`protocol-table-write`, the INSERT analysis and this lineage rule at
+once.
 
 Static `call_id` resolution covers literals and bindings with text
 values (`call_id = :x` where `x` is bound); computed ids (e.g.
