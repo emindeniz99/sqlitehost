@@ -196,6 +196,32 @@ namespace SqliteHost.Tests.Adapter
         }
 
         [Fact]
+        public void TailThatFailsToCompile_SurfacesTheEngineCode_NotMultiStatement()
+        {
+            // The tail check compiles the remainder, so its result code
+            // answers two different questions: "is there a second
+            // statement?" and "did the engine fail?". Collapsing both into
+            // the multi-statement message throws away the result code
+            // SqliteHostAdapterException exists to carry — for a real
+            // failure (SQLITE_NOMEM, SQLITE_BUSY) that is the only
+            // diagnostic the caller gets. A syntax error in the tail is the
+            // reachable instance of that class.
+            using var connection = NativeSqliteHostConnection.OpenInMemory();
+
+            var ex = Assert.Throws<SqliteHostAdapterException>(
+                () => connection.Execute("CREATE TABLE a (x INTEGER); SELEC 2", null));
+
+            Assert.Equal(1, ex.SqliteErrorCode);   // SQLITE_ERROR
+            Assert.Contains("syntax error", ex.Message);
+            Assert.DoesNotContain("multi-statement", ex.Message);
+            // Still rejected before anything is stepped, as the contract requires.
+            var tables = connection.Query(
+                "SELECT name FROM sqlite_master WHERE name = 'a'", null,
+                row => row.GetText(0));
+            Assert.Empty(tables);
+        }
+
+        [Fact]
         public void TrailingTerminatorAndComment_AreNotMultiStatement()
         {
             // The tail check compiles the remainder instead of scanning for

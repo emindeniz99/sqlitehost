@@ -319,7 +319,9 @@ namespace SqliteHost
         /// any schema DDL runs, when the definition exposes inline methods
         /// and the connection can register functions. Returns null on
         /// success (or nothing to do); a FailedSchema/
-        /// inline-registration-error result otherwise.
+        /// inline-registration-error result otherwise — including when a
+        /// function-capable factory opened a connection that cannot
+        /// register (docs/csharp-api.md pins that as a factory bug).
         /// </summary>
         private SqliteHostRunResult RegisterInlineFunctions(ISqliteHostConnection connection, RunState state)
         {
@@ -330,6 +332,22 @@ namespace SqliteHost
             var functionConnection = connection as ISqliteHostScalarFunctionConnection;
             if (functionConnection == null)
             {
+                if (_connectionFactory is ISqliteHostScalarFunctionCapableFactory)
+                {
+                    // The capability is advertised off the factory marker
+                    // alone (ComputeSupportedFeatures), so a capable factory
+                    // handing back a connection that cannot register passes
+                    // the clean-skip precheck. Registering nothing here would
+                    // let the script die later on "no such function: fn_...",
+                    // blaming the script for a host wiring bug.
+                    return Failure(
+                        state, SqliteHostRunStatus.FailedSchema, "inline-registration-error",
+                        "factory " + _connectionFactory.GetType().FullName
+                        + " is marked ISqliteHostScalarFunctionCapableFactory but opened a"
+                        + " workspace of type " + connection.GetType().FullName
+                        + ", which does not implement ISqliteHostScalarFunctionConnection.",
+                        null, null);
+                }
                 return null;
             }
             try

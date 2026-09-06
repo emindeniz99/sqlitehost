@@ -460,8 +460,11 @@ namespace SqliteHost.Adapters.Native
         /// (rather than scanning it for non-whitespace) deliberately
         /// tolerates trailing terminators, whitespace, and comments —
         /// mirroring SQLite's own "no statement" semantics above — so only
-        /// a second executable statement (or a tail that fails to compile)
-        /// is rejected. Nothing has been stepped when this throws.
+        /// a second executable statement is rejected as multi-statement. A
+        /// tail that fails to compile is rejected too, but under the
+        /// engine's own result code and message: it may be a syntax error
+        /// or a genuine failure (SQLITE_NOMEM, SQLITE_BUSY), and neither is
+        /// "multi-statement". Nothing has been stepped when this throws.
         /// </summary>
         private void RejectSqlAfterFirstStatement(IntPtr statement, byte[] sqlUtf8, int tailOffset)
         {
@@ -478,7 +481,20 @@ namespace SqliteHost.Adapters.Native
             {
                 NativeMethods.sqlite3_finalize(tailStatement);
             }
-            if (rc != NativeMethods.SQLITE_OK || tailStatement != IntPtr.Zero)
+            if (rc != NativeMethods.SQLITE_OK)
+            {
+                // The tail did not compile: a syntax error in it, or a real
+                // engine failure (SQLITE_NOMEM, SQLITE_BUSY). That is not
+                // the multi-statement rule, and reporting it as such would
+                // discard the engine's result code and message — so surface
+                // the code SqliteHostAdapterException documents. Built
+                // before finalizing, because finalize can reset the
+                // connection's error state.
+                SqliteHostAdapterException error = CreateError("sqlite3_prepare_v2", rc);
+                NativeMethods.sqlite3_finalize(statement);
+                throw error;
+            }
+            if (tailStatement != IntPtr.Zero)
             {
                 NativeMethods.sqlite3_finalize(statement);
                 throw new SqliteHostAdapterException(
