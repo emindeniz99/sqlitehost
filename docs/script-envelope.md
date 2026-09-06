@@ -88,7 +88,8 @@ bytes — normalizing after verification produces a different artifact from
 the one that was signed.
 
 A required string must be **non-blank**, not merely non-empty: `"   "` is
-rejected wherever `""` is (step `id`, statement `sql`, input `name`).
+rejected wherever `""` is (step `id`, statement `sql`, input `name`,
+and each key of a statement's `bindings` map).
 Blankness is decided on one pinned character set — space, `\t`, `\n`,
 `\v`, `\f`, `\r`, C's `isspace()`, the same set the SQL scanners share —
 rather than each language's own idea of whitespace, which differ.

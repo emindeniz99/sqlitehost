@@ -78,6 +78,7 @@ namespace SqliteHost.Tests.Fixtures
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 { "api-level-too-high.json", "unsupported-api-level" },
+                { "blank-binding-name.json", "invalid-script" },
                 { "blank-required-feature.json", "missing-feature" },
                 { "blank-statement-sql.json", "invalid-script" },
                 { "blank-step-id.json", "invalid-script" },
@@ -136,7 +137,6 @@ namespace SqliteHost.Tests.Fixtures
                 { "binding-type-mismatch-call-id.json", "lint-only: binding-type-mismatch is an authoring rule; SQLite is untyped and stores what it is given" },
                 { "binding-type-mismatch-float.json", "post-envelope: refused at drain as input-type-mismatch (RuntimeStorageClassTests owns that)" },
                 { "binding-type-mismatch.json", "post-envelope: refused at drain as input-type-mismatch (RuntimeStorageClassTests owns that)" },
-                { "blank-binding-name.json", "gap: invalid-envelope in expectations.json, but the precheck does not walk binding names; the blank one surfaces later as unused-binding" },
                 { "duplicate-call-id-backtick.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
                 { "duplicate-call-id-cross-method.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
                 { "duplicate-call-id.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
