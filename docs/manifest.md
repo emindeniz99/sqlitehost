@@ -42,6 +42,24 @@ each producing its own manifest and generated artifacts (each library
 is an independent runtime definition with its own workspace — e.g.
 dev/prod or per-screen feature APIs).
 
+## Loading a manifest
+
+`parseManifest` (`codegen/core/src/manifest.ts`) validates structure
+before returning an IR, and every emitter CLI funnels through it: keys
+present and typed, no unknown top-level keys, `manifestVersion` 1, a
+positive integral `apiLevel` per library and per method with no method
+above its library's level, `minArgs <= maxArgs <= args.length`, unique
+method names, unique table names (compared lowercased, as SQLite
+resolves them) and unique `sqlName`s within a shape. Problems are
+reported together, each with its JSON path, because a hand-edited or
+merge-conflicted manifest rarely has just one.
+
+What it deliberately does **not** check is whether a resolved name is
+what the naming conventions would derive. A manifest carries resolved
+names precisely so a host can keep a legacy table or column name.
+`parseManifestUnchecked` skips the whole check and exists for test
+fixtures that build deliberately non-conforming IRs.
+
 ## Consumers
 
 - Java validator: schema-aware lint + DDL generation from the manifest.

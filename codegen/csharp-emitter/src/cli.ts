@@ -67,7 +67,22 @@ if (positionals.length !== 2) {
 }
 const [manifestPath, outDir] = positionals;
 
-const ir = parseManifest(await readFile(manifestPath, "utf8"));
+/**
+ * Read and validate the manifest. parseManifest reports a hand-edited
+ * or merge-conflicted manifest as one aggregated error listing every
+ * problem with its JSON path; that message is the useful output, so it
+ * is printed rather than thrown as a Node stack trace.
+ */
+async function readIr(path: string) {
+  try {
+    return parseManifest(await readFile(path, "utf8"));
+  } catch (error) {
+    console.error(`sqlite-host-emit-csharp: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
+
+const ir = await readIr(manifestPath);
 for (const file of emitCSharp(ir, { profile, namespaceOverride, dtoFields })) {
   const target = join(outDir, file.path);
   await mkdir(dirname(target), { recursive: true });
