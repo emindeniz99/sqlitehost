@@ -13,7 +13,7 @@ namespace SqliteHost
     /// </summary>
     internal sealed class SqliteHostRuntimeCore
     {
-        private const string EngineV1 = "sqlite-host-v1";
+        private const string EngineV1 = ProtocolConstants.EngineV1;
 
         private readonly ISqliteHostConnectionFactory _connectionFactory;
         private readonly SqliteHostDefinitionCore _hostDefinition;

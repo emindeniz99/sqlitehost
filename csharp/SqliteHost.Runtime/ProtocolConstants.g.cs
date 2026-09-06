@@ -35,6 +35,13 @@ namespace SqliteHost
         /// </summary>
         internal const string FeatureInlineFunctions = "inlineFunctions";
 
+        /// <summary>
+        /// Script envelope engine identifier (ir.ts ENGINE_V1). A script
+        /// whose engine is anything else is rejected before any statement
+        /// runs; the Java and TypeScript envelopes carry the same literal.
+        /// </summary>
+        internal const string EngineV1 = "sqlite-host-v1";
+
 #if !SQLITEHOST_SLIM
         /// <summary>
         /// Method-name shape (ir.ts METHOD_NAME_PATTERN). The registration
