@@ -16,8 +16,8 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { parseManifest } from "@sqlite-host/codegen-core";
+import { dirname, resolve, sep } from "node:path";
+import { IDENTIFIER_PATTERN, parseManifest } from "@sqlite-host/codegen-core";
 import { DEFAULT_DESCRIPTORS_CLASS_NAME, emitJava } from "./emit.js";
 
 function usage(): never {
@@ -36,13 +36,39 @@ function usage(): never {
   process.exit(2);
 }
 
+/**
+ * className names the descriptor class AND its file, and the file path
+ * is joined into <out-dir> with no normalization: `--class-name
+ * ../../../../ESCAPED` wrote ESCAPED.java outside the out-dir with
+ * `public final class ../../../../ESCAPED {` inside it. The Java
+ * identifier shape closes both halves at once. Single-sourced from
+ * codegen-core (docs/naming.md).
+ */
+const IDENTIFIER = new RegExp(IDENTIFIER_PATTERN);
+
+/** Resolve `relative` under `outDir`, refusing to leave it. */
+function containedPath(outDir: string, relative: string): string {
+  const root = resolve(outDir);
+  const target = resolve(root, relative);
+  if (target !== root && !target.startsWith(root + sep)) {
+    console.error(
+      `sqlite-host-emit-java: refusing to write ${target}, which is outside ${root}.`,
+    );
+    process.exit(1);
+  }
+  return target;
+}
+
 const positionals: string[] = [];
 let className: string | undefined;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--class-name") {
     className = args[++i];
-    if (className === undefined) {
+    if (className === undefined || !IDENTIFIER.test(className)) {
+      console.error(
+        `sqlite-host-emit-java: --class-name must be a Java identifier matching ${IDENTIFIER_PATTERN}.`,
+      );
       usage();
     }
   } else if (args[i].startsWith("-")) {
@@ -68,7 +94,7 @@ try {
 }
 
 for (const file of files) {
-  const target = join(outDir, file.path);
+  const target = containedPath(outDir, file.path);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, file.contents);
   console.log(target);

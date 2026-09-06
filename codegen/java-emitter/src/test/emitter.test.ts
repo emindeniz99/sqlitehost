@@ -578,3 +578,26 @@ test("CLI exits non-zero for an unreadable manifest", () => {
   assert.equal(run.status, 1);
   assert.match(run.stderr, /sqlite-host-emit-java:/);
 });
+
+// ---------------------------------------------------------------------------
+// --class-name containment (round-3 audit finding 6)
+// ---------------------------------------------------------------------------
+
+for (const className of ["../../../../ESCAPED", "a/b", "1Bad", ""]) {
+  test(`CLI rejects --class-name ${JSON.stringify(className)}`, () => {
+    // className names both the descriptor class and its file, and the
+    // file path is joined with no normalization: '../../../../ESCAPED'
+    // wrote ESCAPED.java outside <out-dir>, containing
+    // `public final class ../../../../ESCAPED {`.
+    const outDir = join(scratchRoot, `cli-classname-reject-${process.pid}`);
+    rmSync(outDir, { recursive: true, force: true });
+    const run = spawnSync(
+      process.execPath,
+      [join(packageRoot, "dist/cli.js"), manifestPath, outDir, "--class-name", className],
+      { encoding: "utf8" },
+    );
+    rmSync(outDir, { recursive: true, force: true });
+    assert.notEqual(run.status, 0, `stdout: ${run.stdout}`);
+    assert.match(run.stderr, /--class-name/);
+  });
+}
