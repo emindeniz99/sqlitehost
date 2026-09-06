@@ -237,11 +237,21 @@ export function tokenizeSql(sql: string): SqlToken[] {
   return tokens;
 }
 
-/** Named parameters referenced by the SQL — bare names, unique, in order. */
+/**
+ * Named parameters referenced by the SQL — bare names, unique, in order.
+ *
+ * The Set carries the membership test; the array carries the order,
+ * which callers rely on for finding order. Deduplicating with
+ * `names.includes` instead is quadratic in a payload-controlled count,
+ * and this package has no input cap — a statement with 100k parameters
+ * is a hang, which in a browser tab is the whole page.
+ */
 export function scanNamedParameters(sql: string): string[] {
   const names: string[] = [];
+  const seen = new Set<string>();
   for (const token of tokenizeSql(sql)) {
-    if (token.kind === "parameter" && !names.includes(token.value)) {
+    if (token.kind === "parameter" && !seen.has(token.value)) {
+      seen.add(token.value);
       names.push(token.value);
     }
   }

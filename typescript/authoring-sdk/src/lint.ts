@@ -377,8 +377,13 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       const bindings: Record<string, BindingValue> = statement.bindings ?? {};
       const bindingNames = Object.keys(bindings);
       const parameters = scanNamedParameters(statement.sql);
+      // Both directions of the cross-check are membership tests over
+      // arrays whose length the payload chooses. Done with `includes`
+      // they are quadratic, and lintScript caps nothing.
+      const bindingNameSet = new Set(bindingNames);
+      const parameterSet = new Set(parameters);
       for (const parameter of parameters) {
-        if (!bindingNames.includes(parameter)) {
+        if (!bindingNameSet.has(parameter)) {
           findings.push({
             code: "missing-binding",
             severity: "error",
@@ -388,7 +393,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
         }
       }
       for (const name of bindingNames) {
-        if (!parameters.includes(name)) {
+        if (!parameterSet.has(name)) {
           findings.push({
             code: "unused-binding",
             severity: "error",
@@ -718,6 +723,30 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   }
 
   // -- list parent/child colocation -------------------------------------------
+  // Two indexes built in one pass, because the lookups below run per
+  // call id of every child insert and both used to scan `inserts` (and
+  // each insert's call ids) from scratch. The payload chooses how many
+  // inserts and how many call ids there are, and lintScript caps
+  // neither, so the scans were quadratic in attacker-chosen input.
+  //
+  // `insertsByTableAndCallId` keeps the FIRST insert for a given
+  // (table, call id), which is what the Array.prototype.find it
+  // replaces returned.
+  const insertsByTableAndCallId = new Map<string, InsertRecord>();
+  const tablesWithComputedCallId = new Set<string>();
+  for (const insert of inserts) {
+    for (const callId of insert.callIds) {
+      if (callId === null) {
+        tablesWithComputedCallId.add(insert.table);
+        continue;
+      }
+      const key = `${insert.table}\u0000${callId}`;
+      if (!insertsByTableAndCallId.has(key)) {
+        insertsByTableAndCallId.set(key, insert);
+      }
+    }
+  }
+
   for (const insert of inserts) {
     const child = inputChildTables.get(insert.table);
     if (child === undefined) continue;
@@ -726,10 +755,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
     for (const callId of insert.callIds) {
       if (callId === null || checkedIds.has(callId)) continue;
       checkedIds.add(callId);
-      const parent = inserts.find(
-        (candidate) =>
-          candidate.table === child.callTable && candidate.callIds.includes(callId),
-      );
+      const parent = insertsByTableAndCallId.get(`${child.callTable}\u0000${callId}`);
       if (parent !== undefined) {
         if (parent.stepIndex !== insert.stepIndex) {
           findings.push({
@@ -743,10 +769,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       }
       // Best-effort guard (mirrors the Java engine): a parent insert
       // with a computed (unresolvable) call-id could produce this id.
-      const methodHasComputedEmit = inserts.some(
-        (candidate) =>
-          candidate.table === child.callTable && candidate.callIds.includes(null),
-      );
+      const methodHasComputedEmit = tablesWithComputedCallId.has(child.callTable);
       if (!methodHasComputedEmit) {
         findings.push({
           code: "list-child-without-parent",
