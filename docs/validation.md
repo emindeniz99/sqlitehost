@@ -153,7 +153,17 @@ have — Java is the gate, and `invalid/non-integral-int.json` carries
 `"validators": ["java"]` for that reason. Note the consequence for the
 CLI's exit code: a payload the strict reader refuses prints an
 `invalid-envelope` finding and exits **1**, not 2. Exit 2 means no
-verdict was reached (bad arguments, an unreadable file).
+verdict was reached (bad arguments, an unreadable file, or a workspace
+layer 3 could not set up).
+
+**The shipped CLI is the whole gate**, all four layers including
+prepare-only. It ships from `sqlite-host-jdbc`
+(`sqlite-host-jdbc-<version>-cli.jar`, see `java/README.md`) rather than
+from `sqlite-host-validator`, because layer 3 lives in that module and
+the dependency runs jdbc → validator. It ran layers 1/2/4 only until
+this was fixed, and the gap was not theoretical: it exited **0**,
+printing nothing, on `invalid/unknown-column.json` — a corpus case whose
+only expected finding is `sql-prepare-error`.
 
 ### Structural
 

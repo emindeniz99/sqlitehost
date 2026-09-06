@@ -1,13 +1,17 @@
-package io.sqlitehost.validator.cli;
+package io.sqlitehost.jdbc.cli;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The CLI's exit codes are a CI contract: 0 publishable, 1 the payload
@@ -36,6 +40,20 @@ class ValidatorCliTest {
                 fixtures.resolve("payloads/" + payload).toString()});
     }
 
+    /** Run the CLI, capturing stdout; returns "<exit>\n<stdout>". */
+    private static String runCapturingStdout(String payload) {
+        PrintStream original = System.out;
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int exit;
+        try {
+            System.setOut(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+            exit = run(payload);
+        } finally {
+            System.setOut(original);
+        }
+        return exit + "\n" + buffer.toString(StandardCharsets.UTF_8);
+    }
+
     @Test
     void publishablePayloadExitsZero() {
         assertEquals(0, run("valid/example-001-read-then-conditional-write.json"));
@@ -52,6 +70,19 @@ class ValidatorCliTest {
         // this, so the reader is the only thing that can report it, and it
         // reports by throwing. That must still be exit 1.
         assertEquals(1, run("invalid/non-integral-int.json"));
+    }
+
+    @Test
+    void aFaultOnlyTheCompilerSeesExitsOneAndPrintsIt() {
+        // The gate is the publication pipeline, so the artifact a pipeline
+        // runs must be the whole gate. invalid/unknown-column.json is the
+        // corpus case whose ONLY expected finding is sql-prepare-error: a
+        // CLI that skipped layer 3 exited 0 on a payload the corpus calls
+        // invalid, and printed nothing at all.
+        String result = runCapturingStdout("invalid/unknown-column.json");
+        assertTrue(result.startsWith("1\n"), result);
+        assertTrue(result.contains("sql-prepare-error"), result);
+        assertTrue(result.contains("input_wrong"), result);
     }
 
     @Test
