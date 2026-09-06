@@ -239,6 +239,7 @@ error page, not on `null`. It returns a reason instead:
 | `BadSignature` | altered in transit, or signed by someone else | keep the cached script; this one is worth an alert |
 | `Expired` | genuinely signed, but past `expiresAt` | keep the cached script; your publish job is late |
 | `IssuedInFuture` | genuinely signed, but `issuedAt` is more than five minutes ahead of the `now` you passed | keep the cached script; a clock is wrong — the signer's, or this device's |
+| `MissingExpiry` | genuinely signed, but carries no `expiresAt`, and your policy requires one | keep the cached script; the signer omitted the TTL, which for anything you cache is a publishing bug |
 
 On failure the result carries **nothing else** — no payload, no
 `scriptId`. Unverified data is unreachable by construction.
