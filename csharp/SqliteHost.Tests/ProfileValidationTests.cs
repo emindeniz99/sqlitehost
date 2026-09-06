@@ -169,6 +169,33 @@ namespace SqliteHost.Tests
                     ("c", SqliteHostBindingValue.Text("call-1"))))));
         }
 
+        [SkippableFact]
+        public void Ultra_RowsToUndeclaredResultList_IsAHandlerError()
+        {
+            // Runs in BOTH builds. ErasedHostMethodSpec.WriteResultListRows
+            // iterates the DECLARED result lists, so rows the handler added
+            // under a name that is not one of them are written nowhere. With
+            // the check stripped, a mistyped list name ("rowz" for "rows")
+            // loses every row and the run still reports Completed — silent
+            // data loss, which is why this half of the shape check is not a
+            // strict check and must fail loud even under SQLITEHOST_SLIM.
+            SampleHostFloor.SkipBelowFloor();
+            SqliteHostRunResult result = RunUltraMethod(
+                call =>
+                {
+                    var r = new SqliteHostUltraResult().SetInt64("value", 1);
+                    r.AddRow("rowz").SetText("name", "x");
+                    return r;
+                },
+                declareResults: b => b.ResultLong("value").ResultList("rows", item => item.Text("name")));
+
+            Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
+            Assert.Equal("handler-error", result.ErrorCode);
+            Assert.Equal("probe", result.Method);
+            Assert.Contains("undeclared result list", result.ErrorMessage);
+            Assert.Contains("rowz", result.ErrorMessage);
+        }
+
         // Full ultra result-shape enforcement (every declared field set,
         // every set field declared and correctly typed, same per list row) is
         // an optional strict check SQLITEHOST_SLIM strips, so these compile

@@ -127,10 +127,17 @@ namespace SqliteHost
     }
 
     /// <summary>
-    /// The declared result shape of one ultra method, enforced fail-loud
-    /// after every handler invocation: every declared field set (or
-    /// legitimately NULL), every set field declared and correctly typed,
-    /// same for result-list rows. Violations surface as handler errors.
+    /// The declared result shape of one ultra method, checked after every
+    /// handler invocation. Violations surface as handler errors.
+    ///
+    /// Two layers with different build behaviour. The full shape check —
+    /// every declared field set (or legitimately NULL), every set field
+    /// declared and correctly typed, same per result-list row — is one of
+    /// the optional strict checks SQLITEHOST_SLIM strips. Result-list NAME
+    /// membership is not: <see cref="ErasedHostMethodSpec"/> writes only the
+    /// DECLARED result lists, so rows added to a list the method never
+    /// declared are dropped and the run still reports Completed. Silent data
+    /// loss is not a strict check, so that half fails loud in every build.
     /// </summary>
     internal sealed class UltraResultShape
     {
@@ -162,9 +169,14 @@ namespace SqliteHost
         {
 #if !SQLITEHOST_SLIM
             ValidateRow(result.ParentRow, _fields, _fieldsByName, "result field");
+#endif
 
             foreach (KeyValuePair<string, List<SqliteHostUltraRow>> list in result.Lists)
             {
+                // Name membership stays outside the slim guard: the result
+                // writer iterates the declared lists, so an undeclared name
+                // here means those rows are written nowhere and the run
+                // reports Completed with the data gone.
                 IReadOnlyList<UltraFieldDecl> itemDecls;
                 if (!_listsByName.TryGetValue(list.Key, out itemDecls))
                 {
@@ -172,6 +184,7 @@ namespace SqliteHost
                         "Method '" + _methodName + "': the handler added rows to undeclared result list '"
                         + list.Key + "'.");
                 }
+#if !SQLITEHOST_SLIM
                 var itemsByName = new Dictionary<string, UltraFieldDecl>(StringComparer.Ordinal);
                 foreach (UltraFieldDecl decl in itemDecls)
                 {
@@ -181,8 +194,8 @@ namespace SqliteHost
                 {
                     ValidateRow(row, itemDecls, itemsByName, "field of result list '" + list.Key + "'");
                 }
-            }
 #endif
+            }
         }
 
         private void ValidateRow(
