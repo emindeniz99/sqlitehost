@@ -9,6 +9,10 @@
          consumer's test project (with a runner + concrete subclasses) is.
          Without this, solution-level `dotnet test` tries to execute it. -->
     <IsTestProject>false</IsTestProject>
+    <!-- Same slim switch as SqliteHost.Runtime: the two binding-validation
+         cases below are strict checks SQLITEHOST_SLIM strips, so a consumer
+         building the suite slim compiles them out instead of failing them. -->
+    <DefineConstants Condition="'$(SqliteHostSlim)' == 'true'">$(DefineConstants);SQLITEHOST_SLIM</DefineConstants>
     <Description>Reusable adapter conformance test suite for SqliteHost (docs/adapter-contract.md): consumers subclass AdapterConformanceTestsBase in their xunit test project with a factory for their ISqliteHostConnection adapter, and the suite proves error surfacing, binding resolution, and value fidelity (Unity-2021-safe).</Description>
   </PropertyGroup>
 

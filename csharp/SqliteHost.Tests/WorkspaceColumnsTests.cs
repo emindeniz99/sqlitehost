@@ -285,6 +285,13 @@ namespace SqliteHost.Tests
             Assert.Equal(new[] { "c-1", "c-2" }, callIds);
         }
 
+        // Everything below is registration-time column-name validation, one
+        // of the optional strict checks SQLITEHOST_SLIM strips
+        // (docs/csharp-api.md). Under SLIM a bad column name registers
+        // cleanly, so these cases compile out; the functional column tests
+        // above still run.
+#if !SQLITEHOST_SLIM
+
         [Theory]
         [InlineData("")]
         [InlineData(null)]
@@ -469,5 +476,6 @@ namespace SqliteHost.Tests
             Assert.Contains("occurs more than once", ex.Message);
             Assert.Contains("list child", ex.Message);
         }
+#endif
     }
 }

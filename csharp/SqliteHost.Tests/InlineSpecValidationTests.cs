@@ -203,6 +203,13 @@ namespace SqliteHost.Tests
             Assert.Equal("fn_", SqliteHostNaming.Default.FunctionPrefix);
         }
 
+        // Inline-function naming validation is one of the optional strict
+        // checks SQLITEHOST_SLIM strips (docs/csharp-api.md), so the cases
+        // that assert a bad name fails at definition build compile out.
+        // (The shape rules above are builder preconditions, not strict
+        // checks, and still fire under SLIM.)
+#if !SQLITEHOST_SLIM
+
         [Fact]
         public void EmptyFunctionPrefix_FailsLoudAtDefinitionBuild()
         {
@@ -287,6 +294,7 @@ namespace SqliteHost.Tests
                 .Methods(new[] { InlineGetValueSpec("fn_get_value"), other }));
             Assert.Contains("more than one method", ex.Message);
         }
+#endif
 
         [Fact]
         public void DefinitionSupportedFeatures_StayTheBaseFive_EvenWithInlineMethods()

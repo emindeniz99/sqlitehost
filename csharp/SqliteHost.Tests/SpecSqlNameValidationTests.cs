@@ -35,6 +35,13 @@ namespace SqliteHost.Tests
             return SqliteHostDefinition.ForHandlers<object>().Methods(specs);
         }
 
+        // Field SQL-name and list-item-shape validation is registration-time
+        // strict checking, one of the optional checks SQLITEHOST_SLIM strips
+        // (docs/csharp-api.md), so the cases that assert a bad shape throws
+        // compile out with it. The two _IsAllowed cases stay: they prove a
+        // valid definition still builds, which is true in both builds.
+#if !SQLITEHOST_SLIM
+
         [Fact]
         public void DuplicateInputSqlName_ThrowsAtBuildTime()
         {
@@ -152,6 +159,8 @@ namespace SqliteHost.Tests
             Assert.Contains("at least one item field", ex.Message);
         }
 
+#endif
+
         [Fact]
         public void SameSqlNameOnInputAndResultSides_IsAllowed()
         {
@@ -186,6 +195,7 @@ namespace SqliteHost.Tests
             Assert.NotEmpty(definition.GenerateSchemaStatements());
         }
 
+#if !SQLITEHOST_SLIM
         [Fact]
         public void Ultra_DuplicateInputSqlName_ThrowsAtBuildTime()
         {
@@ -204,5 +214,6 @@ namespace SqliteHost.Tests
             Assert.Contains("'key'", ex.Message);
             Assert.Contains("occurs more than once", ex.Message);
         }
+#endif
     }
 }

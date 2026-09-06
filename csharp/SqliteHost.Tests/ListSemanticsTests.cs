@@ -97,6 +97,11 @@ namespace SqliteHost.Tests
             Assert.Equal("c", handlers.LastGetValuesInput.Keys[2].Key);
         }
 
+        // List-child-after-drain probing is one of the optional strict checks
+        // SQLITEHOST_SLIM strips (docs/csharp-api.md): the validator blocks
+        // this statically, the runtime only re-counts defensively, so the
+        // detection (and this case) compiles out with it.
+#if !SQLITEHOST_SLIM
         [SkippableFact]
         public void ListChildRowsAddedAfterDrain_FailSql_ListChildAfterDrain()
         {
@@ -119,5 +124,6 @@ namespace SqliteHost.Tests
             Assert.Equal(1, result.ExecutedCallCount);
             Assert.Equal(new[] { "getValues:1" }, handlers.Log);
         }
+#endif
     }
 }

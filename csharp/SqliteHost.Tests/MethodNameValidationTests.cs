@@ -1,3 +1,4 @@
+#if !SQLITEHOST_SLIM
 using System;
 using System.Text.RegularExpressions;
 using Xunit;
@@ -16,6 +17,11 @@ namespace SqliteHost.Tests
     /// the spec. All three registration surfaces lower to the same erased
     /// core, so the check is validated in SqliteHostDefinitionCore and holds
     /// surface-independently.
+    ///
+    /// The check is one of the optional strict checks SQLITEHOST_SLIM strips
+    /// (docs/csharp-api.md), so the whole class compiles out with it: under
+    /// SLIM an invalid name registers cleanly and the ProtocolConstants /
+    /// IsValidMethodName members it pins do not exist.
     /// </summary>
     public class MethodNameValidationTests
     {
@@ -138,3 +144,4 @@ namespace SqliteHost.Tests
         }
     }
 }
+#endif

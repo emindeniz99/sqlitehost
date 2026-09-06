@@ -286,6 +286,12 @@ namespace SqliteHost.Tests
             Assert.Equal(0, factory.OpenCount);
         }
 
+        // Lexical binding validation is one of the optional strict checks
+        // SQLITEHOST_SLIM strips (docs/csharp-api.md): ValidateBindings stays
+        // settable but is ignored, so missing-binding/unused-binding never
+        // fire and these two cases compile out.
+#if !SQLITEHOST_SLIM
+
         [SkippableFact]
         public void MissingBinding_FailsBinding_WithStatementContext()
         {
@@ -326,6 +332,7 @@ namespace SqliteHost.Tests
             Assert.Contains("extra", result.ErrorMessage);
             Assert.Equal(0, result.StatementIndex);
         }
+#endif
 
         [SkippableFact]
         public void ParametersInsideCommentsAndLiterals_AreNotMissingBindings()

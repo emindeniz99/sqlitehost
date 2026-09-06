@@ -33,6 +33,10 @@ namespace SqliteHost.Tests
             public bool Ok { get; set; }
         }
 
+        // The value-type DTO guards are optional strict checks SQLITEHOST_SLIM
+        // strips (docs/csharp-api.md), so these two compile out with it.
+#if !SQLITEHOST_SLIM
+
         [Fact]
         public void Classic_ValueTypeInputDto_IsRejectedAtRegistration()
         {
@@ -49,6 +53,7 @@ namespace SqliteHost.Tests
                 () => builder.Inputs(i => i.List<int>("items", (x, v) => { }, item => { })));
             Assert.Contains("must be classes", ex.Message);
         }
+#endif
 
         private sealed class DummyInput
         {
@@ -164,6 +169,15 @@ namespace SqliteHost.Tests
                     ("c", SqliteHostBindingValue.Text("call-1"))))));
         }
 
+        // Full ultra result-shape enforcement (every declared field set,
+        // every set field declared and correctly typed, same per list row) is
+        // an optional strict check SQLITEHOST_SLIM strips, so these compile
+        // out with it. The name-membership half — rows written to an
+        // undeclared result list — is NOT stripped, because dropping them
+        // silently loses data; it is pinned under both builds by
+        // Ultra_RowsToUndeclaredResultList_IsAHandlerError below.
+#if !SQLITEHOST_SLIM
+
         [SkippableFact]
         public void Ultra_UnsetRequiredResultField_IsAHandlerError()
         {
@@ -199,6 +213,7 @@ namespace SqliteHost.Tests
                 call => new SqliteHostUltraResult().SetNull("value"));
             Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
         }
+#endif
 
         [SkippableFact]
         public void Ultra_NullHandlerResult_IsAHandlerError()
@@ -242,6 +257,7 @@ namespace SqliteHost.Tests
             Assert.Equal(SqliteHostRunStatus.FailedSql, result.Status);
         }
 
+#if !SQLITEHOST_SLIM
         [SkippableFact]
         public void Ultra_ResultListRows_AreShapeChecked()
         {
@@ -256,6 +272,7 @@ namespace SqliteHost.Tests
                 declareResults: b => b.ResultLong("value").ResultList("rows", item => item.Text("name")));
             Assert.Equal(SqliteHostRunStatus.FailedHandler, result.Status);
         }
+#endif
 
         // --- ultra input surface ---
 
