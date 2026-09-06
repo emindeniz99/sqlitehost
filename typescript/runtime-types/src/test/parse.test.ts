@@ -96,6 +96,23 @@ test("empty or missing statements list is invalid-envelope (pinned fixture)", ()
   expectFindings(s, "invalid-envelope", "steps[0].statements");
 });
 
+test("an explicit null is a type error, not an absent optional field", () => {
+  // docs/script-envelope.md: absence is spelled by leaving the field out.
+  // The Java reader used to treat an explicit null as absence, so the same
+  // signed bytes were publishable through one SDK and not the other; the
+  // fixture pins both readers to the rejection.
+  expectFindings(
+    JSON.parse(readFixture("payloads/invalid/null-optional-field.json")),
+    "invalid-envelope",
+    "scriptId",
+  );
+  for (const field of ["scriptId", "requiredFeatures", "requiredMethods", "inputs"]) {
+    const s = baseScript();
+    s[field] = null;
+    expectFindings(s, "invalid-envelope", field);
+  }
+});
+
 test("known limit: JSON.parse hides a non-integral int32/int64 literal", () => {
   // Pinned so nobody "fixes" this the wrong way. The wire spellings 1.0
   // and 1e3 violate the envelope contract, and Java's reader rejects them

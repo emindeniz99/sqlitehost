@@ -65,6 +65,16 @@ literal for them) and readers must reject any string-typed value for
 `float32`/`float64` — unlike `int64`, floats never need a string form
 because every IEEE-754 double round-trips through a JSON number.
 
+An **explicit JSON `null` is not an absent field.** Every optional field
+above is absent by being missing from the object; spelling it `null`
+instead is a type error and readers reject the payload. This is the same
+rule the `null` binding type already states from the other side — a
+`{"type": "null", "value": null}` is refused because a present `value` is
+present even when it is null. Serializers that emit `null` for an absent
+optional must be configured not to; an envelope is signed bytes, and a
+reader that quietly accepted both spellings would let the same payload be
+publishable through one SDK and not another.
+
 Binding **names** are bare (no prefix). In SQL, named parameters may be
 written `:name`, `@name`, or `$name`; a binding matches a parameter when
 the names are equal after stripping the prefix character. One binding
