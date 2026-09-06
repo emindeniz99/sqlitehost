@@ -106,6 +106,13 @@ namespace SqliteHost.Tests
         [MemberData(nameof(RunnableValidPayloads))]
         public void EveryValidFixture_RunsToCompletion(string fixtureName)
         {
+            if (FixtureCoverage.ValidEngineFloors.TryGetValue(fixtureName, out int engineFloor))
+            {
+                Skip.If(
+                    SampleHostFloor.ActiveEngineVersionNumber < engineFloor,
+                    fixtureName + " needs SQLite " + engineFloor + " or newer (see FixtureCoverage.ValidEngineFloors); "
+                        + "engine " + SampleHostFloor.ActiveEngineVersionNumber + " cannot parse it.");
+            }
             SqliteHostScript script = ScriptEnvelopeJson.LoadPayload("valid/" + fixtureName);
             // example-010 is the one payload that asks for inline functions;
             // the capability marker is a factory property, not a runtime one.

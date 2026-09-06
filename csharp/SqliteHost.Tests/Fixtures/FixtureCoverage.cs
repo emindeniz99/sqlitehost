@@ -41,6 +41,31 @@ namespace SqliteHost.Tests.Fixtures
         // <<< valid-skip-list
 
         /// <summary>
+        /// Valid payloads whose SQL needs an engine newer than the sample
+        /// host's floor, mapped to the sqlite3_libversion_number they need.
+        ///
+        /// <para>Found by running the corpus on a real 3.19.3 build once the
+        /// directory-driven suite existed: <c>example-011-insert-alias</c>
+        /// spells <c>INSERT INTO t AS alias</c>, which arrived with UPSERT in
+        /// 3.24.0 and is a syntax error on 3.19.3 — the floor
+        /// docs/compatibility.md documents and the engine matrix runs. Both
+        /// validators accept the payload, because their layer-3 prepare uses
+        /// whatever engine the validator happens to link; neither has a
+        /// version rule for SYNTAX (the
+        /// <c>sqlite-version-too-low-for-function</c> lint covers functions
+        /// only). So this table is the record of a real corpus gap, not a
+        /// test convenience: it is the reason the fixture skips on the two
+        /// below-3.24 matrix legs instead of failing them.</para>
+        /// </summary>
+        // >>> valid-engine-floors (parsed by scripts/check-fixture-corpus.mjs)
+        internal static readonly IReadOnlyDictionary<string, int> ValidEngineFloors =
+            new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                { "example-011-insert-alias.json", 3024000 },
+            };
+        // <<< valid-engine-floors
+
+        /// <summary>
         /// <c>invalid/</c> payloads the runtime refuses at the envelope
         /// layer, mapped to the <c>ErrorCode</c> it reports. Every one of
         /// these is refused BEFORE a workspace opens, which is the property

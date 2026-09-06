@@ -332,6 +332,19 @@ function checkRuntimeConsumer({ fail, payloadsDir, csharpCoverageFile, csharpRun
     return;
   }
 
+  const engineFloors = (() => {
+    const open = source.indexOf(">>> valid-engine-floors");
+    const close = source.indexOf("<<< valid-engine-floors");
+    if (open === -1 || close === -1 || close < open) {
+      fail(`${csharpCoverageFile}: the 'valid-engine-floors' table markers are missing or out of order`);
+      return new Map();
+    }
+    return new Map(
+      [...source.slice(open, close).matchAll(/\{\s*"([\w.-]+\.json)"\s*,\s*(\d+)\s*\}/g)]
+        .map((m) => [m[1], Number(m[2])]),
+    );
+  })();
+
   const tables = {
     "valid-skip-list": parseCsharpTable(source, "valid-skip-list", csharpCoverageFile, fail),
     "invalid-envelope-refusals": parseCsharpTable(source, "invalid-envelope-refusals", csharpCoverageFile, fail),
@@ -354,6 +367,11 @@ function checkRuntimeConsumer({ fail, payloadsDir, csharpCoverageFile, csharpRun
     for (const name of [...tables["valid-skip-list"].keys()].sort()) {
       if (!validFiles.has(name)) {
         fail(`csharp coverage: valid-skip-list names '${name}', which no longer exists in fixtures/payloads/valid/`);
+      }
+    }
+    for (const name of [...engineFloors.keys()].sort()) {
+      if (!validFiles.has(name)) {
+        fail(`csharp coverage: valid-engine-floors names '${name}', which no longer exists in fixtures/payloads/valid/`);
       }
     }
     if (tables["valid-skip-list"].size >= validFiles.size) {
