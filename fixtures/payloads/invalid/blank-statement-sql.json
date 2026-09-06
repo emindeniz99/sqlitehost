@@ -1,6 +1,6 @@
 {
   "engine": "sqlite-host-v1",
-  "scriptId": "invalid-blank-strings",
+  "scriptId": "invalid-blank-statement-sql",
   "requiredApiLevel": 1,
   "requiredFeatures": [
     "typedNamedBindings",
@@ -8,7 +8,7 @@
   ],
   "steps": [
     {
-      "id": "  ",
+      "id": "blank-sql",
       "statements": [
         {
           "sql": "   ",

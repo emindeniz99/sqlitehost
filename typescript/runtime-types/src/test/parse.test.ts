@@ -101,9 +101,18 @@ test("a blank required string is invalid-envelope, not just an empty one", () =>
   // payload was publishable through one SDK and not the other. Blankness
   // is now one pinned character set in both (C's isspace()), because
   // String.isBlank and String.prototype.trim disagree on eight code points.
-  const fixture = JSON.parse(readFixture("payloads/invalid/blank-strings.json"));
-  expectFindings(fixture, "invalid-envelope", "steps[0].id");
-  expectFindings(fixture, "invalid-envelope", "steps[0].statements[0].sql");
+  // The two blank-string faults live in one fixture each so the
+  // conformance matrix stays single-fault; this parser test reads both.
+  expectFindings(
+    JSON.parse(readFixture("payloads/invalid/blank-step-id.json")),
+    "invalid-envelope",
+    "steps[0].id",
+  );
+  expectFindings(
+    JSON.parse(readFixture("payloads/invalid/blank-statement-sql.json")),
+    "invalid-envelope",
+    "steps[0].statements[0].sql",
+  );
   const s = baseScript();
   (s["inputs"] as Array<Record<string, unknown>>) = [
     { name: " \t ", value: { type: "int64", value: 1 } },

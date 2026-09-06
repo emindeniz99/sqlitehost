@@ -53,6 +53,39 @@ check("core: DDL from IR equals snapshot", () => {
   assert.equal(core.generateSchemaScript(ir), ddlBytes);
 });
 
+// 2b. The second, conformance-only host: one method above the lowest
+//     API level a script may declare, so `method-api-level-too-high` can
+//     have a payload fixture (fixtures/payloads/expectations.json pins it
+//     through the per-case `manifest` key). Manifests are never
+//     hand-written, so it is pinned here exactly like the sample host —
+//     minus the language emitters, since nothing generates code from it.
+const highApiManifestBytes = readFileSync(
+  join(root, "fixtures/manifests/high-api-host.manifest.json"),
+  "utf8",
+);
+const highApiDdlBytes = readFileSync(join(root, "fixtures/schemas/high-api-host.ddl.sql"), "utf8");
+const highApiCompiled = await frontend.compileHostLibrary(
+  join(root, "typespec/examples/high-api-host-methods.tsp"),
+);
+const highApiErrors = highApiCompiled.diagnostics.filter((d) => d.severity === "error");
+assert.equal(
+  highApiErrors.length,
+  0,
+  "high-api .tsp compiled with errors: " + JSON.stringify(highApiErrors, null, 2),
+);
+check("frontend: high-api-host-methods.tsp -> IR equals canonical manifest IR", () => {
+  assert.deepEqual(highApiCompiled.ir, core.parseManifest(highApiManifestBytes));
+});
+check("manifest emitter: byte-identical high-api manifest", () => {
+  assert.equal(manifestEmitter.emitManifest(highApiCompiled.ir), highApiManifestBytes);
+});
+check("manifest emitter: byte-identical high-api DDL snapshot", () => {
+  assert.equal(manifestEmitter.emitDdl(highApiCompiled.ir), highApiDdlBytes);
+});
+check("core: high-api DDL from IR equals snapshot", () => {
+  assert.equal(core.generateSchemaScript(core.parseManifest(highApiManifestBytes)), highApiDdlBytes);
+});
+
 // 3. C# emitter vs vendored sources.
 const csharpGoldens = {
   "HostMethodDtos.g.cs": "csharp/SqliteHost.Generated.Sample/HostMethodDtos.g.cs",
