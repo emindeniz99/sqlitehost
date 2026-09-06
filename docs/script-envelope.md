@@ -103,6 +103,20 @@ optional must be configured not to; an envelope is signed bytes, and a
 reader that quietly accepted both spellings would let the same payload be
 publishable through one SDK and not another.
 
+An **object may not repeat a key**, and a reader must reject a payload
+that does — it may not resolve the collision. Last-wins is what
+`JSON.parse`, Jackson's `readTree` and `System.Text.Json`'s
+`JsonDocument` all happen to do, but it is a convention, not a rule of
+JSON: keeping the first value is equally conforming, and .NET's own
+`JsonNode.Parse` throws. This document pins every other
+canonicalization corner for one reason — the validator must judge the
+same document the device runs — and a repeated key is precisely a
+document two conforming readers may read differently.
+`{"sql": "ATTACH …", "sql": "SELECT 1"}` is that bypass with no
+tampering anywhere. Rejecting is the only resolution that cannot differ
+between implementations, which is why it is the rule rather than a
+pinned last-wins.
+
 Binding **names** are bare (no prefix). In SQL, named parameters may be
 written `:name`, `@name`, or `$name`; a binding matches a parameter when
 the names are equal after stripping the prefix character. One binding

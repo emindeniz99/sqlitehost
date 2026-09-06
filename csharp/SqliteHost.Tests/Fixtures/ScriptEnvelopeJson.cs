@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace SqliteHost.Tests.Fixtures
@@ -12,6 +13,48 @@ namespace SqliteHost.Tests.Fixtures
     /// </summary>
     public static class ScriptEnvelopeJson
     {
+        /// <summary>
+        /// An object may not repeat a key (docs/script-envelope.md), and
+        /// <see cref="JsonDocument"/> resolves one silently as last-wins.
+        /// The rule exists because the delivery path's security model is
+        /// that the validator judged the same document the device runs, so
+        /// a payload two conforming readers may read differently has to be
+        /// refused rather than resolved. The Java and TypeScript readers
+        /// reject it; this is the C# side of the same contract.
+        ///
+        /// <para>There is no duplicate-key switch on netstandard/net8
+        /// <c>JsonDocument</c>, so the check is a token pass: a property
+        /// name is exactly a name token, and the reader hands them back
+        /// already unescaped, which is what makes <c>"sql"</c> and
+        /// <c>"\u0073ql"</c> collide the way they should.</para>
+        /// </summary>
+        private static void RejectDuplicateKeys(string json)
+        {
+            var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(json), new JsonReaderOptions());
+            var stack = new Stack<HashSet<string>>();
+            while (reader.Read())
+            {
+                switch (reader.TokenType)
+                {
+                    case JsonTokenType.StartObject:
+                        stack.Push(new HashSet<string>(StringComparer.Ordinal));
+                        break;
+                    case JsonTokenType.EndObject:
+                        stack.Pop();
+                        break;
+                    case JsonTokenType.PropertyName:
+                        string name = reader.GetString();
+                        if (!stack.Peek().Add(name))
+                        {
+                            throw new InvalidDataException(
+                                "duplicate object key \"" + name
+                                + "\"; an object may not repeat a key (docs/script-envelope.md)");
+                        }
+                        break;
+                }
+            }
+        }
+
         public static SqliteHostScript LoadPayload(string relativePath)
         {
             return Parse(File.ReadAllText(FixturePaths.Payload(relativePath)));
@@ -19,6 +62,7 @@ namespace SqliteHost.Tests.Fixtures
 
         public static SqliteHostScript Parse(string json)
         {
+            RejectDuplicateKeys(json);
             using var document = JsonDocument.Parse(json);
             JsonElement root = document.RootElement;
 

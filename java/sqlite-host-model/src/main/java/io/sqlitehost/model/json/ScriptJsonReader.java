@@ -1,5 +1,6 @@
 package io.sqlitehost.model.json;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sqlitehost.model.envelope.BindingValue;
@@ -22,7 +23,8 @@ import java.util.regex.Pattern;
 /**
  * Strict JSON reader for the script envelope (docs/script-envelope.md).
  *
- * <p>Strictness rules: field types must match the contract, an explicit
+ * <p>Strictness rules: an object may not repeat a key, field types must
+ * match the contract, an explicit
  * JSON {@code null} is a type error rather than an absent field (the
  * same "null is not absence" rule the {@code null} binding type already
  * follows, docs/script-envelope.md), an unknown
@@ -36,7 +38,17 @@ import java.util.regex.Pattern;
  */
 public final class ScriptJsonReader {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Duplicate object keys are rejected, not resolved (last-wins is a
+     * convention, not a rule of JSON). The delivery path's security model
+     * is that the validator judged the same document the device runs, and
+     * a repeated key is a document two conforming readers may read
+     * differently -- {@code {"sql":"ATTACH ...","sql":"SELECT 1"}} is a
+     * bypass with no tampering anywhere. Rejecting is the only resolution
+     * that cannot differ between implementations.
+     */
+    private static final ObjectMapper MAPPER =
+            new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     /** Largest int64 magnitude representable exactly as a JSON number (2^53−1), mirrors ScriptJsonWriter. */
     private static final BigInteger MAX_SAFE_JSON_INTEGER = BigInteger.valueOf(9007199254740991L);
     /**

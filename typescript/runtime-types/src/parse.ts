@@ -330,13 +330,91 @@ function roundFloat32Bindings(script: Script): void {
 }
 
 /**
+ * Reject a JSON document in which any object repeats a key
+ * (docs/script-envelope.md).
+ *
+ * `JSON.parse` resolves a duplicate silently as last-wins, which is a
+ * convention rather than a rule of JSON: a conforming reader may keep
+ * the first value, or refuse the document. The delivery path's security
+ * model is that the validator judged the same document the device runs,
+ * so `{"sql":"ATTACH …","sql":"SELECT 1"}` is a bypass with no
+ * tampering anywhere — one implementation lints the harmless statement
+ * while another executes the other one. Rejecting is the only
+ * resolution that cannot differ between implementations.
+ *
+ * Runs on text `JSON.parse` has already accepted, which is what makes
+ * the scan this short: a string immediately followed by `:` inside an
+ * object is a key and nothing else. Names are compared decoded, so
+ * `"sql"` and `"\u0073ql"` are the same key — which is exactly how
+ * `JSON.parse` would have collapsed them.
+ */
+function assertNoDuplicateKeys(json: string): void {
+  // One entry per open container: a Set of seen keys for an object,
+  // null for an array (arrays have no keys to collide).
+  const stack: Array<Set<string> | null> = [];
+  let index = 0;
+  while (index < json.length) {
+    const char = json[index];
+    if (char === "{") {
+      stack.push(new Set<string>());
+      index += 1;
+    } else if (char === "[") {
+      stack.push(null);
+      index += 1;
+    } else if (char === "}" || char === "]") {
+      stack.pop();
+      index += 1;
+    } else if (char === '"') {
+      const end = endOfString(json, index);
+      const container = stack[stack.length - 1];
+      let after = end;
+      while (after < json.length && isJsonWhitespace(json[after])) after += 1;
+      if (container instanceof Set && json[after] === ":") {
+        const name = JSON.parse(json.slice(index, end)) as string;
+        if (container.has(name)) {
+          throw new SyntaxError(
+            `duplicate object key ${JSON.stringify(name)} at position ${index}; ` +
+              "an object may not repeat a key (docs/script-envelope.md)",
+          );
+        }
+        container.add(name);
+      }
+      index = end;
+    } else {
+      index += 1;
+    }
+  }
+}
+
+/** Index just past the closing quote of the string starting at `start`. */
+function endOfString(json: string, start: number): number {
+  let index = start + 1;
+  while (index < json.length) {
+    const char = json[index];
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === '"') return index + 1;
+    index += 1;
+  }
+  return json.length;
+}
+
+function isJsonWhitespace(char: string): boolean {
+  return char === " " || char === "\t" || char === "\n" || char === "\r";
+}
+
+/**
  * Parse a script envelope from JSON text with structural validation.
  * Throws ScriptParseError (carrying `invalid-envelope` /
  * `duplicate-step-id` findings) when the payload is malformed, and
- * SyntaxError when the text is not JSON at all.
+ * SyntaxError when the text is not JSON at all — or when an object
+ * repeats a key, which the contract refuses outright.
  */
 export function parseScript(json: string): Script {
   const value: unknown = JSON.parse(json);
+  assertNoDuplicateKeys(json);
   const findings = validateScript(value);
   if (findings.length > 0) {
     throw new ScriptParseError(findings);
