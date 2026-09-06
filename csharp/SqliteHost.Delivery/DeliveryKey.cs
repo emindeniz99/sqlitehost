@@ -55,15 +55,25 @@ namespace SqliteHost.Delivery
             {
                 throw new ArgumentException("RSA public key needs a non-empty modulus and exponent.", "publicKey");
             }
+            // Leading zeros are legal padding in a big-endian integer, and
+            // real producers emit them: Java's BigInteger.toByteArray()
+            // prepends a sign byte, and HSM/KMS and JWK-adjacent tooling
+            // emit fixed-width fields. So the floor is measured on the
+            // SIGNIFICANT bytes, and the padding is dropped rather than
+            // rejected — .NET wants the modulus at its true width anyway.
+            byte[] modulus = TrimLeadingZeros(publicKey.Modulus);
             // A too-small modulus is the misconfiguration that fails OPEN:
             // verification keeps succeeding while the private key is within
             // reach of factoring, so an attacker mints envelopes the app
             // accepts. Rejected here for the same reason as a mistyped id.
-            if (publicKey.Modulus.Length < MinimumRsaModulusBytes)
+            // Comparing the ENCODED length instead would wave through a
+            // 1024-bit modulus left-padded to 256 bytes, which is exactly
+            // the shape the misconfiguration arrives in.
+            if (modulus.Length < MinimumRsaModulusBytes)
             {
                 throw new ArgumentException(
                     "RSA public key must be at least 2048 bits (a " + MinimumRsaModulusBytes
-                    + "-byte modulus); this one is " + (publicKey.Modulus.Length * 8) + " bits.",
+                    + "-byte modulus); this one is " + (modulus.Length * 8) + " bits.",
                     "publicKey");
             }
             // A degenerate exponent fails OPEN the same way. e=1 makes RSA
@@ -81,7 +91,7 @@ namespace SqliteHost.Delivery
             var key = new DeliveryKey(keyId, ScriptEnvelopeAlgorithms.RsaSha256);
             key.RsaPublicKey = new RSAParameters
             {
-                Modulus = Copy(publicKey.Modulus),
+                Modulus = modulus,
                 Exponent = Copy(publicKey.Exponent)
             };
             return key;
@@ -163,6 +173,24 @@ namespace SqliteHost.Delivery
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// The significant bytes of a big-endian unsigned integer, always as
+        /// a fresh array (key material is copied out of caller-owned buffers
+        /// by construction). An all-zero input trims to length 0, which the
+        /// modulus floor then rejects.
+        /// </summary>
+        private static byte[] TrimLeadingZeros(byte[] value)
+        {
+            int start = 0;
+            while (start < value.Length && value[start] == 0)
+            {
+                start++;
+            }
+            var trimmed = new byte[value.Length - start];
+            Buffer.BlockCopy(value, start, trimmed, 0, trimmed.Length);
+            return trimmed;
         }
 
         private static byte[] DecodeBase64(string value, string parameterName)

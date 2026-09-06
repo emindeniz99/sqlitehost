@@ -167,11 +167,20 @@ algorithm and the verifier requires it to equal the envelope's `alg`
 | `rsa-sha256` | RSASSA-**PKCS#1 v1.5** over SHA-256 of `signedBytes`, per RFC 8017 §8.2 | production |
 | `hmac-sha256` | HMAC-SHA-256 over `signedBytes`, compared in constant time | dev/internal only |
 
-`DeliveryKey.Rsa(...)` rejects a modulus shorter than 256 bytes with
-`ArgumentException`, so 2048 bits is a hard floor rather than a
-recommendation: a short modulus is the misconfiguration that fails
-*open*, since verification keeps succeeding while the private key is
-within reach of factoring.
+`DeliveryKey.Rsa(...)` rejects a modulus whose **significant** length is
+under 256 bytes with `ArgumentException`, so 2048 bits is a hard floor
+rather than a recommendation: a short modulus is the misconfiguration
+that fails *open*, since verification keeps succeeding while the private
+key is within reach of factoring.
+
+Significant, not encoded: leading `0x00` bytes are legal padding in a
+big-endian integer and real producers emit them (Java's
+`BigInteger.toByteArray()` prepends a sign byte; HSM/KMS and
+JWK-adjacent tooling emit fixed-width fields). A floor that counted
+array length would accept a 1024-bit modulus left-padded to 256 bytes —
+the most likely shape of the very misconfiguration the floor exists to
+catch. The padding is stripped, not rejected, so a key exported by the
+Java side of this project stays usable.
 
 **Why PKCS#1 v1.5 and not PSS.** Unity/IL2CPP is the hard constraint:
 PKCS#1 v1.5 verification is the path with the broadest Mono and

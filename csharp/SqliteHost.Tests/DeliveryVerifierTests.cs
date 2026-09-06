@@ -400,6 +400,87 @@ namespace SqliteHost.Tests
             Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
         }
 
+        [Fact]
+        public void RsaModulusWithALeadingZeroByte_IsAcceptedAtItsTrueBitLength()
+        {
+            // Java's BigInteger.toByteArray() prepends a 0x00 sign byte to a
+            // 2048-bit modulus, so a legitimate key from the Java side of
+            // this project arrives as 257 bytes. Rejecting leading-zero
+            // padding would lock out a producer we ship; the floor has to
+            // count significant bytes, not array length.
+            var padded = new byte[257];
+            Buffer.BlockCopy(Modulus(256), 0, padded, 1, 256);
+            var key = DeliveryKey.Rsa(KeyId, Convert.ToBase64String(padded), "AQAB");
+            Assert.Equal(ScriptEnvelopeAlgorithms.RsaSha256, key.Algorithm);
+        }
+
+        [Theory]
+        [InlineData(1)]   // 2040 bits dressed as 256 bytes
+        [InlineData(128)] // a 1024-bit modulus left-padded to the floor
+        public void RsaModulusZeroPaddedUpToTheFloor_ThrowsAtConstruction(int leadingZeros)
+        {
+            // The floor exists to catch the one misconfiguration that fails
+            // OPEN. Counting encoded bytes defeats it with the most likely
+            // shape of that misconfiguration: HSM/KMS and JWK-adjacent
+            // tooling emit fixed-width zero-padded moduli, so a 1024-bit key
+            // arrives as 256 bytes and .NET verifies signatures made by the
+            // factorable private half.
+            var padded = new byte[256];
+            Buffer.BlockCopy(Modulus(256 - leadingZeros), 0, padded, leadingZeros, 256 - leadingZeros);
+            Assert.Throws<ArgumentException>(
+                () => DeliveryKey.Rsa(KeyId, Convert.ToBase64String(padded), "AQAB"));
+        }
+
+        [Fact]
+        public void ZeroPaddedModulusVerifiesARealRsaSignature()
+        {
+            // The padded form is not merely tolerated at construction: the
+            // key it produces must verify the same bytes the unpadded form
+            // does, or "accepted" would only mean "accepted and then broken".
+            using (var rsa = RSA.Create(2048))
+            {
+                RSAParameters parameters = rsa.ExportParameters(false);
+                var padded = new byte[parameters.Modulus.Length + 1];
+                Buffer.BlockCopy(parameters.Modulus, 0, padded, 1, parameters.Modulus.Length);
+
+                byte[] envelope = BuildRsaSigned(rsa, Payload("{}"));
+                var keys = new List<DeliveryKey>
+                {
+                    DeliveryKey.Rsa(
+                        KeyId,
+                        Convert.ToBase64String(padded),
+                        Convert.ToBase64String(parameters.Exponent))
+                };
+                Assert.True(ScriptEnvelopeVerifier.Verify(envelope, keys, Now).IsValid);
+            }
+        }
+
+        /// <summary>
+        /// The same envelope <see cref="Build"/> makes, signed with a real
+        /// RSA private key instead of the HMAC secret.
+        /// </summary>
+        private static byte[] BuildRsaSigned(RSA privateKey, byte[] payload)
+        {
+            string headerText = "sqlite-host-delivery/1\n"
+                + "alg=rsa-sha256\n"
+                + "kid=" + KeyId + "\n"
+                + "scriptId=unit-script\n"
+                + "issuedAt=" + IssuedAt + "\n"
+                + "expiresAt=\n"
+                + "minApiLevel=\n"
+                + "payloadLength=" + payload.Length + "\n\n";
+            var signed = new List<byte>();
+            signed.AddRange(Encoding.ASCII.GetBytes(headerText));
+            signed.AddRange(payload);
+            signed.Add((byte)'\n');
+            byte[] signedBytes = signed.ToArray();
+            string signature = Convert.ToBase64String(privateKey.SignData(
+                signedBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+            var envelope = new List<byte>(signedBytes);
+            envelope.AddRange(Encoding.ASCII.GetBytes("sig=" + signature + "\n"));
+            return envelope.ToArray();
+        }
+
         /// <summary>
         /// A stand-in modulus of exactly <paramref name="byteLength"/> bytes,
         /// high bit set so its byte length is also its true bit length.
