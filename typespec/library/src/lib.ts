@@ -40,6 +40,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Handler name "${"name"}" is not a valid identifier ([A-Za-z_][A-Za-z0-9_]*).`,
       },
     },
+    "invalid-function-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" must be snake_case ([a-z][a-z0-9_]*); it is registered verbatim as a SQL function name, so a name outside that shape registers cleanly and is then uncallable from SQL.`,
+      },
+    },
     "reserved-word-name": {
       severity: "error",
       messages: {
@@ -259,7 +265,7 @@ export const $lib = createTypeSpecLibrary({
     "builtin-function-collision": {
       severity: "error",
       messages: {
-        default: paramMessage`Inline function name "${"name"}" collides with a SQLite built-in function; pick a different functionName or functionPrefix.`,
+        default: paramMessage`Inline function name "${"name"}" collides with a name SQLite already owns (${"kind"}); pick a different functionName or functionPrefix.`,
       },
     },
   },

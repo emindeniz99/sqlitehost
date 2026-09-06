@@ -39,10 +39,18 @@ import {
 import type { ColumnsIr, NamingIr, ScalarTypeIr } from "./ir.js";
 import {
   controlTableColumns,
+  FORBIDDEN_FUNCTIONS,
+  FUNCTION_MIN_VERSION,
+  FUNCTION_PREFIX_MIN_VERSION,
   namedValueTableColumns,
+  NONDETERMINISTIC_FUNCTIONS_ALWAYS,
+  NONDETERMINISTIC_TIME_FUNCTIONS,
+  NONDETERMINISTIC_TIME_KEYWORDS,
+  NONPORTABLE_FUNCTIONS,
   PENDING_STATUS,
   queueTableColumns,
   SQLITE_BUILTIN_FUNCTIONS,
+  SYSTEM_TABLES,
 } from "./ir.js";
 import {
   deriveCallTable,
@@ -66,11 +74,60 @@ const SUPPORTED_SCALARS: Record<string, ScalarTypeIr> = {
 };
 
 /**
- * Lowercased lookup set over the single-sourced SQLite built-in function
- * names (ir.ts SQLITE_BUILTIN_FUNCTIONS). Function names resolve
- * case-insensitively, so inline-function-name collisions compare lowercased.
+ * Every name SQLite already answers to, keyed lowercased (SQLite
+ * resolves function names case-insensitively). An inline function name
+ * that hits one of these is not merely confusing: the script lint
+ * exempts declared inline functions from the portability and version
+ * rules, so naming one `sqrt` or `iif` turns those rules OFF for that
+ * name — and on an adapter whose connection factory is not
+ * function-capable the script then falls through to the very built-in
+ * the lint exists to keep it away from.
+ *
+ * The union is assembled here rather than in ir.ts because each of those
+ * tables is a single-sourced rule parameter with its own meaning and its
+ * own projection per language; this is a consumer of all of them.
  */
-const SQLITE_BUILTIN_FUNCTION_SET: ReadonlySet<string> = new Set(SQLITE_BUILTIN_FUNCTIONS);
+const RESERVED_SQLITE_NAMES: ReadonlyMap<string, string> = new Map([
+  ...SQLITE_BUILTIN_FUNCTIONS.map((n) => [n, "a SQLite built-in function"] as const),
+  ...NONPORTABLE_FUNCTIONS.map(
+    (n) => [n, "a compile-option-gated SQLite built-in"] as const,
+  ),
+  ...Object.keys(FUNCTION_MIN_VERSION).map(
+    (n) => [n, "a version-gated SQLite built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_FUNCTIONS_ALWAYS.map(
+    (n) => [n, "a nondeterministic SQLite built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_TIME_FUNCTIONS.map(
+    (n) => [n, "a SQLite date/time built-in"] as const,
+  ),
+  ...NONDETERMINISTIC_TIME_KEYWORDS.map(
+    (n) => [n, "a SQLite wall-clock keyword"] as const,
+  ),
+  ...FORBIDDEN_FUNCTIONS.map(
+    (n) => [n, "a SQLite built-in scripts may not call"] as const,
+  ),
+  ...SYSTEM_TABLES.map((n) => [n, "a SQLite system table"] as const),
+]);
+
+/** Family prefixes whose whole namespace SQLite owns (json_, jsonb_). */
+const RESERVED_SQLITE_PREFIXES: readonly string[] = Object.keys(
+  FUNCTION_PREFIX_MIN_VERSION,
+);
+
+/** The reason `name` is unusable as an inline function name, if it is. */
+function reservedSqliteName(lower: string): string | undefined {
+  const direct = RESERVED_SQLITE_NAMES.get(lower);
+  if (direct !== undefined) {
+    return direct;
+  }
+  for (const prefix of RESERVED_SQLITE_PREFIXES) {
+    if (lower.startsWith(prefix)) {
+      return `the version-gated ${prefix}_* built-in family`;
+    }
+  }
+  return undefined;
+}
 
 /** Map a std scalar to the IR scalar type; undefined when unsupported. */
 export function mapSupportedScalar(
@@ -431,8 +488,9 @@ export function validateHostLibraryInterface(
     if (tableNames.has(lower)) {
       error(ctx, "function-name-collision", { name }, target);
     }
-    if (SQLITE_BUILTIN_FUNCTION_SET.has(lower)) {
-      error(ctx, "builtin-function-collision", { name }, target);
+    const reserved = reservedSqliteName(lower);
+    if (reserved !== undefined) {
+      error(ctx, "builtin-function-collision", { name, kind: reserved }, target);
     }
   }
 

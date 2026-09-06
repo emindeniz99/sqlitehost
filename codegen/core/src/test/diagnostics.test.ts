@@ -940,14 +940,18 @@ test("rejects inline exposure requested with a required input field after an opt
 });
 
 test("rejects two methods claiming the same inline function name", async () => {
+  // Case-insensitively, the way SQLite resolves function names. An
+  // explicit functionName is snake_case by rule, so the uppercase half
+  // of the pair comes from the DERIVED side: functionPrefix is an
+  // IDENTIFIER and may carry capitals.
   const result = await compileSource(
     shell(`
-      @hostLibrary({ apiLevel: 1 })
+      @hostLibrary({ apiLevel: 1, functionPrefix: "FN_" })
       interface Methods {
-        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "fn_same" })
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false })
         op GetValue(input: In): Out;
 
-        @hostMethod({ name: "peekValue", handler: "PeekValue", mutates: false, functionName: "FN_SAME" })
+        @hostMethod({ name: "peekValue", handler: "PeekValue", mutates: false, functionName: "fn_get_value" })
         op PeekValue(input: In): Out;
       }
       model In { key: string; }
@@ -1341,4 +1345,47 @@ test("accepts two libraries whose kebab base names differ", async () => {
     }
   `);
   assert.equal(result.irs?.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Inline function names vs SQLite's own name space (round-3 audit finding 4)
+// ---------------------------------------------------------------------------
+
+/** An inline-eligible one-in/one-out method claiming `functionName`. */
+function inlineFn(functionName: string): string {
+  return shell(`
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "sq",
+        handler: "Sq",
+        mutates: false,
+        functionName: "${functionName}"
+      })
+      op Sq(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+}
+
+for (const [label, name] of [
+  ["a compile-gated math built-in", "sqrt"],
+  ["a version-gated built-in", "iif"],
+  ["a version-gated built-in family member", "json_extract"],
+  ["an always-nondeterministic built-in", "randomblob"],
+  ["a wall-clock time built-in", "julianday"],
+  ["a wall-clock keyword", "current_timestamp"],
+  ["a forbidden built-in", "pragma_optimize"],
+  ["a SQLite system table", "sqlite_master"],
+] as const) {
+  test(`rejects a functionName that is ${label}`, async () => {
+    const result = await compileSource(inlineFn(name));
+    assertDiagnostic(result, "builtin-function-collision");
+  });
+}
+
+test("accepts a functionName that only resembles a reserved family", async () => {
+  const result = await compileSource(inlineFn("fn_json_lookup"));
+  assert.equal(result.ir?.methods[0].inline?.functionName, "fn_json_lookup");
 });

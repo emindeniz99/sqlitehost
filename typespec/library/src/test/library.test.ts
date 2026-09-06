@@ -431,3 +431,49 @@ test("a C# contextual keyword is not a reserved word", async () => {
   `);
   assert.deepEqual(diagnosticCodes(program), []);
 });
+
+test("rejects a functionName that is not a SQL-callable name", async () => {
+  // functionName is registered verbatim as a SQL function name; a name
+  // outside SQL_NAME registers cleanly and is simply uncallable.
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "weird",
+        handler: "Weird",
+        mutates: false,
+        functionName: "my func'; --"
+      })
+      op Weird(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+  assertDiagnostic(program, "invalid-function-name");
+});
+
+test("rejects an uppercase functionName (SQL names are snake_case)", async () => {
+  const program = await compileSource(`
+    import "@sqlite-host/typespec";
+    using SqliteHost;
+    namespace Test;
+
+    @hostLibrary({ apiLevel: 1 })
+    interface Methods {
+      @hostMethod({
+        name: "sq",
+        handler: "Sq",
+        mutates: false,
+        functionName: "MyFunc"
+      })
+      op Sq(input: In): Out;
+    }
+    model In { x: float64; }
+    model Out { y: float64; }
+  `);
+  assertDiagnostic(program, "invalid-function-name");
+});

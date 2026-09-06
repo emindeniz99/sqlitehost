@@ -183,6 +183,17 @@ export function $hostMethod(
       });
     }
   }
+  // functionName overrides the derived functionPrefix + snake(name) and
+  // is registered verbatim as a SQL function name, so it has to be a
+  // SQL name. Without this a name like "my func'; --" registers cleanly
+  // in the runtime and is then unreachable from any script.
+  if (opts.functionName !== undefined && !SQL_NAME.test(opts.functionName)) {
+    reportDiagnostic(context.program, {
+      code: "invalid-function-name",
+      format: { name: opts.functionName },
+      target: context.decoratorTarget,
+    });
+  }
   checkApiLevel(context, opts.apiLevel);
   context.program.stateMap(stateKeys.hostMethod).set(target, opts);
 }
