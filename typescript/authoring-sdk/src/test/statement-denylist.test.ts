@@ -357,6 +357,54 @@ test("the message names the table and its role", () => {
   assert.ok(message.includes("queue"), message);
 });
 
+test("EXPLAIN is a denied leading keyword", () => {
+  // EXPLAIN is a legal prefix to ANY statement, so it anchored
+  // leadingKeyword on itself and left the real verb unread —
+  // `EXPLAIN DELETE FROM pending_host_calls` reported nothing at all. And it
+  // is not inert: SQLite applies the flag pragmas in the code generator, so
+  // `EXPLAIN PRAGMA writable_schema = ON` sets the flag for real while
+  // executing nothing (sqlite3 CLI 3.51.0, likewise for foreign_keys,
+  // case_sensitive_like, recursive_triggers, trusted_schema and
+  // legacy_alter_table). A script discards rows anyway, so EXPLAIN has no
+  // legitimate use in a payload.
+  for (const sql of [
+    "EXPLAIN PRAGMA writable_schema = ON",
+    "EXPLAIN QUERY PLAN PRAGMA case_sensitive_like = ON",
+    "EXPLAIN DELETE FROM pending_host_calls",
+    "explain select 1",
+  ]) {
+    const found = forbidden(sql);
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+  }
+  // A column or table whose name merely starts with the keyword is untouched,
+  // like every other entry on the list.
+  assert.deepStrictEqual(forbidden("SELECT explain_id FROM script_vars"), []);
+});
+
+test("SQLite's own tables are write-protected too", () => {
+  // The manifest cannot name these, so a manifest-only resolution never saw
+  // them. `UPDATE sqlite_master SET sql = …` is the sharp one: with
+  // writable_schema on it rewrites the runtime's queue trigger, after which
+  // host calls enqueue nothing and the run still reports Completed.
+  for (const sql of [
+    "UPDATE sqlite_master SET sql = 'x' WHERE name = 'trg_call_get_value_queue'",
+    "DELETE FROM sqlite_master",
+    "UPDATE sqlite_schema SET sql = 'x'",
+    "DELETE FROM sqlite_temp_master",
+    "UPDATE sqlite_sequence SET seq = 9223372036854775807 WHERE name = 'pending_host_calls'",
+    "DELETE FROM sqlite_stat1",
+    "UPDATE main.sqlite_master SET sql = 'x'",
+    "DELETE FROM 'sqlite_master'",
+  ]) {
+    const found = protocolWrite(sql);
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+  }
+  // Reading them stays legal, like every other runtime-owned table.
+  assert.deepStrictEqual(protocolWrite("SELECT name FROM sqlite_master"), []);
+});
+
 test("a leading BOM does not hide a denied statement", () => {
   // WHY: SQLite's tokenizer gives the UTF-8 BOM its own character class and
   // returns TK_SPACE for it, so `<BOM>PRAGMA writable_schema = ON` compiles

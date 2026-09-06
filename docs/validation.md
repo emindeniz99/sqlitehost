@@ -65,6 +65,20 @@ Opens an in-memory SQLite database, creates the generated schema,
 errors, missing tables/columns, unsupported functions), and finalizes
 without stepping.
 
+**Each statement is prepared in isolation**, on its own connection with
+the schema re-created. Preparing a whole step on one connection made the
+verdict on statement *n* depend on the *prepare-time* side effects of
+statement *n-1*, and prepare-time side effects exist: SQLite's flag
+pragmas are applied by the code generator rather than the VDBE, so a
+leading `EXPLAIN PRAGMA writable_schema = ON` — which executes nothing —
+turned the flag on inside this validator's own engine, after which the
+`UPDATE sqlite_master` that followed compiled clean. A gate whose verdict
+the payload can change is not a gate. The isolation costs little: the
+generated schema is a couple of dozen small DDL statements against an
+in-memory database, and the Java conformance matrix went from 0.51 s
+(74 payloads, one connection per step) to 0.65 s (76 payloads, one per
+statement).
+
 | Code | Severity | Rule |
 |---|---|---|
 | `sql-prepare-error` | error | a statement failed to compile against the schema generated from the manifest. Java-only: the TypeScript authoring lint has no engine. It is the sole finding for a fault only a compiler can see (`invalid/unknown-column.json`) and a second, corroborating one wherever a lint-rejected statement is also uncompilable |
@@ -241,8 +255,8 @@ list lives in `docs/sqlite-surface.md`.
 | `embedded-nul` | error | the `sql` field contains U+0000. SQLite's prepare takes a NUL-terminated string, so it compiles only the text before the first NUL and silently drops the rest — every other rule here reads the whole field, so the statement the validator judged is not the statement the device runs |
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
 | `unrecognized-statement` | error | the statement's **first meaningful token** is not an identifier, so `forbidden-statement` and `protocol-table-write` have nothing to anchor on. Both rules used to skip such a statement silently, which is fail-**open**: every legal script statement starts with an identifier (`SELECT`/`INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`WITH`/`VALUES`), so anything else is either unrunnable or a tokenizer/engine divergence — and one leading U+FEFF was exactly that. A parenthesised `(SELECT 1)` is not a counter-example: sqlite3 3.51.0 rejects it with `near "(": syntax error`. Blank `sql` is `invalid-envelope`, not this |
-| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
-| `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
+| `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL), `EXPLAIN` (a prefix to any of them — see below). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
+| `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned **or** SQLite-owned table. Runtime-owned: any `result_*` table or result list child table, the host-call queue table, the runtime inputs table — resolved from the **manifest**, never from a name prefix, because all of those names are host-configurable (docs/naming.md). SQLite-owned: `sqlite_master`, `sqlite_schema`, `sqlite_temp_master`, `sqlite_temp_schema`, `sqlite_sequence` and `sqlite_stat1`..`sqlite_stat4` — a *fixed* list (`SYSTEM_TABLES` in `ir.ts`), because no manifest can rename them and a manifest-only resolution therefore missed every one |
 
 Why these are errors rather than warnings:
 
@@ -299,7 +313,23 @@ Why these are errors rather than warnings:
 - **Protocol tables have exactly one writer.** The drain and the
   result-write policy both assume it. A script can otherwise forge a
   result the host never produced, or delete queued calls so they never
-  drain while the run reports success.
+  drain while the run reports success. SQLite's own tables are on the
+  same list for a sharper reason: `UPDATE sqlite_master SET sql = …`
+  rewrites the queue trigger itself, which is the DDL rule's failure
+  shape reached without any DDL. Only layer 3 stood in front of it, and
+  only while `writable_schema` was off.
+- **`EXPLAIN` is a prefix, so it hid the statement it prefixes.** It
+  anchored `leadingKeyword` on itself and left the real verb unread, so
+  `EXPLAIN DELETE FROM pending_host_calls` passed both denylists. It is
+  also not inert: SQLite applies the flag pragmas (`PragTyp_FLAG`) in the
+  code generator, i.e. during `sqlite3_prepare`, so `EXPLAIN PRAGMA
+  writable_schema = ON` sets the flag for real while executing nothing —
+  verified on the sqlite3 CLI 3.51.0, and likewise for `foreign_keys`,
+  `case_sensitive_like`, `recursive_triggers`, `trusted_schema`,
+  `legacy_alter_table` and the `EXPLAIN QUERY PLAN` spelling. A script
+  executes statements for effect and discards rows
+  (`docs/sqlite-surface.md` §4), so denying the keyword costs nothing
+  legal.
 - **The runtime owns the schema, so a script has no DDL to do.**
   `DROP TRIGGER trg_call_<method>_queue` is the sharp case: with the queue
   trigger gone, inserts into that call table enqueue nothing, the drain

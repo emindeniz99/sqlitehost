@@ -141,10 +141,29 @@ export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
   "detach",
   "drop",
   "end",
+  "explain",
   "pragma",
   "reindex",
   "release",
   "rollback",
   "savepoint",
   "vacuum",
+];
+
+/**
+ * Tables SQLite itself owns. A write against one is a
+ * protocol-table-write, alongside the manifest-derived runtime tables;
+ * unlike those, these names are fixed rather than host-configurable.
+ * Reads stay legal.
+ */
+export const SYSTEM_TABLES: readonly string[] = [
+  "sqlite_master",
+  "sqlite_schema",
+  "sqlite_sequence",
+  "sqlite_stat1",
+  "sqlite_stat2",
+  "sqlite_stat3",
+  "sqlite_stat4",
+  "sqlite_temp_master",
+  "sqlite_temp_schema",
 ];

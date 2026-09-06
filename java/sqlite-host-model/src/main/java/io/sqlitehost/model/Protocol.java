@@ -111,8 +111,19 @@ public final class Protocol {
      */
     public static final Set<String> FORBIDDEN_LEADING_KEYWORDS = Set.of(
             "alter", "analyze", "attach", "begin", "commit", "create", "detach",
-            "drop", "end", "pragma", "reindex", "release", "rollback",
+            "drop", "end", "explain", "pragma", "reindex", "release", "rollback",
             "savepoint", "vacuum");
+
+    /**
+     * Tables SQLite itself owns ({@code ir.ts SYSTEM_TABLES}). A write
+     * against one is a protocol-table-write, alongside the manifest-derived
+     * runtime tables; unlike those, these names are fixed rather than
+     * host-configurable. Reads stay legal.
+     */
+    public static final Set<String> SYSTEM_TABLES = Set.of(
+            "sqlite_master", "sqlite_schema", "sqlite_sequence", "sqlite_stat1",
+            "sqlite_stat2", "sqlite_stat3", "sqlite_stat4", "sqlite_temp_master",
+            "sqlite_temp_schema");
 
     private Protocol() {
     }

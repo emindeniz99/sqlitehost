@@ -20,6 +20,7 @@ import {
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONPORTABLE_FUNCTIONS,
+  SYSTEM_TABLES,
   type ScalarTypeIr,
 } from "@sqlite-host/codegen-core";
 import { docComment, generatedHeader, renderLiteral, type Literal } from "./format.js";
@@ -124,6 +125,15 @@ export function emitProtocol(): string {
       [...FORBIDDEN_LEADING_KEYWORDS],
       "Statement kinds a script may not use, matched on the statement's " +
         "first meaningful token.",
+    ),
+    constant(
+      "SYSTEM_TABLES",
+      "readonly string[]",
+      [...SYSTEM_TABLES],
+      "Tables SQLite itself owns. A write against one is a " +
+        "protocol-table-write, alongside the manifest-derived runtime " +
+        "tables; unlike those, these names are fixed rather than " +
+        "host-configurable. Reads stay legal.",
     ),
   ];
 

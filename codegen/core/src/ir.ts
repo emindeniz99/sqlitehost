@@ -448,6 +448,19 @@ export const NONPORTABLE_FUNCTIONS: readonly string[] = [
  *    contract. PRAGMA in particular can change semantics under the runtime's
  *    feet (`foreign_keys`, `recursive_triggers`, `case_sensitive_like`) or
  *    rewrite the schema outright (`writable_schema=ON`).
+ *  - `explain`: a legal prefix to *any* statement, which anchored
+ *    `leadingKeyword` on itself and left the real verb unread — so
+ *    `EXPLAIN DELETE FROM result_get_value` bypassed protocol-table-write
+ *    too. It is not inert: SQLite applies the flag pragmas
+ *    (`PragTyp_FLAG`) in the code generator, i.e. during prepare, so
+ *    `EXPLAIN PRAGMA writable_schema = ON` sets the flag for real while
+ *    executing nothing (verified on the sqlite3 CLI 3.51.0, likewise for
+ *    `foreign_keys`, `case_sensitive_like`, `recursive_triggers`,
+ *    `trusted_schema`, `legacy_alter_table`, and with the
+ *    `EXPLAIN QUERY PLAN` spelling). A script executes statements for
+ *    effect and discards rows (docs/sqlite-surface.md §4), so EXPLAIN has
+ *    no legitimate use in a payload and denying it costs nothing legal —
+ *    the same argument the list already makes for `create`.
  *  - `alter`/`create`/`drop`: schema DDL. The runtime owns the workspace
  *    schema and a script has no reason to change it. `DROP TRIGGER` on a
  *    queue trigger is the sharp case — inserts into the call table then
@@ -476,12 +489,48 @@ export const FORBIDDEN_LEADING_KEYWORDS: readonly string[] = [
   "detach",
   "drop",
   "end",
+  "explain",
   "pragma",
   "reindex",
   "release",
   "rollback",
   "savepoint",
   "vacuum",
+];
+
+/**
+ * Tables SQLite owns, which a script may not write either (the
+ * protocol-table-write lint, docs/validation.md). Unlike the runtime-owned
+ * tables this list is FIXED rather than manifest-derived: these names are
+ * SQLite's, not the host's, so nothing in a manifest can rename them and a
+ * manifest-only resolution missed every one of them.
+ *
+ * `sqlite_master` is the sharp case and the reason this list exists: paired
+ * with `PRAGMA writable_schema = ON` (reachable at prepare time through
+ * `EXPLAIN`, see FORBIDDEN_LEADING_KEYWORDS) an UPDATE against it rewrites
+ * the runtime's own queue trigger, after which host calls enqueue nothing
+ * and the run still reports Completed. `sqlite_sequence` is the quiet one:
+ * setting a table's AUTOINCREMENT high is not silent corruption but a loud
+ * SQLITE_FULL on the next queue insert — still not something a script has
+ * any business doing. `sqlite_stat1`..`sqlite_stat4` are the query planner's
+ * statistics tables.
+ *
+ * Names are compared lowercased, and only as a WRITE target — reading
+ * `sqlite_master` stays legal, like every other read.
+ *
+ * Single-sourced here and projected per language
+ * (docs/proposals/rule-parameters-as-data.md).
+ */
+export const SYSTEM_TABLES: readonly string[] = [
+  "sqlite_master",
+  "sqlite_schema",
+  "sqlite_sequence",
+  "sqlite_stat1",
+  "sqlite_stat2",
+  "sqlite_stat3",
+  "sqlite_stat4",
+  "sqlite_temp_master",
+  "sqlite_temp_schema",
 ];
 
 /**

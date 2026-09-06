@@ -152,6 +152,25 @@ and constraints. *Exception:* the `pragma_*` table-valued functions
 inside a `SELECT` (e.g. `pragma_table_info('t')`, 3.16+) are ordinary
 reads and stay legal.
 
+**`EXPLAIN` and `EXPLAIN QUERY PLAN`.** Not because the opcodes are
+dangerous — a script discards rows anyway (§4) — but because `EXPLAIN` is
+a legal prefix to *any* statement, so it hides the statement it prefixes
+from a rule that reads the first token. It is also not the no-op it
+looks like: SQLite applies the flag pragmas in the **code generator**,
+during `sqlite3_prepare`, so `EXPLAIN PRAGMA writable_schema = ON` sets
+the flag for real while executing nothing. Same for `foreign_keys`,
+`case_sensitive_like`, `recursive_triggers`, `trusted_schema` and
+`legacy_alter_table`, and same through `EXPLAIN QUERY PLAN`, which prints
+no rows at all.
+
+**Writes against SQLite's own tables.** `sqlite_master` / `sqlite_schema`,
+`sqlite_temp_master` / `sqlite_temp_schema`, `sqlite_sequence` and
+`sqlite_stat1`..`sqlite_stat4` are denied write targets alongside the
+protocol tables. `UPDATE sqlite_master SET sql = …`, once
+`writable_schema` is on, redefines the runtime's own queue trigger —
+reaching the DDL failure shape below without writing any DDL. Reading
+them stays legal.
+
 **Writes and DDL against the protocol tables.** `pending_host_calls`,
 every `result_<method>` table and its list children, and the
 `trg_call_<method>_queue` triggers are **runtime-owned**: the drain and

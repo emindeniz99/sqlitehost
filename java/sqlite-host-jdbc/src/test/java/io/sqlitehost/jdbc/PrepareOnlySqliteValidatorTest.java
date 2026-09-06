@@ -109,6 +109,38 @@ class PrepareOnlySqliteValidatorTest {
     }
 
     @Test
+    void anEarlierStatementCannotDisarmTheVerdictOnALaterOne() throws Exception {
+        // The audit's weaponised payload, minus its now-forbidden EXPLAIN
+        // statements (forbidden-statement catches those in layer 4). What
+        // is left is the part only this layer can answer: preparing the
+        // whole step on ONE connection let statement 0 turn writable_schema
+        // on inside the validator's own engine — SQLite applies flag
+        // pragmas in the code generator, so `EXPLAIN PRAGMA
+        // writable_schema = ON` sets the flag while executing nothing — and
+        // the sqlite_master rewrite that follows then compiled clean. With
+        // a connection per statement the UPDATE is rejected on its own
+        // merits whatever precedes it.
+        String masterRewrite = "UPDATE sqlite_master SET sql = 'CREATE TRIGGER"
+                + " trg_call_get_value_queue AFTER INSERT ON call_get_value BEGIN SELECT 1;"
+                + " END' WHERE name = 'trg_call_get_value_queue'";
+
+        List<ValidationFinding> alone = prepare(script(masterRewrite));
+        assertEquals(1, alone.size(), alone.toString());
+        assertEquals(ValidationCodes.SQL_PREPARE_ERROR, alone.get(0).code());
+        assertTrue(alone.get(0).message().contains("sqlite_master"), alone.get(0).message());
+
+        String json = "{\"engine\":\"sqlite-host-v1\",\"requiredApiLevel\":1,"
+                + "\"steps\":[{\"id\":\"s\",\"statements\":["
+                + "{\"sql\":\"EXPLAIN PRAGMA writable_schema = ON\",\"bindings\":{}},"
+                + "{\"sql\":\"" + masterRewrite + "\",\"bindings\":{}}"
+                + "]}]}";
+        List<ValidationFinding> chained = prepare(json);
+        assertEquals(1, chained.size(), chained.toString());
+        assertEquals(ValidationCodes.SQL_PREPARE_ERROR, chained.get(0).code());
+        assertEquals(1, chained.get(0).statementIndex(), "the UPDATE, not the EXPLAIN");
+    }
+
+    @Test
     void prepareDoesNotExecuteTheStatement() throws Exception {
         // A duplicate-PK pair prepares fine twice: nothing is stepped,
         // so the UNIQUE violation that execution would hit never fires.

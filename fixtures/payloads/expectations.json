@@ -947,6 +947,40 @@
         }
       ],
       "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-explain.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-sqlite-master.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }

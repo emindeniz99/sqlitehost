@@ -22,6 +22,7 @@ import {
   NONDETERMINISTIC_FUNCTIONS_ALWAYS,
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONPORTABLE_FUNCTIONS,
+  SYSTEM_TABLES,
 } from "./generated/protocol.js";
 import type {
   HostManifest,
@@ -285,7 +286,15 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
   // tables and their child tables (writing them is how a script makes a host
   // call), plus script_vars and script_control (the script's own scratch and
   // control surfaces).
+  // Alongside them, the tables SQLite itself owns. These are NOT
+  // manifest-derived — nothing in a manifest can rename `sqlite_master` —
+  // which is exactly why a manifest-only resolution missed every one of
+  // them and left `UPDATE sqlite_master SET sql = …` (the queue-trigger
+  // rewrite) outside the lint entirely. Fixed list, single-sourced in ir.ts.
   const protocolTables = new Map<string, string>();
+  for (const table of SYSTEM_TABLES) {
+    protocolTables.set(table, "a SQLite-owned system table");
+  }
   protocolTables.set(manifest.queueTable.name.toLowerCase(), "the host-call queue table");
   protocolTables.set(manifest.inputsTable.name.toLowerCase(), "the runtime inputs table");
   for (const method of manifest.methods) {

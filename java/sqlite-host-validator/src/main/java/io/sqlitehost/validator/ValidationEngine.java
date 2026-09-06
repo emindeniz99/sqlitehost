@@ -1045,6 +1045,15 @@ public final class ValidationEngine {
         final Map<String, String> protocolTables = new HashMap<>();
 
         SchemaIndex(Manifest manifest) {
+            // Alongside the runtime-owned tables, the tables SQLite itself
+            // owns. These are NOT manifest-derived — nothing in a manifest
+            // can rename sqlite_master — which is exactly why a
+            // manifest-only resolution missed every one of them and left
+            // `UPDATE sqlite_master SET sql = …` (the queue-trigger rewrite)
+            // outside the lint entirely. Fixed list, single-sourced in ir.ts.
+            for (String table : Protocol.SYSTEM_TABLES) {
+                protocolTables.put(table, "a SQLite-owned system table");
+            }
             callIdColumn = manifest.columns().callId();
             itemIndexColumn = manifest.columns().itemIndex();
             functionPrefix = manifest.naming().functionPrefix();
