@@ -1,9 +1,12 @@
 /**
  * WHY: "no server, no network" is the playground's load-bearing promise —
  * it is what makes pasting a private host definition into the page safe,
- * and it is stated on the page itself. src/test/web-bundle.test.ts can
- * only inspect the built files for suspicious strings; whether the loaded
- * page actually reaches off-origin is a question only a browser answers.
+ * and it is stated on the page itself. src/test/web-bundle.test.ts covers
+ * the build: the bundle carries no network sink, and the pipeline runs
+ * with fetch/XHR/WebSocket/EventSource replaced by throwing stubs.
+ * Whether the LOADED page reaches off-origin — favicons, fonts, a
+ * redirect, anything the browser itself initiates — is a question only a
+ * browser answers, which is what this file is for.
  *
  * The same test doubles as the smoke test for module loading: a 2.3 MB
  * ESM bundle that throws on evaluation would leave the page silent and
