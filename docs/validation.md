@@ -189,7 +189,7 @@ instead of on a player's device.
 | Code | Severity | Rule |
 |---|---|---|
 | `sqlite-version-too-low-for-function` | error | the SQL calls a built-in introduced *after* the host's `minSqliteVersionNumber`. Resolved from an exact-name table first, then the longest matching family prefix, both single-sourced in `codegen/core/src/ir.ts` (`FUNCTION_MIN_VERSION`, `FUNCTION_PREFIX_MIN_VERSION`). Fix by raising the host's `minSqliteVersion` or dropping the function. One finding per distinct name per statement |
-| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
+| `nonportable-function` | error | the SQL calls a built-in whose presence is decided by the engine's **compile options**, not its version — the math functions (`sqrt`, `pow`, `ceil`, …), which need `-DSQLITE_ENABLE_MATH_FUNCTIONS`, and `load_extension`, which `-DSQLITE_OMIT_LOAD_EXTENSION` removes outright and which stays disabled per connection even where it is compiled in. Kept a separate code from the version lint precisely because raising `minSqliteVersion` does **not** fix it (`NONPORTABLE_FUNCTIONS` in `ir.ts`) |
 
 Every version in the table is sourced from the sqlite.org changelog for
 that release: window functions 3.25.0, `iif` 3.32.0, `format` and

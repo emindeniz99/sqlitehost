@@ -568,11 +568,9 @@ public final class ValidationEngine {
             if (reported.add(nameLc)) {
                 findings.add(ValidationFinding.error(ValidationCodes.NONPORTABLE_FUNCTION,
                         stepId, statementIndex,
-                        "'" + call.name() + "' is only present when the device's SQLite"
-                                + " was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS —"
-                                + " its availability is a compile option, not a version,"
-                                + " so raising minSqliteVersion cannot make it safe;"
-                                + " compute the value in the host and bind it instead"));
+                        "'" + call.name() + "' " + nonportableReason(nameLc)
+                                + " — its availability is a compile option, not a version,"
+                                + " so raising minSqliteVersion cannot make it safe"));
             }
             return;
         }
@@ -586,6 +584,18 @@ public final class ValidationEngine {
                             + formatVersion(schema.minSqliteVersionNumber)
                             + " — raise the host's minSqliteVersion or avoid the function"));
         }
+    }
+
+    /** Which compile option decides this built-in, and what to do instead. */
+    private static String nonportableReason(String nameLc) {
+        if ("load_extension".equals(nameLc)) {
+            return "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled"
+                    + " per connection even where it is compiled in; a script cannot bring"
+                    + " its own SQL surface, so the host must register what it needs";
+        }
+        return "is only present when the device's SQLite was compiled with"
+                + " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host"
+                + " and bind it instead";
     }
 
     /**

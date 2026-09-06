@@ -145,6 +145,21 @@ function minVersionFor(nameLc: string): number {
   return best;
 }
 
+/** Which compile option decides this built-in, and what to do instead. */
+function nonportableReason(nameLc: string): string {
+  if (nameLc === "load_extension") {
+    return (
+      "is removed outright by -DSQLITE_OMIT_LOAD_EXTENSION, and stays disabled per" +
+      " connection even where it is compiled in; a script cannot bring its own SQL" +
+      " surface, so the host must register what it needs"
+    );
+  }
+  return (
+    "is only present when the device's SQLite was compiled with" +
+    " -DSQLITE_ENABLE_MATH_FUNCTIONS; compute the value in the host and bind it instead"
+  );
+}
+
 /** Render a SQLITE_VERSION_NUMBER (MAJ*1000000 + MIN*1000 + PATCH) as M.N.P. */
 function formatVersion(versionNumber: number): string {
   return `${Math.floor(versionNumber / 1000000)}.${Math.floor(versionNumber / 1000) % 1000}.${versionNumber % 1000}`;
@@ -537,7 +552,7 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
             findings.push({
               code: "nonportable-function",
               severity: "error",
-              message: `"${call.name}" is only present when the device's SQLite was compiled with -DSQLITE_ENABLE_MATH_FUNCTIONS — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe; compute the value in the host and bind it instead`,
+              message: `"${call.name}" ${nonportableReason(nameLc)} — its availability is a compile option, not a version, so raising minSqliteVersion cannot make it safe`,
               ...at,
             });
           } else {

@@ -115,6 +115,20 @@ test("compile-gated builtins are reported separately from version gaps", () => {
   }
 });
 
+test("load_extension is compile-gated too, and names its own option", () => {
+  // Not a math function, and the reason is the mirror image:
+  // -DSQLITE_OMIT_LOAD_EXTENSION REMOVES it. That is not theoretical — the
+  // sqlite3 3.51.0 shipped with macOS answers "no such function:
+  // load_extension" while the JDBC driver's bundled engine of the same version
+  // compiles the call. Even where it is compiled in it stays disabled per
+  // connection until the host calls sqlite3_enable_load_extension.
+  const found = portabilityFindings("SELECT load_extension('x')");
+  assert.equal(found.length, 1, JSON.stringify(found));
+  assert.equal(found[0].severity, "error");
+  assert.ok(found[0].message.includes("SQLITE_OMIT_LOAD_EXTENSION"), found[0].message);
+  assert.deepStrictEqual(versionFindings("SELECT load_extension('x')"), []);
+});
+
 test("host inline functions are never judged against the engine", () => {
   // An inline function is registered by the host adapter through
   // sqlite3_create_function, so neither the engine's version nor its compile

@@ -687,6 +687,20 @@
       "warnings": []
     },
     {
+      "payload": "invalid/nonportable-load-extension.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "nonportable-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
       "payload": "invalid/nonportable-function.json",
       "valid": false,
       "errors": [

@@ -149,6 +149,23 @@ class EnginePortabilityLintTest {
     }
 
     @Test
+    void loadExtensionIsCompileGatedTooAndNamesItsOwnOption() throws IOException {
+        // Not a math function, and the reason is the mirror image:
+        // -DSQLITE_OMIT_LOAD_EXTENSION REMOVES it. That is not theoretical —
+        // the sqlite3 3.51.0 shipped with macOS answers
+        // "no such function: load_extension" while the JDBC driver's bundled
+        // engine of the same version compiles the call. Even where it is
+        // compiled in it stays disabled per connection until the host calls
+        // sqlite3_enable_load_extension.
+        List<ValidationFinding> found = portabilityFindings("SELECT load_extension('x')");
+        assertEquals(1, found.size(), found.toString());
+        assertEquals(Severity.ERROR, found.get(0).severity());
+        assertTrue(found.get(0).message().contains("SQLITE_OMIT_LOAD_EXTENSION"),
+                found.get(0).message());
+        assertEquals(List.of(), versionFindings("SELECT load_extension('x')"));
+    }
+
+    @Test
     void hostInlineFunctionsAreNeverJudgedAgainstTheEngine() throws IOException {
         // An inline function is registered by the host adapter through
         // sqlite3_create_function, so neither the engine's version nor its
