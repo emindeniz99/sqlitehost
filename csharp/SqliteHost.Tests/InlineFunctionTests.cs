@@ -248,6 +248,60 @@ namespace SqliteHost.Tests
                 "SELECT call_id FROM call_get_value", null, row => row.GetText(0)));
         }
 
+        [SkippableFact]
+        public void CapableFactory_OpeningAnIncapableConnection_IsAnInlineRegistrationError()
+        {
+            SkipIfExcluded();
+            // The capability is a STATIC factory-level promise so the
+            // clean-skip precheck stays workspace-free (docs/csharp-api.md:
+            // "Connections returned by a capable factory must implement
+            // ISqliteHostScalarFunctionConnection"). A factory that breaks
+            // that promise passes the precheck, so nothing upstream can
+            // catch it; without a registration-time check the script dies on
+            // "no such function: fn_get_value" and a host wiring bug is
+            // reported as the script's sql-error.
+            var handlers = new FakeGameHandlers();
+            using var factory = new ScalarFunctionCapableAdapterWorkspaceFactory(
+                () => new FunctionIncapableConnection(OpenAdapterConnection()));
+
+            SqliteHostRunResult result = RunGeneratedHost(
+                RequiringInlineFunctions(Scripts.New(
+                    Scripts.Step("only", Scripts.Statement(
+                        "CREATE TABLE scratch AS SELECT fn_get_value('example-key') AS v")))),
+                handlers, factory);
+
+            Assert.Equal(SqliteHostRunStatus.FailedSchema, result.Status);
+            Assert.Equal("inline-registration-error", result.ErrorCode);
+            // The message must name the two types the host has to fix.
+            Assert.Contains("ScalarFunctionCapableAdapterWorkspaceFactory", result.ErrorMessage);
+            Assert.Contains("FunctionIncapableConnection", result.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Connection that cannot register scalar functions, used behind a
+        /// factory that claims it can (the A5 misconfiguration).
+        /// </summary>
+        private sealed class FunctionIncapableConnection : ISqliteHostConnection
+        {
+            private readonly ISqliteHostConnection _inner;
+
+            public FunctionIncapableConnection(ISqliteHostConnection inner)
+            {
+                _inner = inner;
+            }
+
+            public void Execute(string sql, IReadOnlyList<SqliteHostBinding> bindings)
+                => _inner.Execute(sql, bindings);
+
+            public IReadOnlyList<object> QueryRows(
+                string sql,
+                IReadOnlyList<SqliteHostBinding> bindings,
+                Func<ISqliteHostRow, object> mapper)
+                => _inner.QueryRows(sql, bindings, mapper);
+
+            public void Dispose() => _inner.Dispose();
+        }
+
         /// <summary>Function-capable wrapper whose registration always fails; everything else delegates.</summary>
         private sealed class RegistrationFailingConnection : ISqliteHostScalarFunctionConnection
         {
