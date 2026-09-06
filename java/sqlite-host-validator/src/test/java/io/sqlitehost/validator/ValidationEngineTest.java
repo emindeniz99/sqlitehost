@@ -21,10 +21,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Engine unit tests for the pinned codes that have no committed
- * payload fixture (invalid-envelope, list-child-without-parent) plus
- * intent checks that the full fixture matrix (run in sqlite-host-jdbc)
- * cannot express, e.g. that colocated children are accepted.
+ * Engine unit tests for the intent behind the pinned codes — the half
+ * the full fixture matrix (run in sqlite-host-jdbc) cannot express, e.g.
+ * that colocated children are accepted, or the several distinct shapes
+ * that each raise invalid-envelope. Both codes this comment once claimed
+ * had no committed payload fixture now have one:
+ * invalid/empty-statements.json and
+ * invalid/list-child-without-parent.json.
  */
 class ValidationEngineTest {
 

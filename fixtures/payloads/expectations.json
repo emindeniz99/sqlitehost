@@ -576,6 +576,62 @@
       "valid": true,
       "errors": [],
       "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-function-quoted.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-function",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/binding-type-mismatch-call-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "binding-type-mismatch",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/protocol-table-write-vertical-tab.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "protocol-table-write",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/list-child-without-parent.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "list-child-without-parent",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }
