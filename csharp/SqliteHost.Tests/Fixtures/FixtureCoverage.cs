@@ -128,9 +128,13 @@ namespace SqliteHost.Tests.Fixtures
         /// mechanism; repeating them here would duplicate coverage and make
         /// this table engine-dependent.</para>
         ///
-        /// <para><b>gap</b> — the case is envelope-class in
-        /// expectations.json and the C# side does NOT refuse it. Three of
-        /// them, all real. They are listed rather than hidden.</para>
+        /// <para>There is no third class. This table carried three
+        /// <b>gap</b> entries when it was written — envelope-class in
+        /// expectations.json and accepted by C# anyway (blank binding name,
+        /// non-canonical base64, an explicit null for an optional field) —
+        /// and all three are now refused, the first by the precheck and the
+        /// other two by the reader. A future one is listed here with a
+        /// <c>gap:</c> reason rather than hidden.</para>
         /// </summary>
         // >>> invalid-not-envelope (parsed by scripts/check-fixture-corpus.mjs)
         internal static readonly IReadOnlyDictionary<string, string> NotEnvelopeFaults =
