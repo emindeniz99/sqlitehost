@@ -130,12 +130,18 @@ namespace SqliteHost.Tests.Adapter
 
             var rows = connection.Query(
                 "SELECT typeof(v), v FROM b ORDER BY id", null,
-                row => row.GetText(0) + "|" + row.IsNull(1) + "|" + row.GetBlob(1).Length);
+                row => row.GetText(0) + "|" + row.IsNull(1) + "|"
+                    + (row.IsNull(1) ? "refused" : row.GetBlob(1).Length.ToString()));
 
             // Zero-length blob binds as an actual blob (sqlite3_bind_zeroblob
-            // path), never as an implicit NULL; NULL stays NULL. GetBlob
-            // returns an empty array in both cases, never null.
-            Assert.Equal(new[] { "blob|False|0", "null|True|0" }, rows);
+            // path), never as an implicit NULL; NULL stays NULL. The read
+            // back keeps them apart: an empty blob is an empty array, a NULL
+            // column has no blob at all and GetBlob refuses it. Both are a
+            // null pointer to sqlite3_column_blob, so only the type check
+            // can tell them apart.
+            Assert.Equal(new[] { "blob|False|0", "null|True|refused" }, rows);
+            Assert.Throws<InvalidOperationException>(() => connection.Query(
+                "SELECT v FROM b WHERE id = 2", null, row => row.GetBlob(0)));
         }
 
         [Fact]

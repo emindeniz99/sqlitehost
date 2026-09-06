@@ -10,16 +10,29 @@ namespace SqliteHost
     /// with identical messages: scalar-only input, exactly one scalar
     /// result, no lists, optional input fields trailing. Returns null when
     /// the method is not inline-exposed.
+    ///
+    /// The arity is a manifest value: generated code passes the IR's
+    /// minArgs/maxArgs straight through, so the C# runtime does not carry
+    /// a second copy of the rule that produced them
+    /// (codegen/core/src/frontend.ts). Deriving it from the declared field
+    /// shapes is the fallback for hand-written definitions, which have no
+    /// manifest to read it from — and InlineArityTests pins the two
+    /// against each other on the sample host so they cannot part ways.
     /// </summary>
     internal static class InlineShapeRules
     {
+        /// <summary>Arity sentinel for a hand-written spec: derive it instead.</summary>
+        internal const int NotDeclared = -1;
+
         public static InlineFunctionModel BuildModel(
             string methodName,
             string inlineFunctionName,
             IReadOnlyList<ErasedReadField> inputFields,
             int inputListFieldCount,
             int resultFieldCount,
-            int resultListFieldCount)
+            int resultListFieldCount,
+            int declaredMinArgs = NotDeclared,
+            int declaredMaxArgs = NotDeclared)
         {
             if (inlineFunctionName == null)
             {
@@ -62,7 +75,10 @@ namespace SqliteHost
                 }
                 requiredCount++;
             }
-            return new InlineFunctionModel(inlineFunctionName, requiredCount, inputFields.Count);
+            return new InlineFunctionModel(
+                inlineFunctionName,
+                declaredMinArgs == NotDeclared ? requiredCount : declaredMinArgs,
+                declaredMaxArgs == NotDeclared ? inputFields.Count : declaredMaxArgs);
         }
     }
 }

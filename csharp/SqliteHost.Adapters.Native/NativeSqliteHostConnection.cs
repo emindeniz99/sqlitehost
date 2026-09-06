@@ -698,19 +698,28 @@ namespace SqliteHost.Adapters.Native
                 => NativeMethods.sqlite3_column_type(Statement, index) == NativeMethods.SQLITE_NULL;
 
             public int GetInt32(int index)
-                => NativeMethods.sqlite3_column_int(Statement, index);
+            {
+                RequireNotNull(index);
+                return NativeMethods.sqlite3_column_int(Statement, index);
+            }
 
             public long GetInt64(int index)
-                => NativeMethods.sqlite3_column_int64(Statement, index);
+            {
+                RequireNotNull(index);
+                return NativeMethods.sqlite3_column_int64(Statement, index);
+            }
 
             public bool GetBool(int index)
-                => NativeMethods.sqlite3_column_int64(Statement, index) != 0;
+            {
+                RequireNotNull(index);
+                return NativeMethods.sqlite3_column_int64(Statement, index) != 0;
+            }
 
             public string GetText(int index)
             {
+                RequireNotNull(index);
                 // Per the C API docs, fetch the pointer first and the byte
-                // count second (NULL columns read as null, like the other
-                // adapters).
+                // count second.
                 IntPtr statement = Statement;
                 IntPtr text = NativeMethods.sqlite3_column_text(statement, index);
                 int byteCount = NativeMethods.sqlite3_column_bytes(statement, index);
@@ -719,7 +728,11 @@ namespace SqliteHost.Adapters.Native
 
             public byte[] GetBlob(int index)
             {
-                // Empty blob reads as an empty array, never null.
+                // A NULL column is refused above; an empty (non-NULL) blob
+                // reads as an empty array, never null. sqlite3_column_blob
+                // hands back a null pointer for BOTH, which is exactly why
+                // the NULL case cannot be inferred from the pointer here.
+                RequireNotNull(index);
                 IntPtr statement = Statement;
                 IntPtr blob = NativeMethods.sqlite3_column_blob(statement, index);
                 int byteCount = NativeMethods.sqlite3_column_bytes(statement, index);
@@ -727,10 +740,31 @@ namespace SqliteHost.Adapters.Native
             }
 
             public float GetFloat32(int index)
-                => (float)NativeMethods.sqlite3_column_double(Statement, index);
+            {
+                RequireNotNull(index);
+                return (float)NativeMethods.sqlite3_column_double(Statement, index);
+            }
 
             public double GetFloat64(int index)
-                => NativeMethods.sqlite3_column_double(Statement, index);
+            {
+                RequireNotNull(index);
+                return NativeMethods.sqlite3_column_double(Statement, index);
+            }
+
+            /// <summary>
+            /// A NULL column has no typed value; the contract is to say so
+            /// rather than invent one (docs/adapter-contract.md, "Value
+            /// fidelity").
+            /// </summary>
+            private void RequireNotNull(int index)
+            {
+                if (IsNull(index))
+                {
+                    throw new InvalidOperationException(
+                        "Column " + index + " is NULL; check IsNull(" + index
+                        + ") before reading a typed value.");
+                }
+            }
         }
 
         /// <summary>

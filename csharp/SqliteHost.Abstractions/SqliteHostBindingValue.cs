@@ -93,5 +93,26 @@ namespace SqliteHost
             }
             return new SqliteHostBindingValue(SqliteHostBindingType.Float64, 0, 0L, false, null, null, 0f, value);
         }
+
+        /// <summary>
+        /// Wraps a float32 read back OUT of a REAL column, without the
+        /// finiteness check the public factory applies. That check guards
+        /// the JSON envelope, which has no spelling for NaN or an infinity
+        /// (docs/script-envelope.md); a value read from the engine is not
+        /// travelling through JSON, and a REAL column can legitimately hold
+        /// one — SQLite parses the literal 9e999 into +Infinity. Rejecting
+        /// it here would turn a value the engine stored into a run failure
+        /// that names no failing statement.
+        /// </summary>
+        internal static SqliteHostBindingValue Float32FromColumn(float value)
+        {
+            return new SqliteHostBindingValue(SqliteHostBindingType.Float32, 0, 0L, false, null, null, value, 0d);
+        }
+
+        /// <summary>Float64 twin of <see cref="Float32FromColumn"/>.</summary>
+        internal static SqliteHostBindingValue Float64FromColumn(double value)
+        {
+            return new SqliteHostBindingValue(SqliteHostBindingType.Float64, 0, 0L, false, null, null, 0f, value);
+        }
     }
 }

@@ -90,39 +90,18 @@ namespace SqliteHost
             return schemaFields;
         }
 
+        /// <summary>
+        /// Ultra's column read is the erased profiles' column read: one
+        /// mapping, so a REAL, a NULL or a blob cannot mean one thing in a
+        /// generated ultra host and another in a classic one.
+        /// </summary>
         private static SqliteHostBindingValue ReadValue(
             ISqliteHostRow row,
             int index,
             HostScalarType scalarType,
             bool optional)
         {
-            if (optional && row.IsNull(index))
-            {
-                return SqliteHostBindingValue.Null();
-            }
-            switch (scalarType)
-            {
-                case HostScalarType.Int32:
-                    return SqliteHostBindingValue.Int32(row.GetInt32(index));
-                case HostScalarType.Int64:
-                    return SqliteHostBindingValue.Int64(row.GetInt64(index));
-                case HostScalarType.Boolean:
-                    return SqliteHostBindingValue.Bool(row.GetBool(index));
-                case HostScalarType.String:
-                {
-                    string text = row.GetText(index);
-                    return text == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Text(text);
-                }
-                case HostScalarType.Bytes:
-                {
-                    byte[] blob = row.GetBlob(index);
-                    return blob == null ? SqliteHostBindingValue.Null() : SqliteHostBindingValue.Blob(blob);
-                }
-                case HostScalarType.Float32:
-                    return SqliteHostBindingValue.Float32(row.GetFloat32(index));
-                default:
-                    return SqliteHostBindingValue.Float64(row.GetFloat64(index));
-            }
+            return ErasedScalarFields.ReadColumn(row, index, scalarType, optional);
         }
     }
 

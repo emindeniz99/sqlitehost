@@ -12,17 +12,15 @@ namespace SqliteHost
     /// </summary>
     internal sealed class SqliteHostDefinitionCore
     {
-        /// <summary>Applied when the builder's MinSqliteVersion is not called: SQLite 3.19.3.</summary>
-        internal const int DefaultMinSqliteVersionNumber = 3019003;
+        /// <summary>
+        /// Applied when the builder's MinSqliteVersion is not called: SQLite
+        /// 3.19.3. Projected from the IR rather than restated here — a
+        /// hand-written copy is how the runtime drifts from the manifest.
+        /// </summary>
+        internal const int DefaultMinSqliteVersionNumber =
+            ProtocolConstants.DefaultMinSqliteVersionNumber;
 
-        private static readonly IReadOnlyList<string> FeaturesV1 = new List<string>
-        {
-            "typedNamedBindings",
-            "splitResultTables",
-            "scriptInputs",
-            "scriptVars",
-            "scriptControl"
-        };
+        private static readonly IReadOnlyList<string> FeaturesV1 = ProtocolConstants.FeaturesV1;
 
         private readonly List<ErasedHostMethodSpec> _specs;
         private readonly Dictionary<string, ErasedHostMethodSpec> _specsByMethod;
@@ -619,9 +617,11 @@ namespace SqliteHost
 
         /// <summary>
         /// Minimum accepted SQLite version in the SQLITE_VERSION_NUMBER
-        /// encoding (major*1000000 + minor*1000 + patch), e.g. 3019003;
-        /// defaults to 3019003 when the builder's MinSqliteVersion is not
-        /// called. Enforced by the runtime's workspace version gate.
+        /// encoding (major*1000000 + minor*1000 + patch); defaults to the
+        /// contract floor projected as
+        /// <c>ProtocolConstants.DefaultMinSqliteVersionNumber</c> when the
+        /// builder's MinSqliteVersion is not called. Enforced by the
+        /// runtime's workspace version gate.
         /// </summary>
         public int MinSqliteVersionNumber { get; }
 

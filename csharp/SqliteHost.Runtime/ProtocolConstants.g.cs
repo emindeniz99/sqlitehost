@@ -35,6 +35,35 @@ namespace SqliteHost
         /// </summary>
         internal const string FeatureInlineFunctions = "inlineFunctions";
 
+        /// <summary>
+        /// Script envelope engine identifier (ir.ts ENGINE_V1). A script
+        /// whose engine is anything else is rejected before any statement
+        /// runs; the Java and TypeScript envelopes carry the same literal.
+        /// </summary>
+        internal const string EngineV1 = "sqlite-host-v1";
+
+        /// <summary>
+        /// Minimum SQLite a host requires when its definition does not say
+        /// otherwise (ir.ts DEFAULT_MIN_SQLITE_VERSION_NUMBER): 3.19.3 in
+        /// SQLITE_VERSION_NUMBER form.
+        /// </summary>
+        internal const int DefaultMinSqliteVersionNumber = 3019003;
+
+        /// <summary>
+        /// Protocol v1 features every definition advertises (ir.ts
+        /// FEATURES_V1), in manifest order. FeatureInlineFunctions is not
+        /// one of them: it is factory-conditional and added by the runtime.
+        /// </summary>
+        internal static readonly IReadOnlyList<string> FeaturesV1 =
+            new List<string>
+            {
+                "typedNamedBindings",
+                "splitResultTables",
+                "scriptInputs",
+                "scriptVars",
+                "scriptControl"
+            };
+
 #if !SQLITEHOST_SLIM
         /// <summary>
         /// Method-name shape (ir.ts METHOD_NAME_PATTERN). The registration

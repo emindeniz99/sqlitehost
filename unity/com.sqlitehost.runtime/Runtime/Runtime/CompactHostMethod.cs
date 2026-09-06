@@ -96,6 +96,14 @@ namespace SqliteHost
         /// with the same rules and messages as the classic profile.
         /// </summary>
         ICompactHostMethodBuilder<THandlers> Inline(string functionName);
+        /// <summary>
+        /// Same, with the arity the manifest already carries. Generated
+        /// code uses this overload; the one-argument form derives the
+        /// arity from the declared input fields instead, which is what a
+        /// hand-written definition needs.
+        /// </summary>
+        ICompactHostMethodBuilder<THandlers> Inline(
+            string functionName, int minArgs, int maxArgs);
 
         IHostMethodSpec<THandlers> Build();
     }
@@ -149,6 +157,8 @@ namespace SqliteHost
         private Func<object> _createInput;
         private Func<object, object, object> _handler;
         private string _inlineFunctionName;
+        private int _inlineMinArgs = InlineShapeRules.NotDeclared;
+        private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
 
         public CompactHostMethodBuilder(string methodName)
         {
@@ -388,6 +398,11 @@ namespace SqliteHost
 
         public ICompactHostMethodBuilder<THandlers> Inline(string functionName)
         {
+            return Inline(functionName, InlineShapeRules.NotDeclared, InlineShapeRules.NotDeclared);
+        }
+
+        public ICompactHostMethodBuilder<THandlers> Inline(string functionName, int minArgs, int maxArgs)
+        {
             if (string.IsNullOrEmpty(functionName))
             {
                 throw new ArgumentException(
@@ -395,6 +410,8 @@ namespace SqliteHost
                     nameof(functionName));
             }
             _inlineFunctionName = functionName;
+            _inlineMinArgs = minArgs;
+            _inlineMaxArgs = maxArgs;
             return this;
         }
 
@@ -425,7 +442,9 @@ namespace SqliteHost
                     _inputFields,
                     _inputListFields.Count,
                     _resultFields.Count,
-                    _resultListFields.Count)));
+                    _resultListFields.Count,
+                    _inlineMinArgs,
+                    _inlineMaxArgs)));
         }
     }
 

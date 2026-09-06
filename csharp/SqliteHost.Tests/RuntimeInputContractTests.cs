@@ -95,5 +95,42 @@ namespace SqliteHost.Tests
             Assert.Equal(1, result.ExecutedCallCount);
             Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
         }
+
+        [SkippableFact]
+        public void Example015_ColonSuffixParameter_RunsCompleted()
+        {
+            // SQLite's TCL variable syntax admits a doubled colon inside a
+            // name, so ":call::id" is ONE parameter named "call::id" and the
+            // payload binds exactly that. A scanner that splits it reports
+            // missing-binding for names the author never wrote and rejects
+            // the only payload the engine accepts.
+            SampleHostFloor.SkipBelowFloor();
+            var (runtime, _, handlers) = CreateRuntime();
+            handlers.Storage["example-key"] = 5;
+
+            SqliteHostRunResult result = runtime.Run(
+                ScriptEnvelopeJson.LoadPayload("valid/example-015-colon-suffix-parameter.json"));
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.Equal(1, result.ExecutedCallCount);
+            Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
+        }
+
+        [SkippableFact]
+        public void Example016_ParenSuffixParameter_RunsCompleted()
+        {
+            // Same grammar, the other suffix form: "$callId(1)" is ONE
+            // parameter named "callId(1)".
+            SampleHostFloor.SkipBelowFloor();
+            var (runtime, _, handlers) = CreateRuntime();
+            handlers.Storage["example-key"] = 5;
+
+            SqliteHostRunResult result = runtime.Run(
+                ScriptEnvelopeJson.LoadPayload("valid/example-016-paren-suffix-parameter.json"));
+
+            Assert.Equal(SqliteHostRunStatus.Completed, result.Status);
+            Assert.Equal(1, result.ExecutedCallCount);
+            Assert.Equal(new[] { "getValue:example-key" }, handlers.Log);
+        }
     }
 }
