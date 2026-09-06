@@ -124,6 +124,20 @@ namespace SqliteHost
                 }));
             return this;
         }
+
+        public IInputFieldsBuilder<TInput> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
+            return this;
+        }
+
+        public IInputFieldsBuilder<TInput> ChildTable(string childTable)
+        {
+            SpecGuards.RequireDeclarationBefore(ListFields.Count > 0, "ChildTable");
+            ListFields[ListFields.Count - 1].ChildTable = childTable;
+            return this;
+        }
     }
 
     internal sealed class ListItemFieldsBuilder<TItem> : IListItemFieldsBuilder<TItem>
@@ -211,6 +225,13 @@ namespace SqliteHost
         public IListItemFieldsBuilder<TItem> OptionalDouble(string sqlName, Action<TItem, double?> setter)
         {
             Fields.Add(ScalarFields.OptionalDouble(sqlName, setter));
+            return this;
+        }
+
+        public IListItemFieldsBuilder<TItem> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
             return this;
         }
     }
@@ -340,6 +361,20 @@ namespace SqliteHost
                 itemFields));
             return this;
         }
+
+        public IResultFieldsBuilder<TResult> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
+            return this;
+        }
+
+        public IResultFieldsBuilder<TResult> ChildTable(string childTable)
+        {
+            SpecGuards.RequireDeclarationBefore(ListFields.Count > 0, "ChildTable");
+            ListFields[ListFields.Count - 1].ChildTable = childTable;
+            return this;
+        }
     }
 
     internal sealed class ListItemResultFieldsBuilder<TItem> : IListItemResultFieldsBuilder<TItem>
@@ -427,6 +462,13 @@ namespace SqliteHost
         public IListItemResultFieldsBuilder<TItem> OptionalDouble(string sqlName, Func<TItem, double?> getter)
         {
             Fields.Add(ScalarFields.WriteOptionalDouble(sqlName, getter));
+            return this;
+        }
+
+        public IListItemResultFieldsBuilder<TItem> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
             return this;
         }
     }

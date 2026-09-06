@@ -19,5 +19,13 @@ namespace SqliteHost
         IListItemResultFieldsBuilder<TItem> OptionalBlob(string sqlName, Func<TItem, byte[]> getter);
         IListItemResultFieldsBuilder<TItem> OptionalFloat(string sqlName, Func<TItem, float?> getter);
         IListItemResultFieldsBuilder<TItem> OptionalDouble(string sqlName, Func<TItem, double?> getter);
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        IListItemResultFieldsBuilder<TItem> Column(string column);
     }
 }

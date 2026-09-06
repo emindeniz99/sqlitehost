@@ -19,5 +19,13 @@ namespace SqliteHost
         IListItemFieldsBuilder<TItem> OptionalBlob(string sqlName, Action<TItem, byte[]> setter);
         IListItemFieldsBuilder<TItem> OptionalFloat(string sqlName, Action<TItem, float?> setter);
         IListItemFieldsBuilder<TItem> OptionalDouble(string sqlName, Action<TItem, double?> setter);
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        IListItemFieldsBuilder<TItem> Column(string column);
     }
 }

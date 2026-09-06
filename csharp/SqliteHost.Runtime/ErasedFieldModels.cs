@@ -28,12 +28,25 @@ namespace SqliteHost
         public HostScalarType ScalarType { get; }
         public bool Optional { get; }
 
+        /// <summary>
+        /// Resolved physical column name, or null when the definition
+        /// declared logical names only (then the naming derivation
+        /// supplies it — see <see cref="ResolvedNames"/>).
+        /// </summary>
+        public string Column { get; set; }
+
         /// <summary>Reads the column at the given index and assigns it on the boxed DTO.</summary>
         public Action<object, ISqliteHostRow, int> Apply { get; }
 
+        /// <summary>Physical input column of this field under the given naming.</summary>
+        public string ColumnName(SqliteHostNaming naming)
+        {
+            return Column ?? NamingDerivation.InputColumn(naming, SqlName);
+        }
+
         public SchemaFieldModel ToSchemaField()
         {
-            return new SchemaFieldModel(SqlName, ScalarType, Optional);
+            return new SchemaFieldModel(SqlName, ScalarType, Optional, Column);
         }
     }
 
@@ -56,12 +69,21 @@ namespace SqliteHost
         public HostScalarType ScalarType { get; }
         public bool Optional { get; }
 
+        /// <summary>Resolved physical column name, or null to derive it (see <see cref="ErasedReadField.Column"/>).</summary>
+        public string Column { get; set; }
+
         /// <summary>Reads the boxed DTO value as a typed binding value.</summary>
         public Func<object, SqliteHostBindingValue> Read { get; }
 
+        /// <summary>Physical result column of this field under the given naming.</summary>
+        public string ColumnName(SqliteHostNaming naming)
+        {
+            return Column ?? NamingDerivation.ResultColumn(naming, SqlName);
+        }
+
         public SchemaFieldModel ToSchemaField()
         {
-            return new SchemaFieldModel(SqlName, ScalarType, Optional);
+            return new SchemaFieldModel(SqlName, ScalarType, Optional, Column);
         }
     }
 
@@ -88,6 +110,9 @@ namespace SqliteHost
 
         public string SqlName { get; }
         public IReadOnlyList<SchemaFieldModel> ItemSchemaFields { get; }
+
+        /// <summary>Resolved physical child table name, or null to derive it.</summary>
+        public string ChildTable { get; set; }
 
         /// <summary>Creates one boxed list-item DTO.</summary>
         public Func<object> CreateItem { get; }
@@ -118,6 +143,9 @@ namespace SqliteHost
 
         public string SqlName { get; }
         public IReadOnlyList<SchemaFieldModel> ItemSchemaFields { get; }
+
+        /// <summary>Resolved physical child table name, or null to derive it.</summary>
+        public string ChildTable { get; set; }
 
         /// <summary>Reads the boxed items from the boxed result DTO (null and empty mean "no child rows").</summary>
         public Func<object, IReadOnlyList<object>> GetItems { get; }

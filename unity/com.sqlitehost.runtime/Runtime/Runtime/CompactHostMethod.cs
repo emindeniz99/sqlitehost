@@ -105,6 +105,27 @@ namespace SqliteHost
         ICompactHostMethodBuilder<THandlers> Inline(
             string functionName, int minArgs, int maxArgs);
 
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        ICompactHostMethodBuilder<THandlers> Column(string column);
+
+        /// <summary>
+        /// Physical child table name of the list field declared immediately
+        /// before this call (resolved <c>childTable</c>; omit to derive).
+        /// </summary>
+        ICompactHostMethodBuilder<THandlers> ChildTable(string childTable);
+
+        /// <summary>
+        /// Physical call/result/queue-trigger table names of this method
+        /// (resolved names from the manifest; omit to derive all three).
+        /// </summary>
+        ICompactHostMethodBuilder<THandlers> Tables(
+            string callTable, string resultTable, string queueTrigger);
+
         IHostMethodSpec<THandlers> Build();
     }
 
@@ -125,6 +146,14 @@ namespace SqliteHost
         ICompactListItemFieldsBuilder OptionalBlob(string sqlName, Action<object, byte[]> setter);
         ICompactListItemFieldsBuilder OptionalFloat(string sqlName, Action<object, float?> setter);
         ICompactListItemFieldsBuilder OptionalDouble(string sqlName, Action<object, double?> setter);
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        ICompactListItemFieldsBuilder Column(string column);
     }
 
     /// <summary>Item columns of a compact result list field (boxed item DTO getters).</summary>
@@ -144,6 +173,14 @@ namespace SqliteHost
         ICompactListItemResultFieldsBuilder OptionalBlob(string sqlName, Func<object, byte[]> getter);
         ICompactListItemResultFieldsBuilder OptionalFloat(string sqlName, Func<object, float?> getter);
         ICompactListItemResultFieldsBuilder OptionalDouble(string sqlName, Func<object, double?> getter);
+
+        /// <summary>
+        /// Physical column name of the scalar field declared immediately
+        /// before this call. Generated code emits the manifest's resolved
+        /// <c>column</c>; omit it and the runtime derives the column from
+        /// the host naming (docs/naming.md).
+        /// </summary>
+        ICompactListItemResultFieldsBuilder Column(string column);
     }
 
     internal sealed class CompactHostMethodBuilder<THandlers> : ICompactHostMethodBuilder<THandlers>
@@ -156,6 +193,15 @@ namespace SqliteHost
         private int _apiLevel = 1;
         private Func<object> _createInput;
         private Func<object, object, object> _handler;
+        // Most recent scalar / list declaration, so Column(...) and
+        // ChildTable(...) attach to it without a per-call closure (the
+        // compact profile's whole point is that a registration allocates
+        // no lambdas).
+        private object _lastField;
+        private object _lastListField;
+        private string _callTable;
+        private string _resultTable;
+        private string _queueTrigger;
         private string _inlineFunctionName;
         private int _inlineMinArgs = InlineShapeRules.NotDeclared;
         private int _inlineMaxArgs = InlineShapeRules.NotDeclared;
@@ -183,85 +229,99 @@ namespace SqliteHost
 
         public ICompactHostMethodBuilder<THandlers> InputInt(string sqlName, Action<object, int> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Int(sqlName, setter));
+            _lastField = ErasedScalarFields.Int(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputLong(string sqlName, Action<object, long> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Long(sqlName, setter));
+            _lastField = ErasedScalarFields.Long(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputBool(string sqlName, Action<object, bool> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Bool(sqlName, setter));
+            _lastField = ErasedScalarFields.Bool(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputText(string sqlName, Action<object, string> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Text(sqlName, setter));
+            _lastField = ErasedScalarFields.Text(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputBlob(string sqlName, Action<object, byte[]> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Blob(sqlName, setter));
+            _lastField = ErasedScalarFields.Blob(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputFloat(string sqlName, Action<object, float> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Float(sqlName, setter));
+            _lastField = ErasedScalarFields.Float(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputDouble(string sqlName, Action<object, double> setter)
         {
-            _inputFields.Add(ErasedScalarFields.Double(sqlName, setter));
+            _lastField = ErasedScalarFields.Double(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalInt(string sqlName, Action<object, int?> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalInt(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalInt(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalLong(string sqlName, Action<object, long?> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalLong(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalLong(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalBool(string sqlName, Action<object, bool?> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalBool(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalBool(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalText(string sqlName, Action<object, string> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalText(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalText(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalBlob(string sqlName, Action<object, byte[]> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalBlob(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalBlob(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalFloat(string sqlName, Action<object, float?> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalFloat(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalFloat(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> InputOptionalDouble(string sqlName, Action<object, double?> setter)
         {
-            _inputFields.Add(ErasedScalarFields.OptionalDouble(sqlName, setter));
+            _lastField = ErasedScalarFields.OptionalDouble(sqlName, setter);
+            _inputFields.Add((ErasedReadField)_lastField);
             return this;
         }
 
@@ -281,92 +341,108 @@ namespace SqliteHost
                 itemSchemaFields.Add(field.ToSchemaField());
             }
 
-            _inputListFields.Add(new ErasedInputListField(
-                sqlName, itemSchemaFields, createItem, itemFields, assignItems));
+            var listField = new ErasedInputListField(
+                sqlName, itemSchemaFields, createItem, itemFields, assignItems);
+            _lastListField = listField;
+            _inputListFields.Add(listField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultInt(string sqlName, Func<object, int> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteInt(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteInt(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultLong(string sqlName, Func<object, long> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteLong(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteLong(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultBool(string sqlName, Func<object, bool> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteBool(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteBool(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultText(string sqlName, Func<object, string> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteText(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteText(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultBlob(string sqlName, Func<object, byte[]> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteBlob(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteBlob(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultFloat(string sqlName, Func<object, float> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteFloat(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteFloat(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultDouble(string sqlName, Func<object, double> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteDouble(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteDouble(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalInt(string sqlName, Func<object, int?> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalInt(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalInt(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalLong(string sqlName, Func<object, long?> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalLong(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalLong(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalBool(string sqlName, Func<object, bool?> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalBool(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalBool(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalText(string sqlName, Func<object, string> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalText(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalText(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalBlob(string sqlName, Func<object, byte[]> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalBlob(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalBlob(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalFloat(string sqlName, Func<object, float?> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalFloat(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalFloat(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
         public ICompactHostMethodBuilder<THandlers> ResultOptionalDouble(string sqlName, Func<object, double?> getter)
         {
-            _resultFields.Add(ErasedScalarFields.WriteOptionalDouble(sqlName, getter));
+            _lastField = ErasedScalarFields.WriteOptionalDouble(sqlName, getter);
+            _resultFields.Add((ErasedWriteField)_lastField);
             return this;
         }
 
@@ -385,8 +461,10 @@ namespace SqliteHost
                 itemSchemaFields.Add(field.ToSchemaField());
             }
 
-            _resultListFields.Add(new ErasedResultListField(
-                sqlName, itemSchemaFields, getItems, itemFields));
+            var listField = new ErasedResultListField(
+                sqlName, itemSchemaFields, getItems, itemFields);
+            _lastListField = listField;
+            _resultListFields.Add(listField);
             return this;
         }
 
@@ -412,6 +490,45 @@ namespace SqliteHost
             _inlineFunctionName = functionName;
             _inlineMinArgs = minArgs;
             _inlineMaxArgs = maxArgs;
+            return this;
+        }
+
+        public ICompactHostMethodBuilder<THandlers> Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(_lastField != null, "Column");
+            var readField = _lastField as ErasedReadField;
+            if (readField != null)
+            {
+                readField.Column = column;
+            }
+            else
+            {
+                ((ErasedWriteField)_lastField).Column = column;
+            }
+            return this;
+        }
+
+        public ICompactHostMethodBuilder<THandlers> ChildTable(string childTable)
+        {
+            SpecGuards.RequireDeclarationBefore(_lastListField != null, "ChildTable");
+            var inputList = _lastListField as ErasedInputListField;
+            if (inputList != null)
+            {
+                inputList.ChildTable = childTable;
+            }
+            else
+            {
+                ((ErasedResultListField)_lastListField).ChildTable = childTable;
+            }
+            return this;
+        }
+
+        public ICompactHostMethodBuilder<THandlers> Tables(
+            string callTable, string resultTable, string queueTrigger)
+        {
+            _callTable = callTable;
+            _resultTable = resultTable;
+            _queueTrigger = queueTrigger;
             return this;
         }
 
@@ -444,7 +561,10 @@ namespace SqliteHost
                     _resultFields.Count,
                     _resultListFields.Count,
                     _inlineMinArgs,
-                    _inlineMaxArgs)));
+                    _inlineMaxArgs),
+                _callTable,
+                _resultTable,
+                _queueTrigger));
         }
     }
 
@@ -535,6 +655,13 @@ namespace SqliteHost
             Fields.Add(ErasedScalarFields.OptionalDouble(sqlName, setter));
             return this;
         }
+
+        public ICompactListItemFieldsBuilder Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
+            return this;
+        }
     }
 
     internal sealed class CompactListItemResultFieldsBuilder : ICompactListItemResultFieldsBuilder
@@ -622,6 +749,13 @@ namespace SqliteHost
         public ICompactListItemResultFieldsBuilder OptionalDouble(string sqlName, Func<object, double?> getter)
         {
             Fields.Add(ErasedScalarFields.WriteOptionalDouble(sqlName, getter));
+            return this;
+        }
+
+        public ICompactListItemResultFieldsBuilder Column(string column)
+        {
+            SpecGuards.RequireDeclarationBefore(Fields.Count > 0, "Column");
+            Fields[Fields.Count - 1].Column = column;
             return this;
         }
     }

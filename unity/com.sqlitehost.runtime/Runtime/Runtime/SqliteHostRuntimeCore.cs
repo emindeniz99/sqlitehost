@@ -788,8 +788,8 @@ namespace SqliteHost
             var rowCounts = new List<long>(listFields.Count);
             foreach (SchemaListFieldModel listField in listFields)
             {
-                string childTable = NamingDerivation.InputListTable(
-                    _hostDefinition.Naming, call.Method, listField.SqlName);
+                string childTable = ResolvedNames.InputListTable(
+                    _hostDefinition.Naming, spec.SchemaModel, listField);
                 childTables.Add(childTable);
                 rowCounts.Add(CountChildRows(connection, childTable, _hostDefinition.Columns, call.CallId));
             }
