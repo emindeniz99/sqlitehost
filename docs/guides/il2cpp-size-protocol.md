@@ -15,20 +15,25 @@ identical source sets for both toolchains from the repo's own emitters.
 CI runs both halves, at cadences their cost justifies. The NativeAOT
 sweep (§3) is a per-pull-request job — `ci.yml`, `app size (NativeAOT)`,
 driven by `tests/app-size-bench/measure-nativeaot.mjs`. The Unity matrix
-(§4) is `il2cpp-size-bench.yml`, monthly and on demand, driven by
+(§4) is `il2cpp-size-bench.yml`, driven by
 `tests/app-size-bench/unity-project/` plus `prepare-row.sh`,
-`measure-il2cpp.mjs` and `summarize-il2cpp.mjs`. It stays a measurement:
-IL2CPP byte counts move with the editor patch, the NDK and the engine, so
-it publishes a table and an artifact instead of blocking a merge. The
+`measure-il2cpp.mjs` and `summarize-il2cpp.mjs`. It runs the full matrix
+monthly and on demand, and a 3-row subset (baseline / compact50 / ultra50)
+on any pull request touching `csharp/SqliteHost.Runtime/`,
+`csharp/SqliteHost.Abstractions/`, `codegen/csharp-emitter/` or
+`tests/app-size-bench/` — that subset has no `continue-on-error`, so a
+runtime change waits for it. What it is not is a *numeric* gate: IL2CPP
+byte counts move with the editor patch, the NDK and the engine, so it
+publishes a table and an artifact rather than failing on a byte move. The
 hand-run instructions below still work unchanged, and are what you want
 when you are investigating rather than monitoring.
 
 The iOS matrix is a third workflow, `ios-size-bench.yml`, monthly and on
 demand, driven by the same rows and the same `SizeBench` entry point plus
-`measure-ios.mjs`. It has never run and no iOS number exists yet. It is
-written to measure a different unit on a different toolchain, and its
-numbers will not be an extension of the Android table. §7 says what it is
-built to measure and what may be compared with what.
+`measure-ios.mjs`. Its first full run is 33255105207, 48 of 48 legs green;
+`docs/reports/ios-il2cpp-size-report.md` carries the tables. It measures a
+different unit on a different toolchain, so its numbers are not an
+extension of the Android table. §7 says what may be compared with what.
 
 ---
 
@@ -40,12 +45,12 @@ what the Unity run must establish.
 
 | # | Hypothesis | NativeAOT result | Why IL2CPP may differ | IL2CPP test |
 |---|---|---|---|---|
-| H-GVM | A generic virtual method (generic method on an interface) drags in the AOT dynamic type loader | **CONFIRMED, huge**: one GVM in a minimal probe costs +283 KB raw / +127 KB gz; in the real runtime, GVM + generic core types together cost ~250 KB (super-additive; removing both collapsed S_P_TypeLoader 2898 → 296 symbols) | IL2CPP ships its generic-sharing + metadata machinery (`global-metadata.dat`, runtime metadata init) in **every** build, so the *marginal* cost of one GVM may be far smaller — possibly near zero. The architectural change (`QueryRows`) can't hurt (strictly ≤), but its measured win may be NativeAOT-specific | **MUST re-test** — build `probes/gvm` vs `probes/nogvm` as two minimal Unity IL2CPP builds; the pair's size delta IS the answer |
-| H-PROFILES | Per-method cost is unique-type count → compact/ultra profiles collapse it (from this kit: classic ≈3.5 KB raw / 1.2 KB gz per method → compact ≈1.8 / 0.6 → ultra ≈0.7 / 0.25) | **CONFIRMED** (that is why the profiles exist). Note the crossover: ultra's value-bag machinery is a *fixed* cost, so ultra beats compact only above roughly a dozen methods | Same mechanism exists (IL2CPP materializes per-instantiation metadata + generated C++), but the per-type unit cost differs | **MUST re-test** — the matrix (§4) has each profile at BOTH 5 and 50 methods; marginal per-method = (Δ₅₀ − Δ₅) / 45 |
+| H-GVM | A generic virtual method (generic method on an interface) drags in the AOT dynamic type loader | **CONFIRMED, huge**: one GVM in a minimal probe costs +283 KB raw / +132 KB gz; in the real runtime, GVM + generic core types together cost ~250 KB (super-additive; removing both collapsed S_P_TypeLoader 2898 → 296 symbols) | IL2CPP ships its generic-sharing + metadata machinery (`global-metadata.dat`, runtime metadata init) in **every** build, so the *marginal* cost of one GVM may be far smaller — possibly near zero. The architectural change (`QueryRows`) can't hurt (strictly ≤), but its measured win may be NativeAOT-specific | **MUST re-test** — build `probes/gvm` vs `probes/nogvm` as two minimal Unity IL2CPP builds; the pair's size delta IS the answer |
+| H-PROFILES | Per-method cost is unique-type count → compact/ultra profiles collapse it (from this kit: classic ≈3.3 KB raw / 1.3 KB gz per method → compact ≈1.8 / 0.6 → ultra ≈0.8 / 0.2) | **CONFIRMED** (that is why the profiles exist). Note the crossover: ultra's value-bag machinery is a *fixed* cost, so ultra beats compact only above roughly a dozen methods | Same mechanism exists (IL2CPP materializes per-instantiation metadata + generated C++), but the per-type unit cost differs | **MUST re-test** — the matrix (§4) has each profile at BOTH 5 and 50 methods; marginal per-method = (Δ₅₀ − Δ₅) / 45 |
 | H-FIELDS | DTO auto-properties cost more than public fields | **REFUTED — exactly 0 bytes** (trivial accessors fully inlined; binaries byte-identical modulo build IDs) | IL2CPP generates C++ per method; its inliner (and the C++ compiler behind it) *usually* erases trivial accessors too, but that is an assumption, not a measurement | **MUST re-test** — `compact50-fields` vs `compact50` (kit generates both) |
 | H-DATA | Data-driving the 50 registration bodies (delegate tables + one loop) shrinks the binary | **REFUTED — it GREW** (+4.2 KB raw / +5.6 KB gz): in NativeAOT a delegate-array initializer is *code* (~92 B/element), and the 50 near-identical fluent bodies were nearly free under gzip's 32 KB window | IL2CPP compiles the array initializers to C++ the same way; expected to reproduce, but cheap to spot-check | Optional — low priority, expected same sign |
 | H-DISPATCH | Collapsing the handler interface to one `Invoke(int ordinal, object input)` slot | **CONFIRMED but unshipped**: −16.9 KB raw / −4.8 KB gz; rejected because it changes handler-authoring DX (switch instead of named methods) | Should transfer (fewer interface slots + thunks in any AOT) | Optional — measure only if the DX trade ever becomes tempting |
-| H-SLIM | `SQLITEHOST_SLIM` strips optional strict checks | **CONFIRMED**: −28 KB raw / −12 KB gz on compact50 | Pure C# dead-code removal — transfers directly; Unity needs the define symbol set (§4) | Re-test cheaply as part of the matrix (one extra build) |
+| H-SLIM | `SQLITEHOST_SLIM` strips optional strict checks | **CONFIRMED**: −37 KB raw / −19 KB gz on compact50 | Pure C# dead-code removal — transfers directly; Unity needs the define symbol set (§4) | Re-test cheaply as part of the matrix (one extra build) |
 | H-STRINGS | Generated SQL/string literals are a major cost | **REFUTED**: all SQL-ish literals < 0.5 KB; unreferenced DDL constant strips | Same stripping semantics | No re-test needed |
 | H-NANO | Whole-app trim flags (`StackTraceSupport=false` etc.) shrink SqliteHost's share | **Mostly app-side**: −57 KB gz for the game's own code, only −3 KB for SqliteHost's delta | Unity's equivalents are different knobs: Managed Stripping Level, IL2CPP Code Generation = "Faster (smaller) builds", Strip Engine Code | Re-test the *Unity knobs* instead: measure the matrix at Managed Stripping **High** and note the equivalents |
 | H-ENGINE | Consuming system libsqlite3 via `SqliteHost.Adapters.Native` adds ~0 engine bytes | Structurally true (DllImport binds at load) | iOS ships `libsqlite3.dylib`; Android ships `libsqlite.so` but **its use by apps is restricted on modern API levels** — the vendored-amalgamation path must be sized too | Optional — measure APK/IPA delta of a vendored sqlite3 amalgamation `.so`/static lib for the Android fallback story |
@@ -72,7 +77,7 @@ guidance stays as-is or gets IL2CPP-specific footnotes):
   builds" where available; record the setting used.
 - **Platform**: Android (release, IL2CPP, ARM64 only) is the primary
   target — its build sizes are easy to measure headlessly. iOS has a leg
-  of its own, unrun so far, and it is a separate exercise with its own
+  of its own, run and reported, and it is a separate exercise with its own
   unit, its own pinned toolchain and its own comparability rules; see §7
   before putting an iOS number anywhere near an Android one.
 - **Measure**, per build: (a) the stripped `libil2cpp.so` size (ARM64)
@@ -90,33 +95,40 @@ pnpm install && pnpm -r build   # emitters, from the repo root
 cd tests/app-size-bench && node generate.mjs
 ```
 
-Reference numbers measured from these generated sources on
-.NET 8 NativeAOT linux-x64 (fill of record — the Unity report's table
-mirrors this):
+Reference numbers for these generated sources on .NET 8 NativeAOT
+linux-x64, transcribed from `tests/app-size-bench/baseline.json`. That
+file is the gate `ci.yml`'s `app size (NativeAOT)` job enforces, so it is
+the only NativeAOT figure here that cannot drift unnoticed. It records
+**deltas over the gamebase row and nothing else** — absolute sizes move
+with every .NET SDK patch, which is exactly why they are not baselined,
+so this table carries no absolute column:
 
-| Build | raw bytes | gzip -9 | Δraw vs baseline | Δgz vs baseline |
-|---|---|---|---|---|
-| gamebase (baseline) | 1,544,920 | 734,871 | — | — |
-| classic50 | 1,848,904 | 857,523 | 303,984 (297 KB) | 122,652 (120 KB) |
-| compact50 | 1,761,352 | 823,698 | 216,432 (211 KB) | 88,827 (87 KB) |
-| compact50-fields | 1,761,360 | 823,738 | +8 B vs compact50 | +40 B vs compact50 |
-| compact50 + SLIM | 1,736,040 | 811,987 | 191,120 (187 KB) | 77,116 (75 KB) |
-| ultra50 | 1,729,200 | 817,711 | 184,280 (180 KB) | 82,840 (81 KB) |
-| ultra50 + SLIM | 1,699,728 | 802,718 | 154,808 (151 KB) | 67,847 (66 KB) |
-| classic5 | 1,691,864 | 802,741 | 146,944 (144 KB) | 67,870 (66 KB) |
-| compact5 | 1,678,984 | 797,172 | 134,064 (131 KB) | 62,301 (61 KB) |
-| ultra5 | 1,695,984 | 806,687 | 151,064 (148 KB) | 71,816 (70 KB) |
-| probe-gvm | 1,714,512 | 798,256 | — | — |
-| probe-nogvm | 1,424,576 | 667,021 | — | — |
-| **probe delta (one GVM)** | | | **289,936 (283 KB)** | **131,235 (128 KB)** |
+| Build | Δraw vs baseline | Δgz vs baseline |
+|---|---|---|
+| classic50 | 312,240 (305 KB) | 135,125 (132 KB) |
+| compact50 | 228,768 (223 KB) | 100,026 (98 KB) |
+| compact50-fields | +8 B vs compact50 | −4 B vs compact50 |
+| compact50 + SLIM | 191,120 (187 KB) | 81,036 (79 KB) |
+| ultra50 | 200,712 (196 KB) | 91,668 (90 KB) |
+| classic5 | 159,280 (156 KB) | 77,078 (75 KB) |
+| compact5 | 146,400 (143 KB) | 72,010 (70 KB) |
+| ultra5 | 163,400 (160 KB) | 81,142 (79 KB) |
+| **probe delta (one GVM)** | **289,936 (283 KB)** | **135,530 (132 KB)** |
 
-(compact50-fields differing from compact50 by 8 raw / 40 gz bytes is
+There is no `ultra50 + SLIM` row because the bench does not build one:
+`measure-nativeaot.mjs` applies `SqliteHostSlim` to the compact profile
+alone. An earlier revision of this table printed 154,808 / 67,847 for that
+combination from a hand-run that predated the kit, and nothing has
+re-measured it since — so the row is gone rather than carried forward
+unverifiable.
+
+(compact50-fields differing from compact50 by 8 raw / −4 gz bytes is
 build-ID noise — that IS the H-FIELDS zero-effect result under
 NativeAOT.)
 
 Marginal per-method cost, derived as (Δ₅₀ − Δ₅) / 45 from the rows
-above: classic 3,490 B raw / 1,217 B gz; compact 1,830 / 589; ultra
-738 / 245. The 5-method builds print DDL length **2771** instead of
+above: classic 3,399 B raw / 1,290 B gz; compact 1,830 / 623; ultra
+829 / 234. The 5-method builds print DDL length **2771** instead of
 22231 — that is their expected second output line.
 
 The bench prints four lines (`104006`, DDL length, `Completed`,

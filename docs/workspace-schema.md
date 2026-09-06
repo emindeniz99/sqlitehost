@@ -121,7 +121,8 @@ END;
 
 ## Canonical DDL bytes
 
-Statement order: `pending_host_calls`, `script_inputs`, then per method
+Statement order: `pending_host_calls`, `script_inputs`, `script_vars`,
+`script_control`, then per method
 in declaration order: call table, input list child tables (field
 order), result table, result list child tables, trigger. Statements are
 joined with a blank line; the script ends with a trailing newline;
@@ -134,7 +135,8 @@ generator must reproduce it byte-for-byte.
 
 The runtime writes a result row with `status = 'done'` after a
 successful handler invocation, then marks the queue row `status =
-'done'`. A handler exception aborts the run (`failed-handler`) — no
+'done'`. A handler exception aborts the run (status `FailedHandler`, code
+`handler-error`) — no
 partial result row is written for the failing call. Scripts should
 filter on `status = 'done'` when reading result tables (forward
 compatibility with future statuses).

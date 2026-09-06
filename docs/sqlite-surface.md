@@ -48,11 +48,26 @@ the floor and fine.
 | 3.44.0 | `concat()`, `concat_ws()`, `string_agg()`; `ORDER BY` inside aggregates | Use `||` and `group_concat()` |
 | 3.45.0 | **JSONB** and the `jsonb_*` family | |
 
-**Nothing catches these at authoring time today.** Prepare-only
-validation (`docs/validation.md`, layer 3) compiles script SQL against
-the JDBC driver's bundled SQLite, which is far newer than 3.19.3, so
-every row above validates clean and then fails on a player's device.
-Treat this table as the contract until tooling enforces it.
+**The function rows are caught at authoring time; the syntax rows are
+not.** Both validators compare every function call against the host's
+declared floor and report `sqlite-version-too-low-for-function`
+(`docs/validation.md`), driven by the generated `FUNCTION_MIN_VERSION`
+and `FUNCTION_PREFIX_MIN_VERSION` tables — the window-function names,
+`iif`, `format`, `unixepoch`, `octet_length`, `timediff`, `concat`,
+`concat_ws`, `string_agg` and the whole `json*` / `jsonb*` surface.
+
+Everything above that is *syntax* rather than a call is still uncaught:
+`TRUE` / `FALSE`, UPSERT, the `OVER` and `WINDOW` clauses themselves,
+`VACUUM INTO`, extended frames, `FILTER`, `NULLS FIRST` / `NULLS LAST`,
+generated columns, `UPDATE … FROM`, `sqlite_schema`, `RETURNING`,
+`ALTER TABLE DROP COLUMN`, `MATERIALIZED`, `STRICT`,
+`PRAGMA table_list`, `->` and `->>`, `RIGHT JOIN` / `FULL OUTER JOIN`,
+`IS [NOT] DISTINCT FROM`, and `ORDER BY` inside an aggregate. Nothing
+sees those: prepare-only validation (`docs/validation.md`, layer 3)
+compiles script SQL against the JDBC driver's bundled SQLite, which is
+far newer than 3.19.3, so they validate clean and then fail on a
+player's device. Treat those rows as the contract until tooling
+enforces them.
 
 **The supported unlock path** is to raise the host's floor rather than
 to hope: declare `@hostLibrary({ minSqliteVersion: "3.35.0" })` in
@@ -79,12 +94,19 @@ the nastiest failure shape in the system — a script passes validation,
 runs fine on the iOS system SQLite, and fails on some Android OEM or
 vendored build, or the reverse.
 
-SqliteHost's position is deliberately narrow: **it neither requires nor
-detects any of them.** No validator probes them, the compatibility
-matrix does not measure them (`run-matrix.sh` builds stock
-amalgamations, which have none of these), and no runtime capability
-negotiation exists. A script that uses them is outside the supported
-surface. If you need one, prove it on every target device yourself.
+SqliteHost's position is deliberately narrow: **it requires none of
+them, and detects one.** The math functions are named in the generated
+`NONPORTABLE_FUNCTIONS` list, so calling `pow` or `log` is a
+`nonportable-function` error in both validators — checked before the
+version rule, because raising `minSqliteVersion` would not fix it.
+A `json*` call under a floor below 3.38 trips the §1 version rule, which
+is not the same check but lands on the same scripts. FTS5, R-Tree/Geopoly
+and ICU have no list at all and nothing probes them;
+the compatibility matrix does not measure them either (`run-matrix.sh`
+builds stock amalgamations, which have none of these), and no runtime
+capability negotiation exists. A script that uses one of those is
+outside the supported surface. If you need one, prove it on every
+target device yourself.
 
 Related, and a hard rule for adapters rather than authors: **extension
 loading must stay disabled.** `load_extension()` and

@@ -39,6 +39,11 @@ public sealed class SqliteHostBindingValue
     public static SqliteHostBindingValue Float32(float value);
     public static SqliteHostBindingValue Float64(double value);
 }
+// Text and Blob throw ArgumentNullException on a null argument — bind
+// SqliteHostBindingValue.Null() for a SQL NULL, never a null reference.
+// Float32 and Float64 throw ArgumentException on NaN or an infinity:
+// SQLite stores them as REAL and they survive no round trip worth
+// pinning, so the runtime refuses them at the boundary.
 
 public sealed class SqliteHostBinding
 {
@@ -210,6 +215,7 @@ public sealed class SqliteHostNaming
     public string QueueTable { get; }     // default "pending_host_calls"
     public string InputsTable { get; }    // default "script_inputs"
     public string VarsTable { get; }      // default "script_vars"
+    public string ControlTable { get; }   // default "script_control"
     public string FunctionPrefix { get; } // default "fn_" (inline scalar functions)
 }
 
@@ -232,6 +238,14 @@ public sealed class SqliteHostNamingBuilder   // each setter returns this
 
 public sealed class SqliteHostScalarFunction
 {
+    public const string HandlerErrorMarker = "SQLITEHOST_HANDLER_ERROR:";
+
+    public SqliteHostScalarFunction(
+        string name,
+        int minArgs,
+        int maxArgs,
+        Func<SqliteHostBindingValue[], SqliteHostBindingValue> invoke);
+
     public string Name { get; }
     public int MinArgs { get; }
     public int MaxArgs { get; }
@@ -636,10 +650,19 @@ fail-loud layer that catches authoring bugs.
    `requiredFeatures`, `requiredMethods` → mismatch returns
    `SkippedUnsupported` without opening a workspace.
 2. Open a workspace via `connectionFactory.OpenWorkspace()`.
-3. Create the generated schema (every statement from
+3. Check `sqlite_version()` against the definition's
+   `MinSqliteVersionNumber`, once per runtime instance → below the floor
+   returns `FailedSchema` / `sqlite-version-too-low` before any DDL.
+4. Register every inline scalar function on the connection, when the
+   definition exposes inline methods and the connection implements
+   `ISqliteHostScalarFunctionConnection` → a throwing registration
+   returns `FailedSchema` / `inline-registration-error`. This happens
+   *before* the schema DDL, because script statements in the first step
+   may already call one.
+5. Create the generated schema (every statement from
    `GenerateSchemaStatements()`).
-4. Insert runtime inputs into `script_inputs` if provided.
-5. For each step in order:
+6. Insert runtime inputs into `script_inputs` if provided.
+7. For each step in order:
    a. Execute each statement with typed bindings (validating bindings
       lexically when `ValidateBindings` — see `docs/errors.md`).
    b. Only after **all** statements in the step succeed, drain
@@ -649,8 +672,11 @@ fail-loud layer that catches authoring bugs.
       result parent row (status `'done'`) + result list child rows, mark
       the queue row `status = 'done'`.
    c. Never drain between statements inside a step.
-6. Stop immediately on SQL, binding, schema, or handler failure.
-7. Return `SqliteHostRunResult`; dispose the workspace connection.
+8. Stop immediately on SQL, binding, schema, or handler failure, and on
+   the control table's `fail` action (`FailedScript` / `script-abort`) or
+   an action other than `halt`/`fail` (`FailedValidation` /
+   `invalid-control-action`).
+9. Return `SqliteHostRunResult`; dispose the workspace connection.
 
 ## Generated code shape (target of the C# emitter)
 
@@ -668,7 +694,7 @@ where the accessors cost real bytes; measured in
 | `HostMethodDtos.g.cs` | input/result/item DTO classes — plain classes, public auto-properties, `List<T>` properties initialized to `new List<T>()` |
 | `IGeneratedHostHandlers.g.cs` | handler interface, one method per op: `GetValueResult GetValue(GetValueInput input);` |
 | `GeneratedHostMethodSpecs.g.cs` | `public static class GeneratedHostMethodSpecs` with `BuildAll()` + one private `Build<Op>Spec()` per method using the fluent API |
-| `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all nine naming values explicitly (six prefixes + queue/inputs/vars table names) |
+| `GeneratedHostDefinition.g.cs` | `public static class GeneratedHostDefinition { public static SqliteHostDefinition<IGeneratedHostHandlers> Build() }` — the `.Naming(...)` block always emits all eleven naming values explicitly (six prefixes, the queue/inputs/vars/control table names, the function prefix), followed by a `.Columns(...)` block emitting all fourteen column identifiers |
 | `GeneratedSchemaSql.g.cs` | `public static class GeneratedSchemaSql { public const string SchemaScript = "..."; }` — optional DDL constant, byte-identical to the snapshot |
 
 Profile deltas (committed goldens:
@@ -700,7 +726,7 @@ erased core). What it costs to author and to read:
 | Field access in handlers | typed member (`input.Key`): autocomplete, F12, rename-safe | same as classic | string key: no autocomplete, typo → runtime error |
 | Generated registration | fluent + inline lambdas | flat + one named `private static` accessor per field (no lambdas/closures) | declaration-only field calls + one `Invoke<Op>` per method |
 | Per-app generated lines (5-method sample) | 230 | 405 | 183 |
-| Fixed vendored runtime (method-independent) | 5,329 | **5,218 (smallest)** | 5,755 (largest) |
+| Fixed vendored runtime (method-independent) | 5,379 | **5,268 (smallest)** | 5,805 (largest) |
 
 **classic and compact are identical to author against** — same DTOs, same
 handler interface; compact only swaps inline lambdas for named static

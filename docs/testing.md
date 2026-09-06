@@ -87,14 +87,19 @@ win, and the reflection-free build still running — so it is immune to
 SDK and architecture drift. Byte-for-byte regression against
 `baseline.json` also fails the job: the recorded deltas were measured on
 an ubuntu-latest runner, and a change that is supposed to move bytes
-re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a monthly
-measurement, not a gate: `il2cpp-size-bench.yml` builds the 12-row
-matrix in a real editor and publishes a table. `ios-size-bench.yml` is
-written to build the same rows for iOS and publish a second table whose
-bytes are not comparable to the Android one, but it has never run and no
-iOS number exists yet — `docs/guides/il2cpp-size-protocol.md` §7 says why
-the two platforms are not comparable, and lists what only a first run can
-settle.
+re-records them with `UPDATE_SIZE_BASELINE=1` on a runner. The Unity IL2CPP half is a
+measurement rather than a numeric gate, but it is not off the pull-request
+path: `il2cpp-size-bench.yml` builds the full 12-row matrix monthly and on
+demand, and a 3-row subset on any pull request touching
+`csharp/SqliteHost.Runtime/`, `csharp/SqliteHost.Abstractions/`,
+`codegen/csharp-emitter/` or `tests/app-size-bench/`. That subset carries no
+`continue-on-error`, so a change to the runtime does wait for it.
+`ios-size-bench.yml` builds the same rows for iOS in two stages and
+publishes a second table whose bytes are not comparable to the Android one;
+it has run (run 33255105207, 48 of 48 legs green) and the numbers are in
+`docs/reports/ios-il2cpp-size-report.md`.
+`docs/guides/il2cpp-size-protocol.md` §7 says why the two platforms are not
+comparable.
 
 ## Playground browser tests (`typescript/playground`)
 
@@ -153,12 +158,13 @@ matrix, each at the cadence its cost justifies:
 | `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
 | `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
 | `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
-| `il2cpp-size-bench.yml` | monthly + on demand | the Unity IL2CPP app-size matrix on Android (a measurement, never a gate) |
-| `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement, and it has never run |
+| `il2cpp-size-bench.yml` | monthly + on demand, plus a 3-row subset per-PR on the runtime and C# emitter paths | the Unity IL2CPP app-size matrix on Android (a measurement, not a numeric gate) |
+| `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement; first full run 33255105207, 48/48 green |
 
 So everything in `tests/end-to-end/run-all.sh` now runs in CI — but not
 all of it on every push. A change outside `csharp/` does not wait for the
-engine matrix, and nothing waits for the IL2CPP matrix.
+engine matrix, and only a change to the runtime, the abstractions, the C#
+emitter or the bench itself waits for the IL2CPP matrix.
 
 One check deliberately stays out of pull-request CI:
 `scripts/check-npm-publishable.mjs` exits 1 today by design, because the

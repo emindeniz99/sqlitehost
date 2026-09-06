@@ -293,7 +293,7 @@ currently declares no `bin` entry at all).
 
 ### B.3 Where the outputs go
 
-**C#** — six files. Put the five root files in your generated
+**C#** — seven files. Put the five root files in your generated
 project/folder (compiled together with Abstractions + Runtime, e.g. a
 `YourApp.Generated` classlib or a `Generated/` folder):
 
@@ -303,14 +303,16 @@ generated/csharp/IGeneratedHostHandlers.g.cs
 generated/csharp/GeneratedHostMethodSpecs.g.cs
 generated/csharp/GeneratedHostDefinition.g.cs
 generated/csharp/GeneratedSchemaSql.g.cs
-generated/csharp/envelope/ScriptEnvelope.g.cs   <- do NOT compile this one
+generated/csharp/envelope/ScriptEnvelope.g.cs      <- do NOT compile this one
+generated/csharp/runtime/ProtocolConstants.g.cs    <- do NOT compile this one
 ```
 
-`envelope/ScriptEnvelope.g.cs` is the vendored envelope copy that
-`SqliteHost.Abstractions` already ships (namespace `SqliteHost`) —
-compiling it next to Abstractions gives duplicate-type errors. It
-exists so *this* repo can golden-test the vendored copy; consumers
-skip it.
+The two subfolder files are vendored copies of types the packages
+already ship (namespace `SqliteHost`): `envelope/ScriptEnvelope.g.cs`
+duplicates `SqliteHost.Abstractions`, and `runtime/ProtocolConstants.g.cs`
+duplicates `SqliteHost.Runtime`. Compiling either alongside its package
+gives duplicate-type errors. They exist so *this* repo can golden-test
+the vendored copies; consumers skip both.
 
 **Java** — package trees, ready for `src/main/java`:
 
@@ -329,6 +331,7 @@ method) for backend code that doesn't want to parse manifest JSON.
 
 ```text
 generated/ts/authoring-sdk/src/generated/<base-name>.ts  <- your typed authoring module: keep
+generated/ts/authoring-sdk/src/generated/protocol.ts     <- skip when you depend on @sqlite-host/authoring
 generated/ts/runtime-types/src/generated/envelope.ts     <- skip when you depend on @sqlite-host/runtime-types
 ```
 
@@ -474,9 +477,10 @@ pipeline passes, what has been proven": structural envelope errors,
 binding errors (`missing-binding`, `unused-binding`,
 `binding-type-mismatch`, `mixed-prefix-binding`), host-call usage
 (`implicit-column-list`, `undeclared-method-use`,
-`duplicate-call-id`, list child colocation) and — Java only —
-result-read lineage (`result-read-unknown-call`,
-`result-read-not-after-call`) and `sql-prepare-error`.
+`duplicate-call-id`, list child colocation), result-read lineage
+(`result-read-unknown-call`, `result-read-not-after-call` — both
+validators, except the bracket-quoted case) and — Java only —
+`sql-prepare-error`.
 
 The publishability rule (`docs/validation.md`): **zero errors =
 publishable; warnings don't block.**

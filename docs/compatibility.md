@@ -184,10 +184,12 @@ one still executes the bench correctly, and enforces the claims that are
 ratios rather than bytes — profiles stay ordered, marginal per-method
 cost keeps falling from classic to compact to ultra, DTO fields stay a
 no-op, `SQLITEHOST_SLIM` stays a net win. The Unity IL2CPP matrix is
-`il2cpp-size-bench.yml`, monthly and on demand, and stays a measurement:
-its byte counts move with the editor patch, the NDK and the engine
-itself, so it publishes a table and an artifact rather than blocking a
-merge.
+`il2cpp-size-bench.yml`: the full 12 rows monthly and on demand, and a
+3-row subset on any pull request that touches the runtime, the
+abstractions, the C# emitter or the bench. Its byte counts move with the
+editor patch, the NDK and the engine itself, so it publishes a table and
+an artifact instead of failing on a byte move — a measurement rather than
+a numeric gate, but one a runtime change still waits for.
 
 Measured deltas over the game-like baseline (managed core is ~80 KB of
 IL; the cost is AOT type metadata + EH tables, **not** string literals
@@ -196,11 +198,20 @@ the unreferenced `GeneratedSchemaSql` constant strips):
 
 | Stack | raw Δ | gzip Δ (download) |
 |---|---|---|
-| classic profile, 5 methods | 434 KB | 194 KB |
-| **compact profile, 50 methods** | **215 KB** | **88 KB** |
-| compact + `SQLITEHOST_SLIM`, 50 methods | 187 KB | 75 KB |
-| ultra profile, 50 methods | 188 KB | 81 KB |
-| **ultra + `SQLITEHOST_SLIM`, 50 methods** | **159 KB** | **66 KB** |
+| classic profile, 5 methods | 156 KB | 75 KB |
+| classic profile, 50 methods | 305 KB | 132 KB |
+| **compact profile, 50 methods** | **223 KB** | **98 KB** |
+| **compact + `SQLITEHOST_SLIM`, 50 methods** | **187 KB** | **79 KB** |
+| ultra profile, 50 methods | 196 KB | 90 KB |
+
+Every row is `tests/app-size-bench/baseline.json` divided by 1024. That
+file is what the `app size (NativeAOT)` job gates on, so it is the only
+NativeAOT number in this repository that a change cannot silently
+invalidate. **Ultra + `SQLITEHOST_SLIM` is absent because the bench does
+not build it**: `measure-nativeaot.mjs` applies `SqliteHostSlim` to the
+compact profile only, so no measured ultra+SLIM delta exists and none is
+printed here. Combine the two savings at your own risk, or add the row to
+the bench.
 
 Measured under **real Unity IL2CPP** (2022.3.9f1, Android/ARM64,
 Managed Stripping High, IL2CPP codegen "Faster (smaller) builds";
@@ -275,9 +286,10 @@ revision measured 474 KB raw / 204 KB gzip for the compact-50 stack):
    **NativeAOT-specific**. The non-generic contract stays (strictly ≤
    everywhere; NativeAOT and .NET-server consumers keep the large win).
 2. **Per-method cost is type count.** Each unique generic
-   instantiation/lambda class ≈ 700–900 B of AOT metadata: classic
-   ≈ 10 KB raw / 4.6 KB gzip per method, compact ≈ 1.2 / 0.3, ultra
-   ≈ 0.7 / 0.2.
+   instantiation/lambda class ≈ 700–900 B of AOT metadata. Marginal cost
+   per method, computed as (Δ₅₀ − Δ₅)/45 from
+   `tests/app-size-bench/baseline.json`: classic ≈ 3.3 KB raw / 1.3 KB
+   gzip, compact ≈ 1.8 / 0.6, ultra ≈ 0.8 / 0.2.
 
 Guidance: size-critical games generate with `--profile compact`
 (identical typed public API, identical behavior — pinned by the

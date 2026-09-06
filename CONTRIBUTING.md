@@ -60,9 +60,11 @@ does not hit it.
 
 **System.Data.SQLite has no arm64 macOS native.** `System.Data.SQLite.Core`
 ships `SQLite.Interop.dll` for `win-x86`, `win-x64`, `linux-x64` and
-`osx-x64` only, so on Apple Silicon the 53 `SystemDataSqlite*` fixtures
-die with `DllNotFoundException` before the first assertion. That adapter
-is covered by the Linux and Windows CI jobs. Locally, skip it:
+`osx-x64` only, so on Apple Silicon 54 of the 56 `SystemDataSqlite*`
+tests die with `DllNotFoundException` before the first assertion (the two
+survivors are the `CleanSkip_*` inline-function cases, which never open a
+connection). That adapter is covered by the Linux and Windows CI jobs.
+Locally, skip it:
 
 ```bash
 dotnet test --filter "FullyQualifiedName!~SystemDataSqlite"

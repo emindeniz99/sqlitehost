@@ -14,7 +14,7 @@ indent, LF, trailing newline. Committed snapshot:
 | `engine` | `"sqlite-host-v1"` |
 | `library` | `namespace`, `interfaceName`, `apiLevel`, `minSqliteVersionNumber`, `features` |
 | `naming` | the host-level naming conventions (six prefixes/infixes + `functionPrefix`) |
-| `columns` | the fourteen configurable column identifiers + done literal |
+| `columns` | fourteen keys: thirteen configurable column identifiers plus `doneValue`, the done literal |
 | `queueTable` | `pending_host_calls` + column list |
 | `inputsTable` | `script_inputs` + column list |
 | `varsTable` | `script_vars` + column list (script-managed variable scratch space) |

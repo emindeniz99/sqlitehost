@@ -167,6 +167,12 @@ algorithm and the verifier requires it to equal the envelope's `alg`
 | `rsa-sha256` | RSASSA-**PKCS#1 v1.5** over SHA-256 of `signedBytes`, per RFC 8017 §8.2 | production |
 | `hmac-sha256` | HMAC-SHA-256 over `signedBytes`, compared in constant time | dev/internal only |
 
+`DeliveryKey.Rsa(...)` rejects a modulus shorter than 256 bytes with
+`ArgumentException`, so 2048 bits is a hard floor rather than a
+recommendation: a short modulus is the misconfiguration that fails
+*open*, since verification keeps succeeding while the private key is
+within reach of factoring.
+
 **Why PKCS#1 v1.5 and not PSS.** Unity/IL2CPP is the hard constraint:
 PKCS#1 v1.5 verification is the path with the broadest Mono and
 `netstandard2.0` support, and both signatures are deterministic, which
