@@ -50,7 +50,7 @@ public final class ValidationEngine {
 
     public ValidationReport validate(Manifest manifest, Script script) {
         List<ValidationFinding> findings = new ArrayList<>();
-        checkEnvelope(manifest, script, findings);
+        checkEnvelope(script, findings);
         checkDuplicateStepIds(script, findings);
         checkDuplicateInputNames(script, findings);
         checkCompatibility(manifest, script, findings);
@@ -69,15 +69,21 @@ public final class ValidationEngine {
     // Structural
     // ---------------------------------------------------------------
 
-    private static void checkEnvelope(
-            Manifest manifest, Script script, List<ValidationFinding> findings) {
+    private static void checkEnvelope(Script script, List<ValidationFinding> findings) {
+        // The engine id is the protocol's own constant, not manifest data.
+        // Comparing against manifest.scriptEnvelope().engine() let a
+        // manifest redefine which protocol the validator enforces: declare
+        // "sqlite-host-v9" and every real v1 payload became invalid while a
+        // v9 payload no runtime understands passed. TypeScript has always
+        // compared against its generated SCRIPT_ENGINE_V1; this is the
+        // generated Java twin of it (emitted with the rest of Script.java).
         if (isBlank(script.engine())) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
                     "envelope is missing its engine"));
-        } else if (!script.engine().equals(manifest.scriptEnvelope().engine())) {
+        } else if (!Script.ENGINE_V1.equals(script.engine())) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
                     "envelope engine '" + script.engine() + "' is not '"
-                            + manifest.scriptEnvelope().engine() + "'"));
+                            + Script.ENGINE_V1 + "'"));
         }
         if (script.requiredApiLevel() == null || script.requiredApiLevel() < 1) {
             findings.add(ValidationFinding.error(ValidationCodes.INVALID_ENVELOPE,
