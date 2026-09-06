@@ -140,4 +140,31 @@ class SqlTokenizerTest {
         List<SqlToken> tokens = SqlTokenizer.tokenize("SELECT a : b");
         assertTrue(tokens.contains(new SqlToken(SqlToken.Kind.PUNCT, ":")));
     }
+
+    @Test
+    void separatesTokensOnExactlyTheCIsspaceSet() {
+        // WHY: whitespace decides where one token ends and the next begins,
+        // so the Java and TypeScript tokenizers must skip the SAME bytes or
+        // their whole statement analysis diverges. Both now enumerate C's
+        // isspace() set rather than delegating to a library predicate:
+        // Character.isWhitespace also accepts U+001C..U+001F and the Unicode
+        // separators, which the TypeScript scanner has no equivalent for.
+        for (char c : new char[] {' ', '\t', '\n', '\u000B', '\f', '\r'}) {
+            assertEquals(
+                    List.of(new SqlToken(SqlToken.Kind.IDENT, "DROP"),
+                            new SqlToken(SqlToken.Kind.IDENT, "TABLE")),
+                    SqlTokenizer.tokenize("DROP" + c + "TABLE"),
+                    "U+" + String.format("%04X", (int) c) + " must separate tokens");
+        }
+        // Outside that set the character is not whitespace to SQLite and is
+        // not silently swallowed here either: U+2028 becomes a PUNCT token,
+        // exactly as it does in the TypeScript tokenizer. The leading
+        // keyword — the anchor of the forbidden-statement lint — survives
+        // either way, and the SQL itself can never prepare.
+        assertEquals(
+                List.of(new SqlToken(SqlToken.Kind.IDENT, "DROP"),
+                        new SqlToken(SqlToken.Kind.PUNCT, "\u2028"),
+                        new SqlToken(SqlToken.Kind.IDENT, "TABLE")),
+                SqlTokenizer.tokenize("DROP\u2028TABLE"));
+    }
 }

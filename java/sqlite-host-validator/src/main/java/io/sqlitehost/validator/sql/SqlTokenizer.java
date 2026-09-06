@@ -32,7 +32,7 @@ public final class SqlTokenizer {
         while (i < n) {
             char c = sql.charAt(i);
 
-            if (Character.isWhitespace(c)) {
+            if (isSqlWhitespace(c)) {
                 i++;
                 continue;
             }
@@ -221,6 +221,30 @@ public final class SqlTokenizer {
             }
         }
         return names;
+    }
+
+    /**
+     * The characters that separate tokens: C's {@code isspace()} set —
+     * space, {@code \t}, {@code \n}, {@code U+000B}, {@code \f}, {@code \r}.
+     * The TypeScript tokenizer enumerates the identical set, and that
+     * agreement is the point: whitespace decides where one token ends, so a
+     * byte one validator skips and the other does not makes the whole
+     * statement analysis (the denylist included) diverge between them.
+     * {@link Character#isWhitespace} was the earlier spelling and is wider —
+     * it also accepts {@code U+001C..U+001F} and the Unicode separators,
+     * which the TypeScript scanner has no equivalent for.
+     *
+     * <p>The set is deliberately one character wider than SQLite's own
+     * {@code sqlite3Isspace}, which omits {@code U+000B} — verified against
+     * the sqlite3 CLI 3.51.0, where an INSERT split by a vertical tab is a
+     * parse error while the form-feed version runs. Over-skipping is the
+     * fail-safe direction: the extra character can only appear in SQL SQLite
+     * refuses to prepare, so treating it as a separator costs no valid
+     * script a false positive, while not skipping it hides a denied
+     * statement from the lint.</p>
+     */
+    private static boolean isSqlWhitespace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == 0x0b || c == '\f' || c == '\r';
     }
 
     private static boolean isDigit(char c) {

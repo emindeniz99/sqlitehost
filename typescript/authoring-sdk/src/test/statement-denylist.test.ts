@@ -315,3 +315,23 @@ test("the message names the table and its role", () => {
   assert.ok(message.includes("pending_host_calls"), message);
   assert.ok(message.includes("queue"), message);
 });
+
+test("a vertical tab between keywords does not hide a denied statement", () => {
+  // WHY: whitespace decides where one token ends and the next begins, so a
+  // separator the tokenizer does not know about welds INSERT to INTO and the
+  // statement stops looking like an INSERT at all — taking the whole
+  // denylist, and every call-emit check, down with it for that statement.
+  //
+  // U+000B is the one character in C's isspace() that SQLite's own
+  // sqlite3Isspace does NOT accept (verified against the sqlite3 CLI 3.51.0:
+  // an INSERT split by it is a parse error, while the form-feed version
+  // runs), so such a statement can never execute. Skipping it anyway is the
+  // fail-safe direction and is what the Java tokenizer has always done; the
+  // two validators must agree on which bytes separate tokens.
+  const vt = String.fromCharCode(0x0b);
+  assert.equal(
+    protocolWrite(`INSERT${vt}INTO result_get_value (call_id) VALUES ('x')`).length,
+    1,
+  );
+  assert.equal(forbidden(`DROP${vt}TABLE result_get_value`).length, 1);
+});
