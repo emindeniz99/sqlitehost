@@ -59,7 +59,10 @@ statement-scoped failures (`StatementIndex` is `-1` otherwise);
 native SQLite error code when the adapter surfaced one via
 `SqliteHostAdapterException` (`0` = not available);
 `ExecutedCallCount` always counts successfully completed handler
-invocations through the queue drain; `InlineCallCount` counts handler
+invocations through the queue drain — counted when the handler returns
+and its result row is written, so a failure in the queue bookkeeping
+that follows (there is no transaction around the pair) still reports
+the invocation that did happen; `InlineCallCount` counts handler
 invocations made through inline scalar functions (informational — the
 SQLite planner may evaluate a function 0..N times per row).
 

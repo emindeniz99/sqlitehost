@@ -742,6 +742,23 @@ namespace SqliteHost
                         ex.Message, stepId, call.Method), ex);
                 }
 
+                // Counted here, not after the queue UPDATE below: the
+                // handler has run and its result row is committed by now,
+                // and there is no transaction around the pair
+                // (docs/sqlite-surface.md). A failing UPDATE must not erase
+                // the fact that the handler fired — that is the one question
+                // ExecutedCallCount exists to answer (docs/errors.md).
+                state.ExecutedCallCount++;
+                if (state.Calls != null)
+                {
+                    state.Calls.Add(new SqliteHostCallDiagnostic
+                    {
+                        CallId = call.CallId,
+                        Method = call.Method,
+                        StepId = stepId
+                    });
+                }
+
                 try
                 {
                     connection.Execute(
@@ -760,17 +777,6 @@ namespace SqliteHost
                 {
                     return WithSqliteErrorCode(Failure(state, SqliteHostRunStatus.FailedSql, "sql-error",
                         ex.Message, stepId, call.Method), ex);
-                }
-
-                state.ExecutedCallCount++;
-                if (state.Calls != null)
-                {
-                    state.Calls.Add(new SqliteHostCallDiagnostic
-                    {
-                        CallId = call.CallId,
-                        Method = call.Method,
-                        StepId = stepId
-                    });
                 }
             }
             return null;
