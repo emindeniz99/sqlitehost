@@ -68,6 +68,23 @@ env:
   # measures SqliteHost's cost, not Unity's — comparing rows only means
   # something when every row used the same editor.
   UNITY_VERSION: 2022.3.62f3
+  # GameCI's Android editor image for that exact version, pinned by digest
+  # and passed as `customImage:` below. Without it unity-builder resolves
+  # `unityci/editor:ubuntu-2022.3.62f3-android-3` at run time — a MUTABLE
+  # tag — and the Unity ID credentials the build step carries are handed to
+  # whatever that tag points at today. The action's own SHA pin says
+  # nothing about the container it pulls. Same rule as unity-ci.yml's
+  # matrix and ios-size-bench.yml's IOS_EDITOR_IMAGE.
+  #
+  # Re-resolve with (the tag is exactly what game-ci resolves for an
+  # Android target on a Linux runner):
+  #   docker buildx imagetools inspect \
+  #     unityci/editor:ubuntu-2022.3.62f3-android-3 \
+  #     --format '{{.Manifest.Digest}}'
+  # Cross-check against Docker Hub's own record with:
+  #   curl -sH 'User-Agent: curl' \
+  #     'https://hub.docker.com/v2/repositories/unityci/editor/tags?page_size=100&name=2022.3.62f3'
+  ANDROID_EDITOR_IMAGE: unityci/editor@sha256:fece0382433aa05547d8118c578594bd1a38a5f27f00278f627456817d6c41e3
 
 jobs:
   # Fork pull requests get an explanation instead of a red X.
@@ -182,6 +199,9 @@ jobs:
         with:
           unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: Android
+          # Digest-pinned, for the reason spelled out at ANDROID_EDITOR_IMAGE
+          # above: the secrets in `env:` go into this container.
+          customImage: ${{ env.ANDROID_EDITOR_IMAGE }}
           projectPath: tests/app-size-bench/unity-project
           # SizeBench sets every player setting the protocol pins (IL2CPP,
           # stripping High, .NET Standard, OptimizeSize, ARM64) and writes
