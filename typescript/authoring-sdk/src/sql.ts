@@ -78,17 +78,39 @@ function isDigit(ch: string): boolean {
  * so a byte one validator skips and the other does not makes the whole
  * statement analysis (the denylist included) diverge between them.
  *
- * It is deliberately one character wider than SQLite's own `sqlite3Isspace`,
- * which omits U+000B — verified against the sqlite3 CLI 3.51.0, where an
- * INSERT split by a vertical tab is a parse error while the form-feed
- * version runs. Over-skipping is the fail-safe direction: the extra
- * character can only appear in SQL SQLite refuses to prepare, so treating it
- * as a separator costs no valid script a false positive, while not skipping
- * it hides a denied statement from the lint.
+ * It is deliberately two characters wider than SQLite's own
+ * `sqlite3Isspace`:
+ *
+ * - **U+000B** (vertical tab), which SQLite omits — verified against the
+ *   sqlite3 CLI 3.51.0, where an INSERT split by a vertical tab is a parse
+ *   error while the form-feed version runs.
+ * - **U+FEFF** (the UTF-8 BOM), which SQLite's *tokenizer* does accept as a
+ *   separator wherever a token may start (tokenize.c gives 0xEF its own
+ *   `CC_BOM` class and returns `TK_SPACE`), and which it treats as an
+ *   identifier character only when it continues one. Measured on the CLI
+ *   3.51.0 and Python's 3.53.4: `<BOM>SELECT 1`, `SELECT <BOM>1` and
+ *   `DELETE <BOM> FROM t` all run, while `DELETE<BOM>FROM t` is a syntax
+ *   error because the BOM is welded onto `DELETE`. Not skipping it meant
+ *   token 0 of `<BOM>PRAGMA writable_schema = ON` was punctuation, so
+ *   `leadingKeyword` and `writeTarget` both returned null and one invisible
+ *   character disabled the forbidden-statement and protocol-table-write
+ *   denylists outright.
+ *
+ * Over-skipping is the fail-safe direction in both cases: the extra
+ * character can only appear where SQLite refuses to prepare (a
+ * BOM *inside* an identifier), so treating it as a separator costs no
+ * runnable script a false positive, while not skipping it hides a denied
+ * statement from the lint.
  */
 function isSqlWhitespace(ch: string): boolean {
   return (
-    ch === " " || ch === "\t" || ch === "\n" || ch === "\v" || ch === "\f" || ch === "\r"
+    ch === " " ||
+    ch === "\t" ||
+    ch === "\n" ||
+    ch === "\v" ||
+    ch === "\f" ||
+    ch === "\r" ||
+    ch === "\uFEFF"
   );
 }
 

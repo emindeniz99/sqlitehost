@@ -240,6 +240,7 @@ list lives in `docs/sqlite-surface.md`.
 |---|---|---|
 | `embedded-nul` | error | the `sql` field contains U+0000. SQLite's prepare takes a NUL-terminated string, so it compiles only the text before the first NUL and silently drops the rest — every other rule here reads the whole field, so the statement the validator judged is not the statement the device runs |
 | `multiple-statements` | error | the `sql` field holds more than one statement: a **top-level** (paren depth 0) `;` with more SQL after it. A bare trailing `;` (single statement, terminated) is legal; a `;` inside a string literal or a comment does not count (the tokenizer collapses both). This is what anchors the two rules below on the **real** statement — without it a leading no-op (`SELECT 1; PRAGMA …`) hides the denied statement from `forbidden-statement`/`protocol-table-write` |
+| `unrecognized-statement` | error | the statement's **first meaningful token** is not an identifier, so `forbidden-statement` and `protocol-table-write` have nothing to anchor on. Both rules used to skip such a statement silently, which is fail-**open**: every legal script statement starts with an identifier (`SELECT`/`INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`WITH`/`VALUES`), so anything else is either unrunnable or a tokenizer/engine divergence — and one leading U+FEFF was exactly that. A parenthesised `(SELECT 1)` is not a counter-example: sqlite3 3.51.0 rejects it with `near "(": syntax error`. Blank `sql` is `invalid-envelope`, not this |
 | `forbidden-statement` | error | the statement's **first meaningful token** is a denied statement keyword: `BEGIN`/`COMMIT`/`END`/`ROLLBACK`/`SAVEPOINT`/`RELEASE` (transaction control), `ATTACH`/`DETACH` (filesystem escape), `PRAGMA`/`VACUUM`/`ANALYZE`/`REINDEX` (engine state), `CREATE`/`ALTER`/`DROP` (schema DDL). Single-sourced as `FORBIDDEN_LEADING_KEYWORDS` in `ir.ts` |
 | `protocol-table-write` | error | an `INSERT`/`UPDATE`/`DELETE` targets a runtime-owned table: any `result_*` table or result list child table, the host-call queue table, or the runtime inputs table. Targets are resolved from the **manifest**, never from a name prefix, because all of these names are host-configurable (docs/naming.md) |
 
@@ -262,6 +263,21 @@ Why these are errors rather than warnings:
   way a harmless leading statement (`SELECT 1; …`) hides the real one,
   because `forbidden-statement` and `protocol-table-write` both anchor on
   the first statement's tokens.
+- **A statement the anchor cannot read must fail closed.** Both denylist
+  rules read token 0, and both used to do nothing when that token was not
+  an identifier. A leading U+FEFF was enough: SQLite's tokenizer gives
+  the UTF-8 BOM its own character class and returns `TK_SPACE` for it, so
+  `<BOM>PRAGMA writable_schema = ON` compiles and runs as the PRAGMA it
+  is, while the ASCII-only scanners made it punctuation at index 0 and
+  skipped both denylists. Both scanners now treat U+FEFF as whitespace —
+  measured on the sqlite3 CLI 3.51.0 and SQLite 3.53.4, where a BOM
+  separates tokens wherever one may start (`SELECT <BOM>1`,
+  `DELETE <BOM> FROM t`) and is an identifier character only when it
+  continues one (`DELETE<BOM>FROM t` is a syntax error). Over-skipping is
+  the fail-safe direction there, the same argument the vertical tab
+  already carries. `unrecognized-statement` is the second, independent
+  half: the next divergence of this shape is rejected instead of waved
+  through.
 - **Transaction control is a silent-data-loss shape.** The unit of
   atomicity is the *step* (its statements plus the drain), not a
   transaction. A script that opens a transaction and rolls it back

@@ -47,6 +47,7 @@ public final class ValidationCodes {
     // Statement denylist
     public static final String EMBEDDED_NUL = "embedded-nul";
     public static final String MULTIPLE_STATEMENTS = "multiple-statements";
+    public static final String UNRECOGNIZED_STATEMENT = "unrecognized-statement";
     public static final String FORBIDDEN_STATEMENT = "forbidden-statement";
     public static final String PROTOCOL_TABLE_WRITE = "protocol-table-write";
 

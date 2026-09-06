@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-unrecognized-statement",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "start-with-punctuation",
+      "statements": [
+        {
+          "sql": ") SELECT 1",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

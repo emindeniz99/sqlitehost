@@ -68,6 +68,7 @@ export type LintCode =
   | "nonportable-function"
   | "embedded-nul"
   | "multiple-statements"
+  | "unrecognized-statement"
   | "forbidden-statement"
   | "protocol-table-write"
   | "result-read-unknown-call"
@@ -463,6 +464,26 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // `pragma_table_info(...)` in a SELECT, a `WITH … INSERT`, and the
       // literal 'PRAGMA' legal.
       const leading = leadingKeyword(tokens);
+
+      // unrecognized-statement: token 0 is not an identifier, so neither
+      // forbidden-statement nor protocol-table-write can anchor and BOTH
+      // silently skip the statement. That fail-open path is what a leading
+      // U+FEFF walked through — every legal script statement begins with an
+      // identifier (SELECT/INSERT/UPDATE/DELETE/REPLACE/WITH/VALUES), so a
+      // statement that does not is either unrunnable or a tokenizer/engine
+      // divergence the denylists must not be asked to guess about. The one
+      // shape worth checking, a parenthesised `(SELECT 1)`, is not even
+      // legal: sqlite3 3.51.0 answers `near "(": syntax error`. An empty
+      // token stream is blank sql, already invalid-envelope.
+      if (leading === null && tokens.length > 0) {
+        findings.push({
+          code: "unrecognized-statement",
+          severity: "error",
+          message: `statement does not start with an identifier (first token: "${tokens[0].value}") — the forbidden-statement and protocol-table-write rules both anchor on that token, so a statement they cannot read is rejected rather than skipped (docs/validation.md)`,
+          ...at,
+        });
+      }
+
       if (leading !== null && FORBIDDEN_LEADING_KEYWORDS.includes(leading)) {
         findings.push({
           code: "forbidden-statement",

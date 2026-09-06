@@ -913,6 +913,40 @@
       "valid": true,
       "errors": [],
       "warnings": []
+    },
+    {
+      "payload": "invalid/forbidden-statement-bom-pragma.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "forbidden-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/unrecognized-statement.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "unrecognized-statement",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        },
+        {
+          "code": "sql-prepare-error",
+          "validators": [
+            "java"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }

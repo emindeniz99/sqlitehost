@@ -357,6 +357,48 @@ test("the message names the table and its role", () => {
   assert.ok(message.includes("queue"), message);
 });
 
+test("a leading BOM does not hide a denied statement", () => {
+  // WHY: SQLite's tokenizer gives the UTF-8 BOM its own character class and
+  // returns TK_SPACE for it, so `<BOM>PRAGMA writable_schema = ON` compiles
+  // and RUNS as the PRAGMA it is (measured on the sqlite3 CLI 3.51.0 and
+  // SQLite 3.53.4). The ASCII-only scanner made it punctuation at index 0,
+  // which meant leadingKeyword and writeTarget both returned null — one
+  // invisible character, both denylists gone. This is accident-reachable:
+  // editors and Windows tooling write BOMs, and a BOM inside a JSON string
+  // is legal.
+  const bom = "\uFEFF";
+  assert.equal(forbidden(`${bom}PRAGMA writable_schema = ON`).length, 1);
+  assert.equal(forbidden(`${bom}ATTACH DATABASE '/tmp/x.db' AS x`).length, 1);
+  assert.equal(forbidden(`${bom}DROP TRIGGER trg_call_get_value_queue`).length, 1);
+  assert.equal(protocolWrite(`${bom}DELETE FROM pending_host_calls`).length, 1);
+  // A BOM separates tokens wherever one may start, not only at index 0.
+  assert.equal(protocolWrite(`DELETE ${bom} FROM pending_host_calls`).length, 1);
+});
+
+test("a statement that starts with a non-identifier is rejected, not skipped", () => {
+  // Fail closed. Both denylist rules read token 0, and doing nothing when
+  // that token is not an identifier is what the BOM walked through. The
+  // scanner fix above closes the known divergence; this closes the class.
+  for (const sql of [") SELECT 1", "* FROM pending_host_calls", "1 + 1"]) {
+    const found = findings(sql, "unrecognized-statement");
+    assert.equal(found.length, 1, `${sql}: ${JSON.stringify(found)}`);
+    assert.equal(found[0].severity, "error", sql);
+  }
+  // …and every legal statement shape still starts with an identifier, so
+  // none of them trips it.
+  for (const sql of [
+    "SELECT 1",
+    "VALUES (1)",
+    "WITH d AS (SELECT 1) SELECT * FROM d",
+    "INSERT INTO script_vars (name, value_type, int_value) VALUES ('n', 'int64', 1)",
+    "REPLACE INTO script_vars (name, value_type, int_value) VALUES ('n', 'int64', 1)",
+    "\uFEFFSELECT 1",
+    "-- only a comment\nSELECT 1",
+  ]) {
+    assert.deepStrictEqual(findings(sql, "unrecognized-statement"), [], sql);
+  }
+});
+
 test("a vertical tab between keywords does not hide a denied statement", () => {
   // WHY: whitespace decides where one token ends and the next begins, so a
   // separator the tokenizer does not know about welds INSERT to INTO and the

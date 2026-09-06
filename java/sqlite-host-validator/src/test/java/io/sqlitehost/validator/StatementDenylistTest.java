@@ -332,6 +332,52 @@ class StatementDenylistTest {
     }
 
     @Test
+    void aLeadingBomDoesNotHideADeniedStatement() throws IOException {
+        // WHY: SQLite's tokenizer gives the UTF-8 BOM its own character class
+        // and returns TK_SPACE for it, so `<BOM>PRAGMA writable_schema = ON`
+        // compiles and RUNS as the PRAGMA it is (measured on the sqlite3 CLI
+        // 3.51.0 and SQLite 3.53.4). The ASCII-only scanner made it
+        // punctuation at index 0, which meant leadingKeyword and writeTarget
+        // both returned null — one invisible character, both denylists gone.
+        // This is accident-reachable: editors and Windows tooling write BOMs,
+        // and a BOM inside a JSON string is legal.
+        String bom = "\ufeff";
+        assertEquals(1, forbidden(bom + "PRAGMA writable_schema = ON").size());
+        assertEquals(1, forbidden(bom + "ATTACH DATABASE '/tmp/x.db' AS x").size());
+        assertEquals(1, forbidden(bom + "DROP TRIGGER trg_call_get_value_queue").size());
+        assertEquals(1, protocolWrite(bom + "DELETE FROM pending_host_calls").size());
+        // A BOM separates tokens wherever one may start, not only at index 0.
+        assertEquals(1, protocolWrite("DELETE " + bom + " FROM pending_host_calls").size());
+    }
+
+    @Test
+    void aStatementStartingWithANonIdentifierIsRejectedNotSkipped() throws IOException {
+        // Fail closed. Both denylist rules read token 0, and doing nothing
+        // when that token is not an identifier is what the BOM walked
+        // through. The scanner fix above closes the known divergence; this
+        // closes the class.
+        for (String sql : List.of(") SELECT 1", "* FROM pending_host_calls", "1 + 1")) {
+            List<ValidationFinding> found =
+                    findings(sql, ValidationCodes.UNRECOGNIZED_STATEMENT);
+            assertEquals(1, found.size(), sql + ": " + found);
+            assertEquals(Severity.ERROR, found.get(0).severity(), sql);
+        }
+        // …and every legal statement shape still starts with an identifier,
+        // so none of them trips it.
+        for (String sql : List.of(
+                "SELECT 1",
+                "VALUES (1)",
+                "WITH d AS (SELECT 1) SELECT * FROM d",
+                "INSERT INTO script_vars (name, value_type, int_value)"
+                        + " VALUES ('n', 'int64', 1)",
+                "REPLACE INTO script_vars (name, value_type, int_value)"
+                        + " VALUES ('n', 'int64', 1)",
+                "\ufeffSELECT 1")) {
+            assertEquals(List.of(), findings(sql, ValidationCodes.UNRECOGNIZED_STATEMENT), sql);
+        }
+    }
+
+    @Test
     void aSingleQuotedNameIsATableName() throws IOException {
         // SQLite's MySQL-compatibility rule: a single-quoted token in a
         // position where a name is required IS the name
