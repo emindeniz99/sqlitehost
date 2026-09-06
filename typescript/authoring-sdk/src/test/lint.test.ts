@@ -1130,3 +1130,49 @@ test("binding-type-mismatch: the check covers input list child tables", () => {
   assert.equal(mismatch.length, 1, JSON.stringify(mismatch));
   assert.equal(mismatch[0].statementIndex, 1);
 });
+
+// -- quoted function names ---------------------------------------------------
+// SQLite resolves a quoted name in call position to the same function:
+// `select "random"()`, `select [random]()` and ``select `random`()`` each
+// execute random() (verified against the sqlite3 CLI). The Java tokenizer
+// folds all four spellings into one IDENT kind and SqlAnalyzer.functionCalls
+// matches on that kind, so a TypeScript scan keyed on the bare-identifier
+// kind alone let every function lint be bypassed by quoting the name.
+
+test("functionCalls sees a quoted function name in every quoting form", () => {
+  for (const sql of ['SELECT "random"()', "SELECT [random]()", "SELECT `random`()"]) {
+    assert.deepStrictEqual(
+      functionCalls(tokenizeSql(sql)),
+      [{ name: "random", argCount: 0, hasNowArg: false }],
+      sql,
+    );
+  }
+});
+
+test("quoting a function name does not bypass the function lints", () => {
+  // One case per lint that reads the function-call list. Each of these
+  // reported nothing while the scan matched only bare identifiers, which
+  // made quoting a complete bypass of the publish gate.
+  const cases: Array<[string, string]> = [
+    ["SELECT \"jsonb_extract\"('{}', '$.a')", "sqlite-version-too-low-for-function"],
+    ["SELECT [sqrt](2.0)", "nonportable-function"],
+    ["SELECT `random`()", "nondeterministic-function"],
+    ['SELECT "fn_not_a_method"(1)', "unknown-function"],
+    ["SELECT [fn_get_value]('k')", "undeclared-feature-use"],
+    ["SELECT `fn_get_value`('k', 'extra')", "function-arity-mismatch"],
+  ];
+  for (const [sql, code] of cases) {
+    const found = lintScript(bareStatementScript(sql), manifest).filter((f) => f.code === code);
+    assert.equal(found.length, 1, `${sql} => ${code}: ${JSON.stringify(found)}`);
+  }
+});
+
+test("quoting an inline function name does not bypass method-api-level-too-high", () => {
+  // The inline path is the only route to this code that does not go
+  // through a call-table INSERT, so it needs its own quoted-name case.
+  const payload = inlineScript(["inlineFunctions"], [], "SELECT \"fn_get_value\"('k')");
+  const found = lintScript(payload, level2Manifest()).filter(
+    (f) => f.code === "method-api-level-too-high",
+  );
+  assert.equal(found.length, 1, JSON.stringify(found));
+});

@@ -347,11 +347,16 @@ export const UNKNOWN_ARGS = -1;
  * comments never confuse the scan — the tokenizer already collapsed
  * them. Calls nested in another call's arguments are extracted as
  * their own entries (mirrors the Java validator's SqlAnalyzer).
+ *
+ * A *quoted* name in call position counts too, in every quoting form:
+ * `"random"()`, `[random]()` and `` `random`() `` all invoke random()
+ * in SQLite. Matching bare identifiers alone let an author bypass every
+ * lint that reads this list simply by quoting the name.
  */
 export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   const calls: SqlFunctionCall[] = [];
   for (let i = 0; i + 1 < tokens.length; i++) {
-    if (tokens[i].kind === "identifier" && isPunctAt(tokens[i + 1], "(")) {
+    if (isIdentToken(tokens[i]) && isPunctAt(tokens[i + 1], "(")) {
       calls.push({
         name: tokens[i].value,
         argCount: countArgs(tokens, i + 2),
