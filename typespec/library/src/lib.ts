@@ -46,6 +46,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`SQL name "${"name"}" must be snake_case ([a-z][a-z0-9_]*).`,
       },
     },
+    "invalid-derived-sql-name": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Property "${"property"}" derives the SQL name "${"name"}", which is not snake_case ([a-z][a-z0-9_]*); the derived name is interpolated unquoted into the generated DDL and verbatim into the generated Java/TypeScript members. Add @sqlName("...") to name the column explicitly.`,
+      },
+    },
     "no-host-library": {
       severity: "error",
       messages: {

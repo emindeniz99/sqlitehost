@@ -4,7 +4,8 @@
  * frontend builds the IR: non-model top-level input/output, unsupported
  * scalars, nested models, nested lists, optional list fields, empty list
  * item models, unions and maps, duplicate method names, duplicate SQL
- * names per shape, duplicate derived table names, duplicate DTO simple
+ * names per shape, derived SQL names that are not snake_case, duplicate
+ * derived table names, duplicate DTO simple
  * names across namespaces, a method apiLevel above the library apiLevel,
  * missing @hostMethod, host interfaces declared outside any namespace,
  * and invalid shared table / column / naming-prefix configuration
@@ -600,6 +601,36 @@ function checkResultModel(
 }
 
 /**
+ * Resolve a property's SQL name and shape-check the DERIVED form.
+ *
+ * An explicit @sqlName was already tested against SQL_NAME by the
+ * decorator; the derived name never was. toSnakeCase only lowercases
+ * ASCII A-Z, so every other character survives verbatim — a TypeSpec
+ * backtick identifier such as `weird-name`, a non-ASCII letter, or a
+ * leading underscore all pass straight through. The result is
+ * interpolated unquoted into the DDL column line (ddl.ts) and verbatim
+ * into the Java record component and TypeScript interface member, so an
+ * unrepresentable name is invalid SQL and invalid source in two
+ * languages rather than a naming wart.
+ */
+function resolveSqlName(ctx: ValidationContext, prop: ModelProperty): string {
+  const explicit = getSqlName(ctx.program, prop);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  const derived = toSnakeCase(prop.name);
+  if (!SQL_NAME.test(derived)) {
+    error(
+      ctx,
+      "invalid-derived-sql-name",
+      { property: prop.name, name: derived },
+      prop,
+    );
+  }
+  return derived;
+}
+
+/**
  * Validate one input/result shape. Returns the list-field SQL names (with
  * their diagnostic targets) so the caller can claim derived child tables.
  * Every scalar field's derived physical column (parent and list item)
@@ -615,7 +646,7 @@ function validateShape(
   const listFields: Array<[string, ModelProperty]> = [];
 
   for (const prop of model.properties.values()) {
-    const sqlName = getSqlName(ctx.program, prop) ?? toSnakeCase(prop.name);
+    const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);
     } else {
@@ -705,7 +736,7 @@ function validateItemModel(
   }
   const sqlNames = new Set<string>();
   for (const prop of model.properties.values()) {
-    const sqlName = getSqlName(ctx.program, prop) ?? toSnakeCase(prop.name);
+    const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);
     } else {

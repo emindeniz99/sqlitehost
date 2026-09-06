@@ -1,3 +1,4 @@
+import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   assertDiagnostic,
@@ -1107,4 +1108,91 @@ test("rejects duplicate @hostLibrary interface names across libraries", async ()
     }
   `);
   assertLibrariesDiagnostic(result, "duplicate-host-library-name");
+});
+
+// ---------------------------------------------------------------------------
+// Derived SQL names (round-3 audit finding 1)
+// ---------------------------------------------------------------------------
+
+test("rejects a property whose derived SQL name is not snake_case", async () => {
+  // A backtick identifier survives toSnakeCase verbatim, so the derived
+  // column lands unquoted in the DDL: `input_weird-name TEXT NOT NULL`
+  // is a sqlite3 parse error, and the same string is an illegal Java
+  // record component and TS interface member.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`weird-name\`: string; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a non-ASCII property name on the derived SQL-name path", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`Ünïcode\`: int32; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a leading-underscore property name on the derived SQL-name path", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { _leading: boolean; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("rejects a bad derived SQL name inside a list item model", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model Item { \`weird-name\`: string; }
+      model In { items: Item[]; }
+      model Out { ok: boolean; }
+    `),
+  );
+  assertDiagnostic(result, "invalid-derived-sql-name");
+});
+
+test("an explicit @sqlName rescues a property name that cannot be derived", async () => {
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In {
+        @sqlName("weird_name")
+        \`weird-name\`: string;
+      }
+      model Out { ok: boolean; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].sqlName, "weird_name");
 });

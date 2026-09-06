@@ -44,7 +44,9 @@ and it should be decided as such rather than arrived at by accretion.
 The `@sqlite-host/typespec` library + frontend reject at compile time:
 unsupported top-level method shapes (input/output must be objects),
 unsupported scalar types, nested objects, nested lists, unions/maps,
-duplicate method names, duplicate SQL names, duplicate derived
+duplicate method names, duplicate SQL names, a property whose SQL name
+is *derived* (no `@sqlName`) into something that is not snake_case,
+duplicate derived
 table/column names, duplicate DTO/model simple names across namespaces,
 non-snake_case or case-colliding column names, a doneStatusValue equal
 to the reserved `pending` queue sentinel, missing/invalid api level, a
