@@ -22,8 +22,8 @@ part of these counts.
 | **Execution engine** | **~2,400** | **every script, on device** |
 | Authoring builders — 3 profiles, you use **one** | ~2,475 | compile-time API (you define handlers) |
 | Registration (assemble the host definition) | ~250 | once, at startup |
-| Optional validation (`SQLITEHOST_SLIM` strips it) | ~816 | build/registration only |
-| Types / interfaces / config / inline-functions | ~1,245 | declarations |
+| Optional validation (`SQLITEHOST_SLIM` strips it) | ~861 | build/registration only |
+| Types / interfaces / config / inline-functions | ~1,148 | declarations |
 
 The **engine** is the only bucket that executes a backend-supplied script
 at runtime. Everything else is either the typed API *you* use to declare
