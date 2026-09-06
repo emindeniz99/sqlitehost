@@ -158,9 +158,12 @@ inside eight real Unity editors, one after another, and runs its EditMode
 tests in each: the 2021.3.45f2 floor, 2022.3.62f3, and the six Unity 6
 lines (6000.0.82f1, 6000.1.17f1, 6000.2.15f1, 6000.3.22f1, 6000.4.12f1,
 6000.5.9f1). Those are the versions a free personal licence can activate;
-`docs/compatibility.md` lists the lines it therefore cannot reach. The job
-needs the licence secrets, which GitHub does not pass to fork pull
-requests, so a fork gets the licence-free scaffold-guard instead.
+`docs/compatibility.md` lists the lines it therefore cannot reach, and
+which four of the eight compile the `SQLITEHOST_SLIM` build rather than
+the shipping one — that split is what puts a real editor in front of the
+vendoring build at all. The job needs the licence secrets, which GitHub
+does not pass to fork pull requests, so a fork gets the licence-free
+scaffold-guard instead.
 
 Five more workflows carry the suites that do not belong in the main
 matrix, each at the cadence its cost justifies:
