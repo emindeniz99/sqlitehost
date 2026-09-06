@@ -35,6 +35,11 @@ typescript/playground/playwright-report/
 !.env.example
 *.pfx
 *.p12
+# Unity personal licence file. .github/workflows/unity-ci.yml tells a
+# maintainer to open Unity_lic.ulf locally and paste it into the
+# UNITY_LICENSE secret, which puts the credential one stray copy away from
+# the worktree. None is in the tree today; this is preventive.
+*.ulf
 
 # OS junk
 .DS_Store
