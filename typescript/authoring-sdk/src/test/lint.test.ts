@@ -750,6 +750,52 @@ test("functionCalls: hasNowArg is set only by a bare top-level 'now' literal", (
   assert.equal(nowArg("SELECT date(coalesce('now', ''))"), false);
 });
 
+test("functionCalls: deep nesting costs one pass, not one per call", () => {
+  // The original scanned forward from every `identifier(` to its matching
+  // `)`, which is quadratic in the nesting depth. Measured on the old code
+  // before this test existed: 8 000 deep took 0.45 s and 25 000 took 5.1 s,
+  // a clean 4x per doubling, so the 100 000 below would have taken about
+  // 80 s — and lintScript walks the list twice per statement. That is a
+  // hang in an editor-time lint, reachable from one pasted expression.
+  //
+  // The assertion is completion plus correctness, never a wall-clock
+  // bound: a timing assertion would flake on a loaded CI runner and tell
+  // a future reader nothing about what went wrong.
+  const depth = 100_000;
+  const sql = `SELECT ${"abs(".repeat(depth)}1${")".repeat(depth)}`;
+  const calls = functionCalls(tokenizeSql(sql));
+  assert.equal(calls.length, depth);
+  // Innermost call holds the literal; every enclosing one holds a call.
+  assert.deepStrictEqual(calls[depth - 1], { name: "abs", argCount: 1, hasNowArg: false });
+  assert.deepStrictEqual(calls[0], { name: "abs", argCount: 1, hasNowArg: false });
+});
+
+test("functionCalls: a nested group never counts as its parent's lone argument", () => {
+  // The linear pass folds a whole nested group into the enclosing frame in
+  // one step, which is only sound because an argument holding a group can
+  // never be the single 'now' token the determinism flag looks for. These
+  // are the shapes that would expose the fold if it were wrong.
+  const calls = (sql: string): unknown => functionCalls(tokenizeSql(sql));
+  assert.deepStrictEqual(calls("SELECT datetime(('now'))"), [
+    { name: "datetime", argCount: 1, hasNowArg: false },
+  ]);
+  assert.deepStrictEqual(calls("SELECT f((a), 'now')"), [
+    { name: "f", argCount: 2, hasNowArg: true },
+  ]);
+  assert.deepStrictEqual(calls("SELECT f(g(1, 2), 3)"), [
+    { name: "f", argCount: 2, hasNowArg: false },
+    { name: "g", argCount: 2, hasNowArg: false },
+  ]);
+  // An unclosed call: arity is unknowable, but a 'now' already terminated
+  // by a top-level comma was seen for certain.
+  assert.deepStrictEqual(calls("SELECT datetime('now', x"), [
+    { name: "datetime", argCount: UNKNOWN_ARGS, hasNowArg: true },
+  ]);
+  assert.deepStrictEqual(calls("SELECT datetime('now'"), [
+    { name: "datetime", argCount: UNKNOWN_ARGS, hasNowArg: false },
+  ]);
+});
+
 // -- determinism lint (docs/validation.md) ---------------------------------
 // Why it matters: a payload is a durable artifact that may be replayed
 // (re-run against a restored database) and its result is expected to

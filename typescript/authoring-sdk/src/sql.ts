@@ -431,6 +431,13 @@ export const UNKNOWN_ARGS = -1;
  * them. Calls nested in another call's arguments are extracted as
  * their own entries (mirrors the Java validator's SqlAnalyzer).
  *
+ * One pass, one stack of open parens. The obvious shape — find each
+ * `identifier(`, then scan forward for its matching `)` — is quadratic in
+ * the nesting depth, and SQL nests: `abs(abs(abs(…)))` a hundred thousand
+ * deep is 10^10 token visits, minutes of CPU inside a lint an author runs
+ * on every save. The single scan below is proportional to the token count
+ * whatever the shape.
+ *
  * A *quoted* name in call position counts too, in every quoting form:
  * `"random"()`, `[random]()` and `` `random`() `` all invoke random()
  * in SQLite. Matching bare identifiers alone let an author bypass every
@@ -438,16 +445,86 @@ export const UNKNOWN_ARGS = -1;
  */
 export function functionCalls(tokens: SqlToken[]): SqlFunctionCall[] {
   const calls: SqlFunctionCall[] = [];
-  for (let i = 0; i + 1 < tokens.length; i++) {
-    if (isIdentToken(tokens[i]) && isPunctAt(tokens[i + 1], "(")) {
-      calls.push({
-        name: tokens[i].value,
-        argCount: countArgs(tokens, i + 2),
-        hasNowArg: hasNowArg(tokens, i + 2),
-      });
+  const stack: ParenFrame[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const top = stack.length === 0 ? undefined : stack[stack.length - 1];
+    if (isPunctAt(token, "(")) {
+      if (top !== undefined) noteNestedToken(top);
+      // A call frame remembers WHERE its result goes, so the finished
+      // list stays in opening-token order however the nesting closes.
+      let slot = -1;
+      if (i > 0 && isIdentToken(tokens[i - 1])) {
+        slot = calls.length;
+        calls.push({ name: tokens[i - 1].value, argCount: UNKNOWN_ARGS, hasNowArg: false });
+      }
+      stack.push({ slot, commas: 0, sawArgToken: false, argTokens: 0, argIsNow: false, nowSeen: false });
+      continue;
     }
+    if (isPunctAt(token, ")")) {
+      const frame = stack.pop();
+      if (frame === undefined) continue; // stray ')' — closes nothing
+      if (frame.slot >= 0) {
+        const call = calls[frame.slot];
+        call.argCount = frame.sawArgToken ? frame.commas + 1 : 0;
+        call.hasNowArg = frame.nowSeen || (frame.argTokens === 1 && frame.argIsNow);
+      }
+      if (stack.length > 0) noteNestedToken(stack[stack.length - 1]);
+      continue;
+    }
+    if (top === undefined) continue; // outside every paren — nothing to count
+    if (isPunctAt(token, ",")) {
+      top.commas++;
+      top.sawArgToken = true;
+      if (top.argTokens === 1 && top.argIsNow) top.nowSeen = true;
+      top.argTokens = 0;
+      top.argIsNow = false;
+      continue;
+    }
+    if (top.argTokens === 0) {
+      top.argIsNow = token.kind === "string" && token.value.toLowerCase() === "now";
+    }
+    top.argTokens++;
+    top.sawArgToken = true;
+  }
+  // Frames still open at end of input have no matching ')': arity is
+  // unknowable, but a 'now' already closed off by a top-level comma was
+  // seen for certain.
+  for (const frame of stack) {
+    if (frame.slot >= 0) calls[frame.slot].hasNowArg = frame.nowSeen;
   }
   return calls;
+}
+
+/** One open `(` — a call when `slot` points at its entry in the result. */
+interface ParenFrame {
+  slot: number;
+  commas: number;
+  sawArgToken: boolean;
+  /** Tokens in the current top-level argument, CLAMPED at 2 (see below). */
+  argTokens: number;
+  argIsNow: boolean;
+  /** A completed top-level argument was exactly the literal `'now'`. */
+  nowSeen: boolean;
+}
+
+/**
+ * Account for a whole nested paren group in the enclosing frame with O(1)
+ * work — the step that makes the pass linear.
+ *
+ * Walking every enclosing frame per token would keep the cost quadratic in
+ * the nesting depth, which is the bug this replaced. It is unnecessary
+ * because an enclosing frame only ever asks two questions: whether its
+ * current argument holds any token at all, and whether that argument is
+ * EXACTLY one token which is `'now'`. An argument containing a nested group
+ * already fails the second test — the group's own `(` and `)` are two
+ * tokens — so clamping the count at 2 is not an approximation: no reachable
+ * read can tell the difference. Commas inside the group belong to the
+ * group, never to the enclosing frame, so they need no propagation at all.
+ */
+function noteNestedToken(frame: ParenFrame): void {
+  frame.sawArgToken = true;
+  frame.argTokens = 2;
 }
 
 /**
@@ -472,62 +549,6 @@ export function bareIdentifiers(tokens: SqlToken[]): string[] {
     }
   }
   return names;
-}
-
-/** Count top-level arguments from just after `(` to the matching `)`. */
-function countArgs(tokens: SqlToken[], start: number): number {
-  let depth = 1;
-  let commas = 0;
-  let sawArgToken = false;
-  for (let pos = start; pos < tokens.length; pos++) {
-    const token = tokens[pos];
-    if (isPunctAt(token, "(")) {
-      depth++;
-    } else if (isPunctAt(token, ")")) {
-      depth--;
-      if (depth === 0) {
-        return sawArgToken ? commas + 1 : 0;
-      }
-    } else if (isPunctAt(token, ",") && depth === 1) {
-      commas++;
-    }
-    sawArgToken = true;
-  }
-  return UNKNOWN_ARGS;
-}
-
-/**
- * Whether some top-level argument from just after `(` to the matching
- * `)` is exactly the string literal `'now'` (case-insensitive). Only a
- * bare literal counts: `datetime('now')` reads the clock, `datetime(:when)`
- * does not, and a literal nested inside a larger expression is not the
- * argument itself. Mirrors the Java validator's SqlAnalyzer.
- */
-function hasNowArg(tokens: SqlToken[], start: number): boolean {
-  let depth = 1;
-  let argTokens = 0;
-  let argIsNow = false;
-  for (let pos = start; pos < tokens.length; pos++) {
-    const token = tokens[pos];
-    if (isPunctAt(token, ")")) {
-      depth--;
-      if (depth === 0) {
-        return argTokens === 1 && argIsNow;
-      }
-    } else if (isPunctAt(token, "(")) {
-      depth++;
-    } else if (isPunctAt(token, ",") && depth === 1) {
-      if (argTokens === 1 && argIsNow) return true;
-      argTokens = 0;
-      argIsNow = false;
-      continue;
-    }
-    if (argTokens === 0) {
-      argIsNow = token.kind === "string" && token.value.toLowerCase() === "now";
-    }
-    argTokens++;
-  }
-  return false;
 }
 
 /**

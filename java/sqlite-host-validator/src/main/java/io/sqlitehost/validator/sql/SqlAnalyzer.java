@@ -1,6 +1,8 @@
 package io.sqlitehost.validator.sql;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -206,17 +208,118 @@ public final class SqlAnalyzer {
      * matching {@code ')'}. String literals and comments never confuse
      * the scan — the tokenizer already collapsed them. Calls nested in
      * another call's arguments are extracted as their own entries.
+     *
+     * <p>One pass, one stack of open parens. The obvious shape — find each
+     * {@code identifier(}, then scan forward for its matching {@code ')'} —
+     * is quadratic in the nesting depth, and SQL nests:
+     * {@code abs(abs(abs(…)))} a hundred thousand deep is 10^10 token
+     * visits, and the engine walks the call list twice per statement. The
+     * single scan below is proportional to the token count whatever the
+     * shape.</p>
      */
     public static List<FunctionCall> functionCalls(List<SqlToken> tokens) {
         List<FunctionCall> calls = new ArrayList<>();
-        for (int i = 0; i + 1 < tokens.size(); i++) {
-            if (tokens.get(i).kind() == SqlToken.Kind.IDENT
-                    && tokens.get(i + 1).isPunct("(")) {
-                calls.add(new FunctionCall(tokens.get(i).text(),
-                        countArgs(tokens, i + 2), hasNowArg(tokens, i + 2)));
+        Deque<ParenFrame> stack = new ArrayDeque<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            SqlToken token = tokens.get(i);
+            ParenFrame top = stack.peek();
+            if (token.isPunct("(")) {
+                if (top != null) {
+                    noteNestedToken(top);
+                }
+                // A call frame remembers WHERE its result goes, so the
+                // finished list stays in opening-token order however the
+                // nesting closes.
+                int slot = -1;
+                if (i > 0 && tokens.get(i - 1).kind() == SqlToken.Kind.IDENT) {
+                    slot = calls.size();
+                    calls.add(new FunctionCall(tokens.get(i - 1).text(),
+                            FunctionCall.UNKNOWN_ARGS, false));
+                }
+                stack.push(new ParenFrame(slot));
+                continue;
+            }
+            if (token.isPunct(")")) {
+                ParenFrame frame = stack.poll();
+                if (frame == null) {
+                    continue; // stray ')' — closes nothing
+                }
+                if (frame.slot >= 0) {
+                    calls.set(frame.slot, new FunctionCall(calls.get(frame.slot).name(),
+                            frame.sawArgToken ? frame.commas + 1 : 0,
+                            frame.nowSeen || (frame.argTokens == 1 && frame.argIsNow)));
+                }
+                ParenFrame parent = stack.peek();
+                if (parent != null) {
+                    noteNestedToken(parent);
+                }
+                continue;
+            }
+            if (top == null) {
+                continue; // outside every paren — nothing to count
+            }
+            if (token.isPunct(",")) {
+                top.commas++;
+                top.sawArgToken = true;
+                if (top.argTokens == 1 && top.argIsNow) {
+                    top.nowSeen = true;
+                }
+                top.argTokens = 0;
+                top.argIsNow = false;
+                continue;
+            }
+            if (top.argTokens == 0) {
+                top.argIsNow = isNowLiteral(token);
+            }
+            top.argTokens++;
+            top.sawArgToken = true;
+        }
+        // Frames still open at end of input have no matching ')': arity is
+        // unknowable, but a 'now' already closed off by a top-level comma
+        // was seen for certain.
+        for (ParenFrame frame : stack) {
+            if (frame.slot >= 0 && frame.nowSeen) {
+                calls.set(frame.slot, new FunctionCall(calls.get(frame.slot).name(),
+                        FunctionCall.UNKNOWN_ARGS, true));
             }
         }
         return calls;
+    }
+
+    /** One open {@code '('} — a call when {@code slot} indexes the result. */
+    private static final class ParenFrame {
+        private final int slot;
+        private int commas;
+        private boolean sawArgToken;
+        /** Tokens in the current top-level argument, CLAMPED at 2. */
+        private int argTokens;
+        private boolean argIsNow;
+        /** A completed top-level argument was exactly the literal 'now'. */
+        private boolean nowSeen;
+
+        private ParenFrame(int slot) {
+            this.slot = slot;
+        }
+    }
+
+    /**
+     * Account for a whole nested paren group in the enclosing frame with
+     * O(1) work — the step that makes the pass linear.
+     *
+     * <p>Walking every enclosing frame per token would keep the cost
+     * quadratic in the nesting depth, which is the bug this replaced. It is
+     * unnecessary because an enclosing frame only ever asks two questions:
+     * whether its current argument holds any token at all, and whether that
+     * argument is EXACTLY one token which is {@code 'now'}. An argument
+     * containing a nested group already fails the second test — the group's
+     * own {@code '('} and {@code ')'} are two tokens — so clamping the count
+     * at 2 is not an approximation: no reachable read can tell the
+     * difference. Commas inside the group belong to the group, never to the
+     * enclosing frame, so they need no propagation at all.</p>
+     */
+    private static void noteNestedToken(ParenFrame frame) {
+        frame.sawArgToken = true;
+        frame.argTokens = 2;
     }
 
     /**
@@ -242,64 +345,6 @@ public final class SqlAnalyzer {
             }
         }
         return names;
-    }
-
-    /** Count top-level arguments from just after '(' to the matching ')'. */
-    private static int countArgs(List<SqlToken> tokens, int start) {
-        int depth = 1;
-        int commas = 0;
-        boolean sawArgToken = false;
-        for (int pos = start; pos < tokens.size(); pos++) {
-            SqlToken token = tokens.get(pos);
-            if (token.isPunct("(")) {
-                depth++;
-            } else if (token.isPunct(")")) {
-                depth--;
-                if (depth == 0) {
-                    return sawArgToken ? commas + 1 : 0;
-                }
-            } else if (token.isPunct(",") && depth == 1) {
-                commas++;
-            }
-            sawArgToken = true;
-        }
-        return FunctionCall.UNKNOWN_ARGS;
-    }
-
-    /**
-     * Whether some top-level argument from just after '(' to the matching
-     * ')' is exactly the string literal {@code 'now'} (case-insensitive).
-     * Only a bare literal counts: {@code datetime('now')} reads the clock,
-     * {@code datetime(:when)} does not, and a literal nested inside a
-     * larger expression is not the argument itself.
-     */
-    private static boolean hasNowArg(List<SqlToken> tokens, int start) {
-        int depth = 1;
-        int argTokens = 0;
-        boolean argIsNow = false;
-        for (int pos = start; pos < tokens.size(); pos++) {
-            SqlToken token = tokens.get(pos);
-            if (token.isPunct(")")) {
-                depth--;
-                if (depth == 0) {
-                    return argTokens == 1 && argIsNow;
-                }
-            } else if (token.isPunct("(")) {
-                depth++;
-            } else if (token.isPunct(",") && depth == 1) {
-                if (argTokens == 1 && argIsNow) {
-                    return true;
-                }
-                argTokens = 0;
-                argIsNow = false;
-                continue;
-            }
-            if (argTokens == 0) {
-                argIsNow = isNowLiteral(token);
-            }
-            argTokens++;
-        }
-        return false;
     }
 
     private static boolean isNowLiteral(SqlToken token) {
