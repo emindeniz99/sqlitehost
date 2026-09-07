@@ -27,7 +27,7 @@ host application decides logging/telemetry policy.
 | `unsupported-api-level` | SkippedUnsupported | `requiredApiLevel` > host apiLevel |
 | `missing-feature` | SkippedUnsupported | a `requiredFeatures` entry not supported |
 | `missing-method` | SkippedUnsupported | a `requiredMethods` entry not registered |
-| `invalid-script` | FailedValidation | null/empty steps, blank step id, null or blank statement sql, step with an empty/missing statements list, null input entry, blank input name, `requiredApiLevel` < 1. **Blank**, not merely empty: `"   "` is rejected wherever `""` is, on the pinned character set `docs/script-envelope.md` enumerates (the one the SQL scanners share) |
+| `invalid-script` | FailedValidation | null/empty steps, blank step id, null or blank statement sql, blank binding name, step with an empty/missing statements list, null input entry, blank input name, `requiredApiLevel` < 1. **Blank**, not merely empty: `"   "` is rejected wherever `""` is, on the pinned character set `docs/script-envelope.md` enumerates (the one the SQL scanners share) |
 | `duplicate-input-name` | FailedValidation | two runtime `inputs` entries share a name |
 | `duplicate-step-id` | FailedValidation | two steps share an id |
 | `max-statements-exceeded` | FailedValidation | total statements > `MaxStatementsPerRun` |
