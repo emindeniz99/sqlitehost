@@ -103,6 +103,40 @@ test("rejects duplicate sqlNames within one shape", () => {
   expectProblem(m, "duplicate sqlName");
 });
 
+test("rejects a shared table name SQLite refuses as an identifier", () => {
+  // Every DDL generator interpolates this name unquoted, so
+  // `CREATE TABLE select (...)` is a syntax error and the schema never
+  // creates. The frontend rejects it at authoring time; a hand-edited
+  // manifest reaches the emitters without passing the frontend at all.
+  const m = base();
+  m.queueTable.name = "select";
+  expectProblem(m, "$.queueTable.name");
+});
+
+test("rejects a column name SQLite refuses as an identifier", () => {
+  const m = base();
+  m.columns.status = "order";
+  expectProblem(m, "$.columns.status");
+});
+
+test("rejects a resolved method table SQLite refuses as an identifier", () => {
+  // Method tables are derived from a prefix at authoring time, but the
+  // manifest carries them resolved — and a prefix that JOINS into a
+  // keyword ("in" + "dex") produces exactly this manifest.
+  const m = base();
+  m.methods[0].callTable = "index";
+  expectProblem(m, "$.methods[0].callTable");
+});
+
+test("keeps a keyword SQLite does allow in identifier position", () => {
+  // "action" is a SQLite keyword and the protocol's own default
+  // actionColumn: the rule is the unusable subset, not the keyword list.
+  const m = base();
+  m.columns.message = "action";
+  const ir = parseManifest(JSON.stringify(m));
+  assert.equal(ir.columns.message, "action");
+});
+
 test("rejects an unknown scalar type", () => {
   const m = base();
   m.methods[0].input.fields[0].scalarType = "int128";

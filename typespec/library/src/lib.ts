@@ -273,6 +273,7 @@ export const $lib = createTypeSpecLibrary({
       severity: "error",
       messages: {
         default: paramMessage`Inline function name "${"name"}" is a SQLite keyword; it registers cleanly and is then a syntax error in call position ("SELECT ${"name"}(...)" never reaches function resolution), so no script can call it in the spelling every author writes. Pick a different functionName or functionPrefix.`,
+        namingOption: paramMessage`${"option"} "${"name"}" is a SQLite keyword that cannot be an identifier; the generated DDL interpolates it unquoted, so the CREATE TABLE for it is a syntax error and the workspace schema never creates. Pick a name that is not a keyword.`,
       },
     },
   },

@@ -54,14 +54,24 @@ A SQLite **keyword** (`SQL_KEYWORDS` in `codegen/core/src/ir.ts`, the
 147 names on <https://www.sqlite.org/lang_keywords.html>) is rejected
 too. It registers cleanly and is then unreachable: `SELECT select(1)` is
 a syntax error, because the parser matches the keyword before it looks
-for a function. Table and column names are deliberately outside this
-rule — a keyword is legal there, and every derived table and column
-carries a non-empty prefix in any case.
+for a function.
+
+Configurable table and column names take a narrower version of that
+rule: the 59 keywords SQLite refuses in identifier position
+(`SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS`, measured — the file says how).
+`CREATE TABLE select (...)` and `CREATE TABLE t (order TEXT)` are syntax
+errors, and the DDL interpolates these names unquoted, so the workspace
+schema would never create. The other 88 keywords stay legal names:
+SQLite accepts `action`, which is this protocol's default
+`actionColumn`. Derived tables and columns need no rule of their own —
+each is a non-empty prefix joined to a method or field name, so no
+single option decides the result; a prefix that joins *into* a keyword
+(`in` + `dex`) is caught by the manifest check before any emitter runs.
 
 Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
 ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`, same reason as the prefixes
-above), mutually distinct, and must not collide with any derived
-call/result/child table name.
+above), mutually distinct, usable as a bare identifier, and must not
+collide with any derived call/result/child table name.
 
 ## Shared column names and the done literal (configurable per host)
 
@@ -82,7 +92,8 @@ actionColumn:     action        messageColumn:   message
 
 Column names must be snake_case identifiers (`[a-z][a-z0-9_]*`, the same
 shape `@sqlName` enforces — they are interpolated unquoted into the
-generated DDL) and mutually distinct within each table (compared
+generated DDL, so a keyword SQLite refuses in identifier position is
+rejected here too) and mutually distinct within each table (compared
 case-insensitively, since SQLite resolves column names
 case-insensitively); the row-identity columns
 (`callId`/`itemIndex`/`status`) must not collide (case-insensitively)

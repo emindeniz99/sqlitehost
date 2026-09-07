@@ -641,10 +641,11 @@ export const FORBIDDEN_FUNCTIONS: readonly string[] = ["pragma_optimize"];
  * itself succeeds, so without this the manifest declares a function no
  * script can call in the spelling every author and every doc uses.
  *
- * Deliberately NOT applied to table or column names. A keyword there is
- * legal SQL (the DDL emits `input_select`, and every derived column and
- * table carries a non-empty prefix), so banning it would refuse names
- * that work.
+ * Deliberately NOT applied whole to table or column names: most of these
+ * keywords are legal identifiers (SQLite's parser falls back to treating
+ * them as names), and one of them — `action` — is this protocol's own
+ * default actionColumn. The subset that is genuinely unusable there is
+ * SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS below.
  *
  * Consumed only by the authoring-time validator in this package; unlike
  * the lint tables above it is not projected into the generated protocol
@@ -798,6 +799,94 @@ export const SQL_KEYWORDS: readonly string[] = [
   "window",
   "with",
   "without",
+];
+
+/**
+ * The subset of SQL_KEYWORDS SQLite refuses in identifier position, so a
+ * configurable table or column name spelled this way emits DDL that does
+ * not parse: `CREATE TABLE select (...)` and `CREATE TABLE t (order TEXT)`
+ * both fail with "syntax error", and the workspace schema never creates.
+ * Every generated identifier is interpolated UNQUOTED (ddl.ts, and the
+ * C# and Java schema generators that match it byte for byte), so the
+ * name has to be usable bare.
+ *
+ * Why a subset and not SQL_KEYWORDS: SQLite's grammar falls back to
+ * treating most keywords as names, and `CREATE TABLE t (action TEXT)` is
+ * accepted — `action` is the default actionColumn of this protocol, so
+ * the full list would reject the shipped defaults.
+ *
+ * Measured, not derived from the docs (SQLite publishes the keyword list
+ * but not which of them are usable as names). Every one of the 147
+ * keywords was run through `CREATE TABLE <kw> (a TEXT)` and
+ * `CREATE TABLE t (<kw> TEXT)` on sqlite3 3.51.0; these 59 failed in
+ * table position and the same 59 minus `if` failed in column position.
+ * `if` is kept in the one list so an authored name has a single answer
+ * in both positions (`CREATE TABLE IF NOT EXISTS` is why it differs).
+ *
+ * A keyword that entered the language after the 3.19.3 floor (e.g.
+ * `returning`) is on the list: the rule protects the newest engine a
+ * host may run on, and a name legal only on old SQLite is not portable.
+ */
+export const SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS: readonly string[] = [
+  "add",
+  "all",
+  "alter",
+  "and",
+  "as",
+  "autoincrement",
+  "between",
+  "case",
+  "check",
+  "collate",
+  "commit",
+  "constraint",
+  "create",
+  "default",
+  "deferrable",
+  "delete",
+  "distinct",
+  "drop",
+  "else",
+  "escape",
+  "except",
+  "exists",
+  "foreign",
+  "from",
+  "group",
+  "having",
+  "if",
+  "in",
+  "index",
+  "insert",
+  "intersect",
+  "into",
+  "is",
+  "isnull",
+  "join",
+  "limit",
+  "not",
+  "nothing",
+  "notnull",
+  "null",
+  "on",
+  "or",
+  "order",
+  "primary",
+  "references",
+  "returning",
+  "select",
+  "set",
+  "table",
+  "then",
+  "to",
+  "transaction",
+  "union",
+  "unique",
+  "update",
+  "using",
+  "values",
+  "when",
+  "where",
 ];
 
 /**

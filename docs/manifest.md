@@ -61,13 +61,18 @@ present and typed, no unknown top-level keys, `manifestVersion` 1, a
 positive integral `apiLevel` per library and per method with no method
 above its library's level, `minArgs <= maxArgs <= args.length`, unique
 method names, unique table names (compared lowercased, as SQLite
-resolves them) and unique `sqlName`s within a shape. Problems are
-reported together, each with its JSON path, because a hand-edited or
-merge-conflicted manifest rarely has just one.
+resolves them), unique `sqlName`s within a shape, and no table, trigger
+or column named after one of the keywords SQLite refuses in identifier
+position (`SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS` in
+`codegen/core/src/ir.ts`) — every DDL generator interpolates those names
+unquoted, so `select` as a table name is a schema that never creates.
+Problems are reported together, each with its JSON path, because a
+hand-edited or merge-conflicted manifest rarely has just one.
 
 What it deliberately does **not** check is whether a resolved name is
 what the naming conventions would derive. A manifest carries resolved
-names precisely so a host can keep a legacy table or column name.
+names precisely so a host can keep a legacy table or column name — any
+legacy name SQLite can actually spell bare.
 `parseManifestUnchecked` skips the whole check and exists for test
 fixtures that build deliberately non-conforming IRs.
 

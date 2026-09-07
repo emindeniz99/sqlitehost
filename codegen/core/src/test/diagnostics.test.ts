@@ -1,6 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
+  SQL_KEYWORDS,
+  SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS,
+} from "../ir.js";
+import {
   assertDiagnostic,
   assertLibrariesDiagnostic,
   compileSource,
@@ -1063,6 +1067,112 @@ test("a SQL keyword stays legal as a column sqlName", async () => {
     `),
   );
   assert.equal(result.ir?.methods[0].input.fields[0].column, "input_select");
+});
+
+test("rejects a shared workspace table named after an unusable keyword", async () => {
+  // Measured: @hostLibrary({ queueTable: "select" }) compiled with ZERO
+  // diagnostics and emitted `CREATE TABLE select (...)`, which sqlite3
+  // refuses with a syntax error — the whole schema fails to create, in
+  // every language runtime. The DDL interpolates the configured name
+  // unquoted (ddl.ts), so the only place to catch it is here.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "select" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-sql-keyword");
+});
+
+test("rejects an unusable-keyword table name spelled in another case", async () => {
+  // SQLite's tokenizer is case-insensitive, so "Select" is the same
+  // keyword and the same syntax error.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, controlTable: "Select" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-sql-keyword");
+});
+
+test("rejects a configurable column named after an unusable keyword", async () => {
+  // Same measurement on the column side: `status TEXT` became
+  // `order TEXT` inside CREATE TABLE, which sqlite3 refuses.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, statusColumn: "order" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-sql-keyword");
+});
+
+test("accepts a custom shared table name that is not a keyword", async () => {
+  // The rule must not cost the feature it guards: renaming the queue
+  // table is supported configuration.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, queueTable: "jobs" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.queueTable.name, "jobs");
+});
+
+test("accepts a keyword SQLite does allow in identifier position", async () => {
+  // Why the rule is the unusable SUBSET of SQL_KEYWORDS and not the
+  // whole list: "action" is one of the 147 keywords, sqlite3 accepts
+  // `CREATE TABLE t (action TEXT)`, and it is this protocol's DEFAULT
+  // actionColumn. The full list would reject the shipped defaults.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1, actionColumn: "action", messageColumn: "key" })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.columns.action, "action");
+  assert.equal(result.ir?.columns.message, "key");
+});
+
+test("every unusable keyword is one of the SQLite keywords", () => {
+  // The unusable list is a measured subset of SQL_KEYWORDS, kept in the
+  // same file. A name in it that is not a keyword at all would be a
+  // typo silently rejecting a legal identifier.
+  const keywords = new Set(SQL_KEYWORDS);
+  for (const name of SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS) {
+    assert.ok(keywords.has(name), `${name} is not in SQL_KEYWORDS`);
+    assert.equal(name, name.toLowerCase(), `${name} is not lowercased`);
+  }
+  assert.ok(
+    SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS.length < SQL_KEYWORDS.length,
+    "the unusable list must be a strict subset",
+  );
 });
 
 test("rejects an empty functionPrefix", async () => {

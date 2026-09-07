@@ -51,6 +51,7 @@ import {
   PENDING_STATUS,
   queueTableColumns,
   SQL_KEYWORDS,
+  SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS,
   SQLITE_BUILTIN_FUNCTIONS,
   SYSTEM_TABLES,
 } from "./ir.js";
@@ -114,6 +115,14 @@ const RESERVED_SQLITE_NAMES: ReadonlyMap<string, string> = new Map([
 
 /** SQLite's keywords, for the inline-function-name rule (SQL_KEYWORDS). */
 const SQL_KEYWORD_SET: ReadonlySet<string> = new Set(SQL_KEYWORDS);
+
+/**
+ * The keywords SQLite refuses in identifier position, for the
+ * configurable table and column names the DDL interpolates unquoted.
+ */
+const UNUSABLE_KEYWORD_SET: ReadonlySet<string> = new Set(
+  SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS,
+);
 
 /** Family prefixes whose whole namespace SQLite owns (json_, jsonb_). */
 const RESERVED_SQLITE_PREFIXES: readonly string[] = Object.keys(
@@ -236,6 +245,19 @@ function validateColumns(
   for (const [option, column] of options) {
     if (!SQL_NAME.test(column)) {
       error(ctx, "invalid-column-name", { option, column }, target);
+    } else if (UNUSABLE_KEYWORD_SET.has(column.toLowerCase())) {
+      // `status TEXT` becoming `order TEXT` inside CREATE TABLE is a
+      // syntax error, not a quoting nuisance: the column is
+      // interpolated bare. Only the keywords SQLite refuses in
+      // identifier position are rejected — `action`, the default
+      // actionColumn, is a keyword SQLite accepts as a name.
+      error(
+        ctx,
+        "reserved-sql-keyword",
+        { option, name: column },
+        target,
+        "namingOption",
+      );
     }
   }
   if (columns.doneValue.length === 0) {
@@ -398,6 +420,23 @@ export function validateHostLibraryInterface(
       continue;
     }
     const lower = table.toLowerCase();
+    // The table name reaches CREATE TABLE unquoted, so a keyword SQLite
+    // refuses in identifier position makes the whole schema unparseable.
+    // The derived call/result/child tables need no such check: each is
+    // built as prefix + snake(name) (naming.ts) from a non-empty prefix,
+    // so no single option decides the result — a prefix that JOINS into
+    // a keyword is caught downstream by checkManifest, which sees the
+    // resolved name.
+    if (UNUSABLE_KEYWORD_SET.has(lower)) {
+      error(
+        ctx,
+        "reserved-sql-keyword",
+        { option, name: table },
+        iface,
+        "namingOption",
+      );
+      continue;
+    }
     if (seenShared.has(lower)) {
       error(ctx, "duplicate-shared-table-name", { table }, iface);
     } else {
