@@ -15,15 +15,21 @@ All line counts below are for the vendored runtime sources
 DTOs are *generated separately* into your own generated folder and are not
 part of these counts.
 
-## The map (7,134 vendored lines)
+## The map (8,527 vendored lines)
 
-| Bucket | ≈ lines | Runs when |
+| Bucket | Lines | Runs when |
 |---|---:|---|
-| **Execution engine** | **~2,400** | **every script, on device** |
-| Authoring builders — 3 profiles, you use **one** | ~2,475 | compile-time API (you define handlers) |
-| Registration (assemble the host definition) | ~250 | once, at startup |
-| Optional validation (`SQLITEHOST_SLIM` strips it) | ~861 | build/registration only |
-| Types / interfaces / config / inline-functions | ~1,148 | declarations |
+| **Execution engine** | **3,181** | **every script, on device** |
+| Authoring builders — 3 profiles, you use **one** | 2,801 | compile-time API (you define handlers) |
+| Registration (assemble the host definition) | 248 | once, at startup |
+| Optional validation (`SQLITEHOST_SLIM` strips it) | 918 | build/registration only |
+| Types / interfaces / config / inline-functions | 1,379 | declarations |
+
+Every file counts once, and the rows sum to the header. The validation row
+is the exception: it is the lines `--slim` removes — `SqlParameterScanner.cs`
+plus every `#if !SQLITEHOST_SLIM` block — wherever they live, so the other
+four rows count their files net of those blocks. The authoring row is the
+eight profile files the trim table below names.
 
 The **engine** is the only bucket that executes a backend-supplied script
 at runtime. Everything else is either the typed API *you* use to declare
@@ -36,13 +42,13 @@ player's device,"* you review the engine — and it is concentrated:
 
 | File | Lines | Role |
 |---|---:|---|
-| `SqliteHostRuntimeCore.cs` | 1,018 | the run loop: execute SQL via the adapter, read the control row, drain the queue, dispatch `call_*` rows to your handler, write results back |
-| `ErasedHostMethodSpec.cs` | 355 | per-call marshaling: call row → input object → handler → result rows |
-| `ErasedScalarFields.cs` / `ErasedFieldModels.cs` | 377 | scalar column read/write |
-| `SchemaGenerator.cs` / `NamingDerivation.cs` / `ResolvedNames.cs` | 351 | workspace DDL + physical names (read from the definition, derived when it declares none) |
+| `SqliteHostRuntimeCore.cs` | 1,297 | the run loop: execute SQL via the adapter, read the control row, drain the queue, dispatch `call_*` rows to your handler, write results back |
+| `ErasedHostMethodSpec.cs` | 385 | per-call marshaling: call row → input object → handler → result rows |
+| `ErasedScalarFields.cs` / `ErasedFieldModels.cs` | 638 | scalar column read/write |
+| `SchemaGenerator.cs` / `NamingDerivation.cs` / `ResolvedNames.cs` | 358 | workspace DDL + physical names (read from the definition, derived when it declares none) |
 
-So the real "what runs untrusted input" review is **~2k lines, half of it
-one file** (the 1,018-line run loop) — not the whole package. It is
+So the real "what runs untrusted input" review is **~2.7k lines, half of it
+one file** (the 1,297-line run loop) — not the whole package. It is
 ordinary C# with no reflection, no codegen at runtime, and no external
 dependencies.
 
@@ -76,8 +82,8 @@ Delete the files for the profiles you do **not** use:
 | **classic** | `UltraHostMethod.cs`, `UltraFields.cs`, `SqliteHostUltraValues.cs`, `CompactHostMethod.cs` |
 
 Or let the tool do it — `node unity/vendor.mjs --profile ultra --out <dir>`
-copies the package with the other profiles dropped. A single-profile tree
-is ~5.2k–5.8k lines instead of ~7.1k.
+copies the package with the other profiles dropped. A single-profile tree is
+6,474 lines (compact), 6,500 (classic) or 6,977 (ultra) instead of 8,527.
 
 Each of these three trims is compiled as a single assembly (mirroring the
 UPM package's `SqliteHost.asmdef`) by `tests/vendor-trim` in the full gate
@@ -89,7 +95,8 @@ To also drop the optional validation, either define `SQLITEHOST_SLIM`
 `node unity/vendor.mjs --profile ultra --slim --out <dir>`. `--slim` removes
 every `#if !SQLITEHOST_SLIM` block and the validation-only
 `SqlParameterScanner.cs` from the copied source, so the result compiles with
-no define set — an ultra `--slim` tree is ~4.9k lines. See
+no define set — an ultra `--slim` tree is 6,059 lines (classic 5,596,
+compact 5,570). See
 `docs/compatibility.md` ("App size") for exactly what SLIM removes.
 
 **Trade-off:** deleting a profile or defining SLIM removes defense-in-depth

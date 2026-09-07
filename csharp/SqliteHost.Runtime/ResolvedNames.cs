@@ -1,17 +1,24 @@
 namespace SqliteHost
 {
     /// <summary>
-    /// The one place physical names are read. A definition built from a
-    /// generated host carries every physical name the manifest already
-    /// resolved (codegen/core/src/naming.ts: the frontend resolves names,
-    /// emitters only read them), so the runtime must use those rather than
-    /// re-deriving a second answer that can disagree with the schema the
-    /// same host shipped.
+    /// The one place physical names are read. A definition carries a
+    /// resolved name only where the manifest's name differs from what the
+    /// naming rules derive; everywhere else the slot is null and
+    /// <see cref="NamingDerivation"/> supplies it (docs/naming.md).
     ///
-    /// A hand-written definition declares logical names only; there the
-    /// resolved slots are null and <see cref="NamingDerivation"/> supplies
-    /// the name, which is what keeps the derivation the documented default
-    /// (docs/naming.md) instead of a second source of truth.
+    /// For a manifest the TypeSpec frontend produced that is EVERY slot:
+    /// the frontend resolves names by those same rules
+    /// (codegen/core/src/naming.ts), so generated code emits none of these
+    /// calls and a literal per method and per field would cost app-size
+    /// bytes to restate what the runtime already computes. The derivation
+    /// is therefore load-bearing for generated hosts, not a fallback for
+    /// hand-written ones, and NamingDerivationManifestTests pins it against
+    /// the frontend's own manifest.
+    ///
+    /// The resolved slots fill in where a manifest was hand-written or
+    /// rewritten and the two disagree. There the runtime must use the
+    /// stored name rather than re-deriving a second answer that can
+    /// disagree with the schema the same host shipped.
     /// </summary>
     internal static class ResolvedNames
     {

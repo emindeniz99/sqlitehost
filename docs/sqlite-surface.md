@@ -46,9 +46,9 @@ the floor and fine.
 | 3.37.0 | **`STRICT` tables**; `PRAGMA table_list` and `pragma_table_list()` | |
 | 3.38.0 | JSON functions built in by default; `->` and `->>`; **`unixepoch()`**; `format()` | Before 3.38, JSON needs a compile option — see §2 |
 | 3.39.0 | **`RIGHT JOIN`** and **`FULL OUTER JOIN`**; `IS [NOT] DISTINCT FROM` | `LEFT JOIN` is inside the floor; the other two are not |
+| 3.41.0 | `unhex()` | |
 | 3.43.0 | `octet_length()`, `timediff()` | |
 | 3.44.0 | `concat()`, `concat_ws()`, `string_agg()`; `ORDER BY` inside aggregates | Use `||` and `group_concat()` |
-| 3.41.0 | `unhex()` | |
 | 3.45.0 | **JSONB** and the `jsonb_*` family | |
 | 3.48.0 | `if()` | The MySQL-compatible alias for `iif()`, and four releases newer than it |
 | 3.50.0 | `unistr()`, `unistr_quote()` | |
@@ -106,6 +106,9 @@ system SQLite is older — but it is an *honest*, loud one.
 | **Math functions** (`ceil`, `pow`, `log`, …) | `SQLITE_ENABLE_MATH_FUNCTIONS` **and** 3.35+ |
 | **ICU** collations / `LIKE` | `SQLITE_ENABLE_ICU` |
 | **JSON** before 3.38 | `SQLITE_ENABLE_JSON1` |
+| `load_extension()` | `SQLITE_OMIT_LOAD_EXTENSION` removes it outright, and it stays disabled per connection even where it is compiled in |
+| `soundex()` | `SQLITE_SOUNDEX` |
+| `sqlite_offset()` | `SQLITE_ENABLE_OFFSET_SQL_FUNC` |
 
 Raising `minSqliteVersion` **cannot** fix these: they depend on how the
 device's engine was *compiled*, not on how new it is. That makes them
@@ -113,37 +116,44 @@ the nastiest failure shape in the system — a script passes validation,
 runs fine on the iOS system SQLite, and fails on some Android OEM or
 vendored build, or the reverse.
 
-SqliteHost's position is deliberately narrow: **it requires none of
-them, and detects one.** The math functions are named in the generated
-`NONPORTABLE_FUNCTIONS` list, so calling `pow` or `log` is a
-`nonportable-function` error in both validators — checked before the
-version rule, because raising `minSqliteVersion` would not fix it.
-A `json*` call under a floor below 3.38 trips the §1 version rule, which
-is not the same check but lands on the same scripts. FTS5, R-Tree/Geopoly
-and ICU have no list at all and nothing probes them;
+SqliteHost's position is deliberately narrow: **it requires none of them,
+and detects the ones that are single function names.** The generated
+`NONPORTABLE_FUNCTIONS` list holds 32 — the 29 math functions plus
+`load_extension`, `soundex` and `sqlite_offset` — so calling `pow`, `log`
+or `load_extension` is a `nonportable-function` error in both validators,
+checked before the version rule, because raising `minSqliteVersion` would
+not fix it. A `json*` call under a floor below 3.38 trips the §1 version
+rule, which is not the same check but lands on the same scripts. FTS5,
+R-Tree/Geopoly and ICU are whole modules rather than names, so they have
+no list at all and nothing probes them;
 the compatibility matrix does not measure them either (`run-matrix.sh`
 builds stock amalgamations, which have none of these), and no runtime
 capability negotiation exists. A script that uses one of those is
 outside the supported surface. If you need one, prove it on every
 target device yourself.
 
-Related, and a hard rule for adapters rather than authors: **extension
-loading must stay disabled.** `load_extension()` and
-`sqlite3_enable_load_extension()` turn a script statement into
-arbitrary native code execution. Mainstream wrappers disable it by
-default; an adapter must not re-enable it.
+**Extension loading must stay disabled**, and it is checked from both
+ends. `load_extension()` and `sqlite3_enable_load_extension()` turn a
+script statement into arbitrary native code execution. Mainstream
+wrappers disable it by default and an adapter must not re-enable it —
+that half is a rule for adapters. The other half is an authoring lint:
+`load_extension` in script SQL is the `nonportable-function` error above,
+pinned by `fixtures/payloads/invalid/nonportable-load-extension.json`.
 
 ## 3. Forbidden by the validators
 
 These are not version or build problems — they break SqliteHost's own
-execution model on **any** engine. They are being rejected by the
-validators as part of a separate, parallel change; the
-**validator-hardening stream owns the enforcement and the lint codes**
-(pinned in `docs/validation.md`). This section states the rule and the
-reason; it is not the specification of the checks.
+execution model on **any** engine. Both validators reject them today:
+`docs/validation.md` §"Statement denylist" pins the codes and the token
+rules, and `fixtures/payloads/invalid/` carries a case per code —
+`forbidden-statement-{attach,begin,drop,pragma,explain,bom-pragma}`,
+`forbidden-function-pragma-optimize`, the `protocol-table-write*` set,
+`multiple-statements` and `embedded-nul`. This section states the rule
+and the reason; `docs/validation.md` is the specification of the checks.
 
-**Transaction control — `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`,
-`RELEASE`.** The runtime issues no transaction control of its own and
+**Transaction control — `BEGIN`, `COMMIT`, `END`, `ROLLBACK`,
+`SAVEPOINT`, `RELEASE`.** (`END` is SQLite's synonym for `COMMIT`, and is
+denied under the same rule.) The runtime issues no transaction control of its own and
 provides **no atomicity beyond the single autocommitted statement**:
 every script statement and every drain write commits on its own, so a
 mid-step SQL error leaves the step's earlier statements committed. A
@@ -197,7 +207,7 @@ protocol tables. `UPDATE sqlite_master SET sql = …`, once
 reaching the DDL failure shape below without writing any DDL. Reading
 them stays legal.
 
-**Writes and DDL against the protocol tables.** `pending_host_calls`,
+**Writes against the protocol tables.** `pending_host_calls`,
 every `result_<method>` table and its list children, and the
 `trg_call_<method>_queue` triggers are **runtime-owned**: the drain and
 the result-write policy both assume they are the only writers. Scripts
@@ -207,6 +217,23 @@ into a `result_*` table forges a result the host never produced, and one
 that drops a queue trigger disables the protocol while the run still
 reports success. `call_<method>` inserts — how a script *makes* a call —
 remain the supported path (`docs/workspace-schema.md`).
+
+**DDL, anywhere.** The rule that stops a script dropping a queue trigger
+is keyword-shaped, not target-shaped: `CREATE`, `ALTER` and `DROP` are
+denied wherever they lead a statement, so a script cannot create a
+scratch table of its own either. `docs/validation.md` records that
+over-reach as a known limit and the reason it is the intended trade — a
+target-aware version would need a DDL grammar the tokenizers deliberately
+do not have, and `CREATE` has no target to check at all. A script's
+sanctioned scratch surface is `script_vars`.
+
+**A leading BOM does not hide any of this.** Every
+denylist above anchors on a statement's first meaningful token, so both
+scanners treat U+FEFF as whitespace the way SQLite's own tokenizer does:
+`<BOM>PRAGMA writable_schema = ON` compiles and runs as the PRAGMA it
+is, and is denied as one. A statement whose first meaningful token is not
+an identifier at all is `unrecognized-statement` rather than silently
+skipped.
 
 ## 4. Smaller things worth knowing
 
