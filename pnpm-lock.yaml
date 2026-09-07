@@ -17,6 +17,10 @@ importers:
         version: link:typespec/library
 
   codegen/core:
+    dependencies:
+      '@sqlite-host/runtime-types':
+        specifier: workspace:*
+        version: link:../../typescript/runtime-types
     devDependencies:
       '@sqlite-host/typespec':
         specifier: workspace:*

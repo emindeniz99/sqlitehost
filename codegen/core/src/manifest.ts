@@ -5,6 +5,7 @@
  * against fixtures/manifests/*.manifest.json.
  */
 
+import { assertNoDuplicateKeys } from "@sqlite-host/runtime-types";
 import { checkManifest } from "./manifest-check.js";
 import type {
   HostLibraryIr,
@@ -153,6 +154,14 @@ export function serializeManifest(ir: HostLibraryIr): string {
  */
 export function parseManifest(json: string): HostLibraryIr {
   const value: unknown = JSON.parse(json);
+  // JSON.parse resolves a repeated key silently as last-wins, which is a
+  // convention rather than a rule of JSON — Jackson's
+  // STRICT_DUPLICATE_DETECTION refuses the same document, so the two
+  // readers would disagree about what a manifest says. A manifest is the
+  // one artifact all three languages read identically, and it is
+  // committed and merge-conflict-prone, so it cannot have two readings.
+  // Same scanner the script envelope uses.
+  assertNoDuplicateKeys(json);
   checkManifest(value);
   return value;
 }
