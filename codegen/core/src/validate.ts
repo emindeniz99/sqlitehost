@@ -6,7 +6,8 @@
  * item models, unions and maps, duplicate method names, duplicate SQL
  * names per shape, derived SQL names that are not snake_case, duplicate
  * derived table names, duplicate DTO simple
- * names across namespaces, a method apiLevel above the library apiLevel,
+ * names across namespaces, property names that are target-language
+ * keywords, a method apiLevel above the library apiLevel,
  * missing @hostMethod, host interfaces declared outside any namespace,
  * and invalid shared table / column / naming-prefix configuration
  * (docs/naming.md).
@@ -152,9 +153,38 @@ function error(
   code: DiagnosticReportArg["code"],
   format: Record<string, string>,
   target: DiagnosticTarget,
+  messageId?: string,
 ): void {
   ctx.ok = false;
-  reportDiagnostic(ctx.program, { code, format, target } as DiagnosticReportArg);
+  reportDiagnostic(ctx.program, {
+    code,
+    messageId,
+    format,
+    target,
+  } as unknown as DiagnosticReportArg);
+}
+
+/**
+ * Property names reach the emitters unescaped: the Java emitter writes
+ * one straight into a DTO record component, where Java has no spelling
+ * that rescues a keyword. C# pascal-cases the same name and would
+ * survive, but the rule checks BOTH keyword sets so an authored name has
+ * one answer everywhere rather than compiling until someone adds the
+ * Java target. The SQL side is unaffected — @sqlName carries a column
+ * that must keep the keyword spelling, and every derived column is
+ * prefixed anyway.
+ */
+function checkPropertyName(ctx: ValidationContext, prop: ModelProperty): void {
+  const languages = reservedWordLanguages(prop.name);
+  if (languages.length > 0) {
+    error(
+      ctx,
+      "reserved-word-name",
+      { name: prop.name, languages: languages.join(" and ") },
+      prop,
+      "property",
+    );
+  }
 }
 
 /** Resolved shared workspace table names (defaults already applied). */
@@ -726,6 +756,7 @@ function validateShape(
   const listFields: Array<[string, ModelProperty]> = [];
 
   for (const prop of model.properties.values()) {
+    checkPropertyName(ctx, prop);
     const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);
@@ -816,6 +847,7 @@ function validateItemModel(
   }
   const sqlNames = new Set<string>();
   for (const prop of model.properties.values()) {
+    checkPropertyName(ctx, prop);
     const sqlName = resolveSqlName(ctx, prop);
     if (sqlNames.has(sqlName)) {
       error(ctx, "duplicate-sql-name", { name: sqlName, model: model.name }, prop);

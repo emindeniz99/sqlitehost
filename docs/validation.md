@@ -51,8 +51,10 @@ the same artifact base name, duplicate DTO/model simple names across
 namespaces, non-snake_case or case-colliding column names, a
 doneStatusValue equal to the reserved `pending` queue sentinel,
 missing/invalid api level, a method apiLevel exceeding the library
-apiLevel, invalid handler names, a handler name or namespace segment
-that is a C# or Java keyword, a `functionName` that is not snake_case or
+apiLevel, invalid handler names, a handler name, namespace segment or
+property name that is a C# or Java keyword (`@sqlName` is the escape
+hatch when the SQL column has to keep the keyword spelling), a
+`functionName` that is not snake_case or
 that collides with a name SQLite already owns, invalid or empty list
 item shapes, host interfaces declared outside any namespace.
 

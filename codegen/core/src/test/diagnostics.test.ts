@@ -1258,6 +1258,98 @@ test("accepts a namespace segment that only resembles a keyword", async () => {
   assert.equal(result.ir?.library.namespace, "Newer.Thing");
 });
 
+test("rejects a property name that is a Java keyword", async () => {
+  // The Java emitter writes propertyName raw into a record component, so
+  // `class` emits `public record DoItInput(String class) {`.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`class\`: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("rejects a property name that is a keyword in only one language", async () => {
+  // `strictfp` is a Java keyword and an ordinary C# identifier; `string`
+  // is the reverse. One rule covers both sets, so neither depends on
+  // which emitter happens to escape what.
+  for (const name of ["strictfp", "string"]) {
+    const result = await compileSource(
+      shell(`
+        @hostLibrary({ apiLevel: 1 })
+        interface Methods {
+          @hostMethod({ name: "doIt", handler: "DoIt" })
+          op DoIt(input: In): Out;
+        }
+        model In { ${name}: string; }
+        model Out { value: int64; }
+      `),
+    );
+    assertDiagnostic(result, "reserved-word-name");
+  }
+});
+
+test("rejects a list item model property name that is a keyword", async () => {
+  // Item models become records too, so the item shape needs the same rule.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { items: Item[]; }
+      model Item { \`default\`: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("accepts a property name that only resembles a keyword", async () => {
+  // Both languages are case-sensitive, so `Class` compiles in each.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { Class: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].propertyName, "Class");
+});
+
+test("@sqlName rescues a column that has to keep a keyword spelling", async () => {
+  // The escape hatch the diagnostic names: rename the property, keep the
+  // SQL column. The column is prefixed (input_class), so no keyword ever
+  // reaches the DDL bare.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In {
+        @sqlName("class")
+        className: string;
+      }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].sqlName, "class");
+  assert.equal(result.ir?.methods[0].input.fields[0].column, "input_class");
+});
+
 // ---------------------------------------------------------------------------
 // Artifact base-name collisions (round-3 audit finding 3)
 // ---------------------------------------------------------------------------
