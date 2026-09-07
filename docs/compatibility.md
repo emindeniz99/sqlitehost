@@ -36,6 +36,19 @@ floor (with the release that introduced each), the compile-gated
 modules that no floor can fix (FTS5, R-Tree, ICU, math), and the
 statements the validators forbid outright.
 
+For script SQL the floor is now **checked**, not only documented. Both
+validators compare a payload against the host's declared
+`minSqliteVersionNumber` — `sqlite-version-too-low-for-function` for
+calls and `sqlite-version-too-low-for-syntax` for grammar
+(docs/validation.md) — so a script reaching for UPSERT, `RETURNING`,
+window functions or `RIGHT JOIN` under a 3.19.3 host fails in CI rather
+than on a player's device. Two limits worth stating plainly: the checks
+are static token patterns over an enumerated feature list, so an
+above-floor construct nobody has enumerated still passes; and neither
+check can be replaced by preparing the statement, because the engine any
+validator links is decades of releases newer than the floor
+(docs/validation.md §3).
+
 Compatibility is enforced by policy **and by measurement**:
 `tests/compatibility-sqlite/run-matrix.sh` compiles real SQLite
 amalgamations and runs the full C# suite against each binary through a

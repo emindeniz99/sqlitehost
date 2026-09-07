@@ -104,6 +104,14 @@
     },
     {
       "payload": "valid/example-011-insert-alias.json",
+      "manifest": "../manifests/syntax-floor-host.manifest.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "payload": "valid/example-021-above-floor-syntax.json",
+      "manifest": "../manifests/syntax-floor-host.manifest.json",
       "valid": true,
       "errors": [],
       "warnings": []
@@ -1057,6 +1065,160 @@
           ]
         }
       ]
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-insert-alias.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-upsert.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-window-functions.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-aggregate-filter.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-nulls-first-last.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-update-from.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-returning.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-materialized-cte.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-json-arrow.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-right-full-join.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "payload": "invalid/sqlite-version-too-low-for-syntax-is-distinct-from.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "sqlite-version-too-low-for-syntax",
+          "validators": [
+            "java",
+            "typescript"
+          ]
+        }
+      ],
+      "warnings": []
     }
   ]
 }

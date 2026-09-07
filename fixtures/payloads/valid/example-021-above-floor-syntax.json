@@ -1,0 +1,56 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "example-021-above-floor-syntax",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars",
+    "scriptInputs"
+  ],
+  "steps": [
+    {
+      "id": "use-every-above-floor-construct",
+      "statements": [
+        {
+          "sql": "INSERT INTO script_vars AS v (name, value_type, int_value) VALUES ('tier', 'int64', 1) ON CONFLICT(name) DO UPDATE SET int_value = excluded.int_value",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, int_value) VALUES ('windowed', 'int64', (SELECT count(*) OVER () FROM script_vars LIMIT 1))",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, int_value) VALUES ('filtered', 'int64', (SELECT count(*) FILTER (WHERE int_value > 0) FROM script_vars))",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, text_value) VALUES ('ordered', 'text', (SELECT name FROM script_vars ORDER BY int_value NULLS LAST LIMIT 1))",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, int_value) VALUES ('distinct', 'int64', (SELECT count(*) FROM script_vars WHERE int_value IS NOT DISTINCT FROM 1))",
+          "bindings": {}
+        },
+        {
+          "sql": "WITH c AS MATERIALIZED (SELECT count(*) AS n FROM script_vars) INSERT OR REPLACE INTO script_vars (name, value_type, int_value) SELECT 'cte', 'int64', n FROM c",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, text_value) VALUES ('arrow', 'text', (SELECT '{\"a\":\"x\"}' ->> '$.a'))",
+          "bindings": {}
+        },
+        {
+          "sql": "UPDATE script_vars SET int_value = 2 FROM script_inputs WHERE script_vars.name = script_inputs.name",
+          "bindings": {}
+        },
+        {
+          "sql": "INSERT OR REPLACE INTO script_vars (name, value_type, int_value) VALUES ('joined', 'int64', (SELECT count(*) FROM script_vars a RIGHT JOIN script_inputs b ON a.name = b.name))",
+          "bindings": {}
+        },
+        {
+          "sql": "DELETE FROM script_vars WHERE name = 'no-such-var' RETURNING name",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

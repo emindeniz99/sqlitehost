@@ -1,0 +1,20 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-right-full-join",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars",
+    "scriptInputs"
+  ],
+  "steps": [
+    {
+      "id": "right-join-vars-onto-inputs",
+      "statements": [
+        {
+          "sql": "SELECT a.name FROM script_vars a RIGHT JOIN script_inputs b ON a.name = b.name",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

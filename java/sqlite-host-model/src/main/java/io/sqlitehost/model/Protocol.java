@@ -113,6 +113,46 @@ public final class Protocol {
             "jsonb", 3045000);
 
     /**
+     * One version-gated SQL SYNTAX construct ({@code ir.ts SyntaxFeatureIr}):
+     * the SQLITE_VERSION_NUMBER that introduced it and a description phrased
+     * to drop into "SQL uses &lt;description&gt;, which requires SQLite ...".
+     */
+    public record SyntaxFeature(int minVersionNumber, String description) {
+    }
+
+    /**
+     * SQL syntax introduced above the default floor
+     * ({@code ir.ts SYNTAX_MIN_VERSION}), keyed by a stable feature id — the
+     * sibling of {@link #FUNCTION_MIN_VERSION} for the half of the surface
+     * that is grammar rather than a call. Detection is hand-written per
+     * language (one token pattern per id); only the version and the wording
+     * live here.
+     */
+    public static final Map<String, SyntaxFeature> SYNTAX_MIN_VERSION = Map.ofEntries(
+            Map.entry("insert-alias", new SyntaxFeature(
+                    3024000, "the INSERT table alias (INSERT INTO t AS alias)")),
+            Map.entry("upsert", new SyntaxFeature(
+                    3024000, "UPSERT (ON CONFLICT ... DO NOTHING/UPDATE)")),
+            Map.entry("window-functions", new SyntaxFeature(
+                    3025000, "the OVER window clause")),
+            Map.entry("aggregate-filter", new SyntaxFeature(
+                    3030000, "the FILTER clause on an aggregate")),
+            Map.entry("nulls-first-last", new SyntaxFeature(
+                    3030000, "NULLS FIRST / NULLS LAST in ORDER BY")),
+            Map.entry("update-from", new SyntaxFeature(
+                    3033000, "UPDATE ... FROM")),
+            Map.entry("returning", new SyntaxFeature(
+                    3035000, "the RETURNING clause")),
+            Map.entry("materialized-cte", new SyntaxFeature(
+                    3035000, "the MATERIALIZED / NOT MATERIALIZED CTE hint")),
+            Map.entry("json-arrow-operators", new SyntaxFeature(
+                    3038000, "the -> and ->> JSON operators")),
+            Map.entry("right-full-join", new SyntaxFeature(
+                    3039000, "RIGHT JOIN / FULL JOIN")),
+            Map.entry("is-distinct-from", new SyntaxFeature(
+                    3039000, "IS [NOT] DISTINCT FROM")));
+
+    /**
      * Built-ins whose presence is decided by the device engine's compile
      * options rather than its version ({@code ir.ts NONPORTABLE_FUNCTIONS}),
      * so no version floor can make them safe.

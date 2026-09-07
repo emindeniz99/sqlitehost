@@ -24,6 +24,7 @@ import {
   NONDETERMINISTIC_TIME_FUNCTIONS,
   NONDETERMINISTIC_TIME_KEYWORDS,
   NONPORTABLE_FUNCTIONS,
+  SYNTAX_MIN_VERSION,
   SYSTEM_TABLES,
 } from "./generated/protocol.js";
 import type {
@@ -39,6 +40,7 @@ import {
   hasTrailingStatement,
   leadingKeyword,
   scanNamedParameters,
+  syntaxFeatures,
   tokenizeSql,
   UNKNOWN_ARGS,
   writeTarget,
@@ -70,6 +72,7 @@ export type LintCode =
   | "function-arity-mismatch"
   | "nondeterministic-function"
   | "sqlite-version-too-low-for-function"
+  | "sqlite-version-too-low-for-syntax"
   | "nonportable-function"
   | "embedded-nul"
   | "multiple-statements"
@@ -605,6 +608,25 @@ export function lintScript(payload: unknown, manifest: HostManifest): LintFindin
       // spellings count, `pragma_optimize` bare in table position and
       // `pragma_optimize(0xfffe)` as a call, so the scan covers the call
       // list and the bare identifiers. One finding per name per statement.
+      // sqlite-version-too-low-for-syntax: the grammar half of the engine
+      // portability promise (docs/validation.md). The function rule below
+      // only ever sees `name(`, so `INSERT INTO t AS alias` — 3.24.0 syntax
+      // that is a syntax error at the 3.19.3 floor — was accepted by both
+      // validators until this existed. Detection is a token pattern per
+      // feature in sql.ts; the version and the wording come from the
+      // generated SYNTAX_MIN_VERSION table. One finding per feature per
+      // statement.
+      for (const feature of syntaxFeatures(tokens)) {
+        const syntax = SYNTAX_MIN_VERSION[feature];
+        if (syntax === undefined || syntax.minVersionNumber <= minSqliteVersionNumber) continue;
+        findings.push({
+          code: "sqlite-version-too-low-for-syntax",
+          severity: "error",
+          message: `SQL uses ${syntax.description}, which requires SQLite ${formatVersion(syntax.minVersionNumber)} but the host declares a floor of ${formatVersion(minSqliteVersionNumber)} — raise the host's minSqliteVersion or avoid the syntax`,
+          ...at,
+        });
+      }
+
       const forbiddenSeen = new Set<string>();
       for (const name of [
         ...functionCalls(tokens).map((call) => call.name),

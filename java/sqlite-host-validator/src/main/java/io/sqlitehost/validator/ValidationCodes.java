@@ -43,6 +43,8 @@ public final class ValidationCodes {
     // Engine portability (host floor vs the SQLite surface a script uses)
     public static final String SQLITE_VERSION_TOO_LOW_FOR_FUNCTION =
             "sqlite-version-too-low-for-function";
+    public static final String SQLITE_VERSION_TOO_LOW_FOR_SYNTAX =
+            "sqlite-version-too-low-for-syntax";
     public static final String NONPORTABLE_FUNCTION = "nonportable-function";
 
     // Statement denylist

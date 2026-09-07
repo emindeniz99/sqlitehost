@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-nulls-first-last",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "order-vars-with-an-explicit-null-position",
+      "statements": [
+        {
+          "sql": "SELECT name FROM script_vars ORDER BY name NULLS LAST",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

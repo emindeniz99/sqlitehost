@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-json-arrow",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "read-a-var-through-the-json-arrow",
+      "statements": [
+        {
+          "sql": "SELECT text_value ->> '$.a' FROM script_vars",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}

@@ -397,6 +397,128 @@ export const FUNCTION_MIN_VERSION: Readonly<Record<string, number>> = {
   unistr_quote: 3050000,
 };
 
+/** One version-gated SQL SYNTAX construct, as SYNTAX_MIN_VERSION stores it. */
+export interface SyntaxFeatureIr {
+  /** SQLITE_VERSION_NUMBER of the release that introduced the syntax. */
+  minVersionNumber: number;
+  /**
+   * The construct, phrased to drop into "SQL uses <description>, which
+   * requires SQLite …". ASCII only: this string is projected verbatim into
+   * generated Java and TypeScript sources.
+   */
+  description: string;
+}
+
+/**
+ * SQL **syntax** introduced above the default contract floor (3.19.3), keyed
+ * by a stable feature id. The sibling of FUNCTION_MIN_VERSION for the half of
+ * the surface that is grammar rather than a function call, and the parameter
+ * table behind the sqlite-version-too-low-for-syntax lint
+ * (docs/validation.md).
+ *
+ * The gap this closes was measured, not guessed: the corpus fixture
+ * `example-011-insert-alias` spells `INSERT INTO t AS alias`, which is a
+ * syntax error on 3.19.3, and BOTH validators accepted it — the prepare-only
+ * layer compiles against whatever engine the validator links (far newer than
+ * the floor), and the only version rule there was covered functions.
+ *
+ * Each version is the release sqlite.org's changelog names, checked entry by
+ * entry rather than inherited from a summary table; the release date is in
+ * the comment so a wrong number is falsifiable. FILTER is the entry that
+ * proves the exercise was worth it — it reads as part of the 3.25.0 window
+ * function work and is actually 3.30.0.
+ *
+ * What is deliberately NOT here: syntax that only ever appears in a statement
+ * the denylist already refuses. Generated columns (`GENERATED ALWAYS AS`,
+ * 3.31.0), STRICT tables and WITHOUT ROWID (3.37.0) are CREATE TABLE clauses
+ * and `VACUUM INTO` (3.27.0) is a VACUUM — all four are forbidden-statement
+ * before any version question arises, so a detector for them could only ever
+ * fire as a second finding on an already-rejected statement. The `TRUE` /
+ * `FALSE` keyword literals (3.23.0) are left out for the opposite reason:
+ * SQLite parses them as identifiers on a pre-3.23 engine, so a bare `true`
+ * token is a column reference exactly as often as it is a literal, and this
+ * lint is an ERROR that blocks publication.
+ *
+ * Single-sourced here and projected into the Java and TypeScript protocol
+ * constants (docs/proposals/rule-parameters-as-data.md). Detection itself is
+ * hand-written per language — a token pattern per feature, mirrored token for
+ * token between `SqlAnalyzer` and `typescript/authoring-sdk/src/sql.ts`.
+ */
+export const SYNTAX_MIN_VERSION: Readonly<Record<string, SyntaxFeatureIr>> = {
+  // 3.24.0 (2018-06-04) "Add support for PostgreSQL-style UPSERT". The
+  // target alias arrived with the same grammar change and exists to serve
+  // it — lang_insert.html: "The alias name can be used within WHERE and SET
+  // clauses of the UPSERT. If there is no upsert-clause, then the alias is
+  // pointless, but also harmless."
+  "insert-alias": {
+    minVersionNumber: 3024000,
+    description: "the INSERT table alias (INSERT INTO t AS alias)",
+  },
+  upsert: {
+    minVersionNumber: 3024000,
+    description: "UPSERT (ON CONFLICT ... DO NOTHING/UPDATE)",
+  },
+  // 3.25.0 (2018-09-15) "Add support for window functions". The eleven
+  // built-in window FUNCTIONS are in FUNCTION_MIN_VERSION; this entry is
+  // the OVER clause itself, which is what makes `count(*) OVER ()` — a
+  // pre-floor aggregate — a 3.25.0 statement.
+  "window-functions": {
+    minVersionNumber: 3025000,
+    description: "the OVER window clause",
+  },
+  // 3.30.0 (2019-10-04) "Add support for the FILTER clause on aggregate
+  // functions." Five releases newer than the OVER clause it is usually
+  // written beside, which is why it is its own feature id.
+  "aggregate-filter": {
+    minVersionNumber: 3030000,
+    description: "the FILTER clause on an aggregate",
+  },
+  // 3.30.0 (2019-10-04) "Add support for the NULLS FIRST and NULLS LAST
+  // syntax in ORDER BY clauses."
+  "nulls-first-last": {
+    minVersionNumber: 3030000,
+    description: "NULLS FIRST / NULLS LAST in ORDER BY",
+  },
+  // 3.33.0 (2020-08-14) "Support for UPDATE FROM following the PostgreSQL
+  // syntax."
+  "update-from": {
+    minVersionNumber: 3033000,
+    description: "UPDATE ... FROM",
+  },
+  // 3.35.0 (2021-03-12) "Add support for the RETURNING clause on DELETE,
+  // INSERT, and UPDATE statements."
+  returning: {
+    minVersionNumber: 3035000,
+    description: "the RETURNING clause",
+  },
+  // 3.35.0 (2021-03-12) "Add support for the MATERIALIZED and NOT
+  // MATERIALIZED hints when specifying common table expressions."
+  "materialized-cte": {
+    minVersionNumber: 3035000,
+    description: "the MATERIALIZED / NOT MATERIALIZED CTE hint",
+  },
+  // 3.38.0 (2022-02-22) "Added the -> and ->> operators for easier
+  // processing of JSON." Separate from the json_* family floor, which is
+  // the same release but reached through FUNCTION_PREFIX_MIN_VERSION.
+  "json-arrow-operators": {
+    minVersionNumber: 3038000,
+    description: "the -> and ->> JSON operators",
+  },
+  // 3.39.0 (2022-06-25) "Add (long overdue) support for RIGHT and FULL
+  // OUTER JOIN." LEFT JOIN is pre-floor and stays silent.
+  "right-full-join": {
+    minVersionNumber: 3039000,
+    description: "RIGHT JOIN / FULL JOIN",
+  },
+  // 3.39.0 (2022-06-25) "Add new binary comparison operators IS NOT
+  // DISTINCT FROM and IS DISTINCT FROM." `IS` / `IS NOT` mean the same
+  // thing and are pre-floor.
+  "is-distinct-from": {
+    minVersionNumber: 3039000,
+    description: "IS [NOT] DISTINCT FROM",
+  },
+};
+
 /**
  * Version floors for whole function FAMILIES, keyed by name prefix — the
  * longest matching prefix wins. Used for the JSON surface, which is far too

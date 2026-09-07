@@ -370,6 +370,8 @@ public final class ValidationEngine {
                     stepIndex, stepId, statementIndex, analysis, findings);
         }
 
+        checkSyntaxVersions(schema, tokens, stepId, statementIndex, findings);
+
         analyzeFunctionCalls(schema, script, tokens, stepId, statementIndex,
                 analysis, findings);
 
@@ -628,6 +630,38 @@ public final class ValidationEngine {
                                 + " original run; compute the value in the host and"
                                 + " bind it instead"));
             }
+        }
+    }
+
+    /**
+     * sqlite-version-too-low-for-syntax (docs/validation.md): the grammar half
+     * of the engine-portability promise.
+     *
+     * <p>{@link #checkFunctionPortability} only ever sees a function NAME, so
+     * {@code INSERT INTO t AS alias} — 3.24.0 syntax, a parse error at the
+     * 3.19.3 floor — was accepted by both validators until this existed, and
+     * shipped in the valid corpus as {@code example-011-insert-alias}. The
+     * detectors are token patterns in {@link SqlAnalyzer#syntaxFeatures}; the
+     * version and the wording come from the generated
+     * {@code Protocol.SYNTAX_MIN_VERSION}. One finding per feature per
+     * statement, which the analyzer's own deduplication already guarantees.</p>
+     */
+    private static void checkSyntaxVersions(
+            SchemaIndex schema, List<SqlToken> tokens,
+            String stepId, int statementIndex, List<ValidationFinding> findings) {
+        for (String feature : SqlAnalyzer.syntaxFeatures(tokens)) {
+            Protocol.SyntaxFeature syntax = Protocol.SYNTAX_MIN_VERSION.get(feature);
+            if (syntax == null || syntax.minVersionNumber() <= schema.minSqliteVersionNumber) {
+                continue;
+            }
+            findings.add(ValidationFinding.error(
+                    ValidationCodes.SQLITE_VERSION_TOO_LOW_FOR_SYNTAX,
+                    stepId, statementIndex,
+                    "SQL uses " + syntax.description() + ", which requires SQLite "
+                            + formatVersion(syntax.minVersionNumber())
+                            + " but the host declares a floor of "
+                            + formatVersion(schema.minSqliteVersionNumber)
+                            + " — raise the host's minSqliteVersion or avoid the syntax"));
         }
     }
 

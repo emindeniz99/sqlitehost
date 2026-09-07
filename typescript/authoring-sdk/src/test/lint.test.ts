@@ -1027,7 +1027,12 @@ test("aliased INSERT keeps its explicit column list (no implicit-column-list)", 
   };
   const findings = lintScript(payload, manifest);
   assert.ok(!codes(findings).includes("implicit-column-list"), JSON.stringify(findings));
-  assert.deepStrictEqual(findings, [], JSON.stringify(findings));
+  // The alias itself IS a finding under the sample host's 3.19.3 floor — it
+  // is 3.24.0 syntax (sqlite-version-too-low-for-syntax). That is the only
+  // one allowed here: this test is about the column list surviving the
+  // alias, so any OTHER code would be the regression it guards.
+  assert.deepStrictEqual(codes(findings), ["sqlite-version-too-low-for-syntax"],
+    JSON.stringify(findings));
 });
 
 test("aliased INSERTs still resolve call ids (duplicate-call-id survives)", () => {

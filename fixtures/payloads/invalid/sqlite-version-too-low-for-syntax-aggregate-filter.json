@@ -1,0 +1,19 @@
+{
+  "engine": "sqlite-host-v1",
+  "scriptId": "invalid-sqlite-version-too-low-for-syntax-aggregate-filter",
+  "requiredApiLevel": 1,
+  "requiredFeatures": [
+    "scriptVars"
+  ],
+  "steps": [
+    {
+      "id": "count-vars-through-a-filtered-aggregate",
+      "statements": [
+        {
+          "sql": "SELECT count(*) FILTER (WHERE int_value > 0) FROM script_vars",
+          "bindings": {}
+        }
+      ]
+    }
+  ]
+}
