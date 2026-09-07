@@ -53,9 +53,18 @@ BELOW_FLOOR_FILTER+='&FullyQualifiedName!~ScalarFunction_NullForRequiredArg'
 # tests: run one leg, read `Skipped:`/`Passed:`, round up/down with slack,
 # and update the README table with the same numbers.
 #
-# Measured 2026-09-07 on the fix/coverage-hunt3 tree (Total 768):
+# Suite size, measured 2026-09-07 on fix/round3-leftovers with
+# `dotnet test --list-tests` (which enumerates theory cases, so it equals
+# the `Total:` a run reports): 781 at or above the floor, 765 below it
+# (781 - the 16 cases BELOW_FLOOR_FILTER excludes, 4 methods x 4
+# adapters).
+#
+# Per-engine Passed/Skipped, measured on the fix/coverage-hunt3 tree when
+# the total was 768. They are a Linux-only measurement — nothing on a Mac
+# builds the amalgamation — so recompute them on the next matrix run
+# rather than from the total above:
 #   3.19.3   Passed 596  Skipped 172        3.28.0  Passed 598  Skipped 170
-#   3.9.0    Passed 419  Skipped 333  (Total 752 = 768 - 16 filtered)
+#   3.9.0    Passed 419  Skipped 333
 MAX_SKIPPED_AT_FLOOR=220
 MIN_PASSED_AT_FLOOR=520
 MAX_SKIPPED_BELOW_FLOOR=400
