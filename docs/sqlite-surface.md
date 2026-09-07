@@ -32,7 +32,7 @@ the floor and fine.
 | Introduced | Feature | Note |
 |---|---|---|
 | 3.23.0 | `TRUE` / `FALSE` keyword literals | **The trap nobody expects.** `WHERE flag = TRUE` is idiomatic modern SQL and simply is not a 3.19.3 construct. Write `= 1` / `= 0` |
-| 3.24.0 | **UPSERT** — `ON CONFLICT … DO UPDATE` / `DO NOTHING` | The most-reached-for missing construct. Use `INSERT OR REPLACE` / `INSERT OR IGNORE`, which are inside the floor |
+| 3.24.0 | **UPSERT** — `ON CONFLICT … DO UPDATE` / `DO NOTHING`; the INSERT target alias `INSERT INTO t AS x` | The most-reached-for missing construct. Use `INSERT OR REPLACE` / `INSERT OR IGNORE`, which are inside the floor. The alias arrived with UPSERT and to serve it — `lang_insert.html` calls it "pointless, but also harmless" without one, and 3.19.3 refuses to parse it either way |
 | 3.25.0 | **Window functions** (`OVER`, `PARTITION BY`, named `WINDOW`); `ALTER TABLE RENAME COLUMN` | |
 | 3.26.0 | `pragma_table_xinfo()` | The table-valued pragma wrappers are version-gated exactly like the pragmas themselves |
 | 3.27.0 | `VACUUM INTO` | |
@@ -53,8 +53,8 @@ the floor and fine.
 | 3.48.0 | `if()` | The MySQL-compatible alias for `iif()`, and four releases newer than it |
 | 3.50.0 | `unistr()`, `unistr_quote()` | |
 
-**The function rows are caught at authoring time; the syntax rows are
-not.** Both validators compare every function call against the host's
+**Most of this table is caught at authoring time now.** Both validators
+compare every function call against the host's
 declared floor and report `sqlite-version-too-low-for-function`
 (`docs/validation.md`), driven by the generated `FUNCTION_MIN_VERSION`
 and `FUNCTION_PREFIX_MIN_VERSION` tables — the window-function names,
@@ -65,18 +65,28 @@ surface. The `pragma_*` names are checked in both spellings, because
 the documented one omits the argument list: `FROM pragma_table_list`
 is a call even though no `(` follows it.
 
-Everything above that is *syntax* rather than a call is still uncaught:
-`TRUE` / `FALSE`, UPSERT, the `OVER` and `WINDOW` clauses themselves,
-`VACUUM INTO`, extended frames, `FILTER`, `NULLS FIRST` / `NULLS LAST`,
-generated columns, `UPDATE … FROM`, `sqlite_schema`, `RETURNING`,
-`ALTER TABLE DROP COLUMN`, `MATERIALIZED`, `STRICT`,
-`PRAGMA table_list`, `->` and `->>`, `RIGHT JOIN` / `FULL OUTER JOIN`,
-`IS [NOT] DISTINCT FROM`, and `ORDER BY` inside an aggregate. Nothing
-sees those: prepare-only validation (`docs/validation.md`, layer 3)
-compiles script SQL against the JDBC driver's bundled SQLite, which is
-far newer than 3.19.3, so they validate clean and then fail on a
-player's device. Treat those rows as the contract until tooling
-enforces them.
+The *syntax* rows are checked too, by
+`sqlite-version-too-low-for-syntax` and the generated
+`SYNTAX_MIN_VERSION` table: the INSERT target alias, UPSERT, the `OVER`
+clause itself, `FILTER`, `NULLS FIRST` / `NULLS LAST`, `UPDATE … FROM`,
+`RETURNING`, the `MATERIALIZED` / `NOT MATERIALIZED` CTE hints, `->` and
+`->>`, `RIGHT JOIN` / `FULL OUTER JOIN`, and `IS [NOT] DISTINCT FROM`.
+Both validators tokenize rather than parse, so each is a token pattern
+matched only against **bare** identifiers — a column or alias spelled
+`"full"` or `"returning"` is a name, never the keyword
+(`docs/validation.md` has the patterns, the guards and the one residual
+false positive).
+
+Still uncaught, and these are the rows to treat as the contract:
+`TRUE` / `FALSE` literals, extended window frames, named `WINDOW`
+clauses, the `sqlite_schema` alias, and `ORDER BY` inside an aggregate.
+Nothing sees those: prepare-only validation (`docs/validation.md`, layer
+3) compiles script SQL against the JDBC driver's bundled SQLite, which is
+far newer than 3.19.3, so they validate clean and then fail on a player's
+device. `VACUUM INTO`, generated columns, `STRICT`,
+`ALTER TABLE DROP COLUMN` and `PRAGMA table_list` are a different case
+again — they only occur in statements `forbidden-statement` already
+refuses, so they never reach a version question.
 
 **The supported unlock path** is to raise the host's floor rather than
 to hope: declare `@hostLibrary({ minSqliteVersion: "3.35.0" })` in
