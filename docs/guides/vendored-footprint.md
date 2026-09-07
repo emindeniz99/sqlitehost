@@ -15,11 +15,11 @@ All line counts below are for the vendored runtime sources
 DTOs are *generated separately* into your own generated folder and are not
 part of these counts.
 
-## The map (8,520 vendored lines)
+## The map (8,527 vendored lines)
 
 | Bucket | Lines | Runs when |
 |---|---:|---|
-| **Execution engine** | **3,174** | **every script, on device** |
+| **Execution engine** | **3,181** | **every script, on device** |
 | Authoring builders — 3 profiles, you use **one** | 2,801 | compile-time API (you define handlers) |
 | Registration (assemble the host definition) | 248 | once, at startup |
 | Optional validation (`SQLITEHOST_SLIM` strips it) | 918 | build/registration only |
@@ -45,7 +45,7 @@ player's device,"* you review the engine — and it is concentrated:
 | `SqliteHostRuntimeCore.cs` | 1,297 | the run loop: execute SQL via the adapter, read the control row, drain the queue, dispatch `call_*` rows to your handler, write results back |
 | `ErasedHostMethodSpec.cs` | 385 | per-call marshaling: call row → input object → handler → result rows |
 | `ErasedScalarFields.cs` / `ErasedFieldModels.cs` | 638 | scalar column read/write |
-| `SchemaGenerator.cs` / `NamingDerivation.cs` / `ResolvedNames.cs` | 351 | workspace DDL + physical names (read from the definition, derived when it declares none) |
+| `SchemaGenerator.cs` / `NamingDerivation.cs` / `ResolvedNames.cs` | 358 | workspace DDL + physical names (read from the definition, derived when it declares none) |
 
 So the real "what runs untrusted input" review is **~2.7k lines, half of it
 one file** (the 1,297-line run loop) — not the whole package. It is
@@ -83,7 +83,7 @@ Delete the files for the profiles you do **not** use:
 
 Or let the tool do it — `node unity/vendor.mjs --profile ultra --out <dir>`
 copies the package with the other profiles dropped. A single-profile tree is
-6,467 lines (compact), 6,493 (classic) or 6,970 (ultra) instead of 8,520.
+6,474 lines (compact), 6,500 (classic) or 6,977 (ultra) instead of 8,527.
 
 Each of these three trims is compiled as a single assembly (mirroring the
 UPM package's `SqliteHost.asmdef`) by `tests/vendor-trim` in the full gate
@@ -95,8 +95,8 @@ To also drop the optional validation, either define `SQLITEHOST_SLIM`
 `node unity/vendor.mjs --profile ultra --slim --out <dir>`. `--slim` removes
 every `#if !SQLITEHOST_SLIM` block and the validation-only
 `SqlParameterScanner.cs` from the copied source, so the result compiles with
-no define set — an ultra `--slim` tree is 6,052 lines (classic 5,589,
-compact 5,563). See
+no define set — an ultra `--slim` tree is 6,059 lines (classic 5,596,
+compact 5,570). See
 `docs/compatibility.md` ("App size") for exactly what SLIM removes.
 
 **Trade-off:** deleting a profile or defining SLIM removes defense-in-depth
