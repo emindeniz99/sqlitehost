@@ -671,7 +671,7 @@ step (this is exactly what the `result-read-not-after-call` lint
 enforces). The same pattern at larger scale is
 `csharp/SqliteHost.Tests/IntegrationFixtureTests.cs`, which enumerates
 `fixtures/payloads/valid/` and runs every payload in it across four
-adapters (20 payloads today). Its companion
+adapters (21 payloads today). Its companion
 `InvalidFixtureEnvelopeTests.cs` does the same for the `invalid/` half,
 running the ones whose fault the runtime's envelope precheck is
 supposed to catch.
