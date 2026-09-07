@@ -19,7 +19,7 @@
 
   <PropertyGroup Label="NuGet pack metadata">
     <PackageId>SqliteHost.Runtime</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Emin Deniz</Authors>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/emindeniz99/sqlitehost</RepositoryUrl>
@@ -27,11 +27,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj" />
+    <ProjectReference Include="../SqliteHost.Abstractions/SqliteHost.Abstractions.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="SqliteHost.Tests" />
+    <InternalsVisibleTo Include="SqliteHost.Tests"/>
   </ItemGroup>
 
 </Project>
