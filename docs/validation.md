@@ -49,6 +49,9 @@ is *derived* (no `@sqlName`) into something that is not snake_case,
 duplicate derived table/column names, two libraries whose names derive
 the same artifact base name, duplicate DTO/model simple names across
 namespaces, non-snake_case or case-colliding column names, a
+configurable table or column name SQLite refuses in identifier position
+(the DDL interpolates it unquoted, so `queueTable: "select"` emits a
+`CREATE TABLE` that does not parse), a
 doneStatusValue equal to the reserved `pending` queue sentinel,
 missing/invalid api level, a method apiLevel exceeding the library
 apiLevel, invalid handler names, a handler name, namespace segment or
@@ -62,8 +65,11 @@ Manifests are checked too, on the way back in: `parseManifest`
 (`codegen/core/src/manifest.ts`) validates structure, types, ranges and
 uniqueness before any emitter sees an IR, so a hand-edited or
 merge-conflicted manifest fails with every problem listed at once rather
-than emitting code no compiler accepts. `docs/manifest.md` says what is
-checked and what deliberately is not.
+than emitting code no compiler accepts. The keyword rule runs there as
+well, on every resolved table, trigger and column name — which is where
+a prefix that joins into a keyword (`in` + `dex`) is caught, since no
+single option was one. `docs/manifest.md` says what is checked and what
+deliberately is not.
 
 ## 2. Cross-language golden validation
 

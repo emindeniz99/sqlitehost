@@ -11,7 +11,11 @@
  * table or column name the naming conventions would never produce
  * (see the csharp-emitter's resolved-name tests). Only structure,
  * types, ranges and uniqueness are checked here — the rules whose
- * violation makes an emitter write something no compiler accepts.
+ * violation makes an emitter write something no compiler accepts. The
+ * one thing checked about a name itself is that SQLite can spell it: a
+ * table, trigger or column named after a keyword SQLite refuses in
+ * identifier position is DDL that never parses, whatever conventions
+ * produced it.
  *
  * The TypeSpec-side rules live in validate.ts and cannot be reused: they
  * walk a compiled Program, not an IR. What IS shared is the source of
@@ -19,7 +23,23 @@
  * from ir.ts, so the two paths cannot drift.
  */
 
-import type { HostLibraryIr, ScalarTypeIr } from "./ir.js";
+import {
+  SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS,
+  type HostLibraryIr,
+  type ScalarTypeIr,
+} from "./ir.js";
+
+/**
+ * Names the DDL interpolates unquoted may not be one of these: SQLite
+ * refuses them in identifier position, so the CREATE TABLE never parses
+ * (see ir.ts for how the subset was measured). The frontend applies the
+ * same rule to the configurable options; a hand-edited manifest never
+ * passed the frontend, and it also carries names the frontend only ever
+ * saw as prefix + method name.
+ */
+const UNUSABLE_KEYWORDS: ReadonlySet<string> = new Set(
+  SQL_KEYWORDS_UNUSABLE_AS_IDENTIFIERS,
+);
 
 const SCALAR_TYPES: readonly ScalarTypeIr[] = [
   "int32",
@@ -79,6 +99,10 @@ const COLUMN_KEYS = [
   "action",
   "message",
 ] as const;
+
+/** Column keys that name a column. doneValue is a status literal the DDL
+ *  quotes, so a keyword there is data, not a syntax error. */
+const COLUMN_IDENTIFIER_KEYS = COLUMN_KEYS.filter((key) => key !== "doneValue");
 
 /** Every problem found in one manifest, with the JSON path of each. */
 export class ManifestValidationError extends Error {
@@ -171,12 +195,33 @@ class Checker {
     }
   }
 
+  /** A resolved name the DDL interpolates unquoted must not be a keyword. */
+  bareName(value: unknown, path: string): void {
+    if (typeof value === "string" && UNUSABLE_KEYWORDS.has(value.toLowerCase())) {
+      this.fail(
+        path,
+        `"${value}" is a SQLite keyword that cannot be an identifier; the generated DDL interpolates it unquoted, so the CREATE TABLE for it is a syntax error`,
+      );
+    }
+  }
+
+  /** bareName over the declared keys of an already shape-checked record. */
+  bareNames(value: unknown, path: string, keys: readonly string[]): void {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return; // shape already reported by stringRecord
+    }
+    const obj = value as Record<string, unknown>;
+    for (const key of keys) {
+      this.bareName(obj[key], `${path}.${key}`);
+    }
+  }
+
   table(value: unknown, path: string): void {
     const obj = this.object(value, path);
     if (obj === undefined) {
       return;
     }
-    this.nonEmptyString(obj.name, `${path}.name`);
+    this.bareName(this.nonEmptyString(obj.name, `${path}.name`), `${path}.name`);
     this.stringArray(obj.columns, `${path}.columns`);
   }
 }
@@ -233,6 +278,7 @@ function checkShape(c: Checker, value: unknown, path: string): string[] {
     c.nonEmptyString(list.propertyName, `${at}.propertyName`);
     claimSqlName(c.nonEmptyString(list.sqlName, `${at}.sqlName`), `${at}.sqlName`);
     const childTable = c.nonEmptyString(list.childTable, `${at}.childTable`);
+    c.bareName(childTable, `${at}.childTable`);
     if (childTable !== undefined) {
       tables.push(childTable);
     }
@@ -264,7 +310,7 @@ function checkScalarField(c: Checker, value: unknown, path: string): string | un
   }
   c.nonEmptyString(field.propertyName, `${path}.propertyName`);
   const sqlName = c.nonEmptyString(field.sqlName, `${path}.sqlName`);
-  c.nonEmptyString(field.column, `${path}.column`);
+  c.bareName(c.nonEmptyString(field.column, `${path}.column`), `${path}.column`);
   checkScalarType(c, field.scalarType, `${path}.scalarType`);
   c.boolean(field.optional, `${path}.optional`);
   return sqlName;
@@ -374,6 +420,7 @@ export function checkManifest(value: unknown): asserts value is HostLibraryIr {
 
   c.stringRecord(root.naming, "$.naming", NAMING_KEYS);
   c.stringRecord(root.columns, "$.columns", COLUMN_KEYS);
+  c.bareNames(root.columns, "$.columns", COLUMN_IDENTIFIER_KEYS);
   c.table(root.queueTable, "$.queueTable");
   c.table(root.inputsTable, "$.inputsTable");
   c.table(root.varsTable, "$.varsTable");
@@ -440,6 +487,7 @@ export function checkManifest(value: unknown): asserts value is HostLibraryIr {
 
     for (const key of ["callTable", "resultTable", "queueTrigger"] as const) {
       const name = c.nonEmptyString(method[key], `${path}.${key}`);
+      c.bareName(name, `${path}.${key}`);
       if (name !== undefined && key !== "queueTrigger") {
         claimTable(name, `${path}.${key}`);
       }
