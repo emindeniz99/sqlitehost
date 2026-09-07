@@ -1,6 +1,6 @@
 {
   "name": "com.sqlitehost.runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "displayName": "SqliteHost Runtime",
   "description": "SqliteHost C# runtime and abstractions (netstandard2.0, Unity-2021-safe): script envelope DTOs, SQLite adapter interfaces, host definition + fluent method descriptors, schema generation, and script execution. No native SQLite dependency — plug in an adapter implementing ISqliteHostConnectionFactory. Sources are synced copies of csharp/SqliteHost.Abstractions and csharp/SqliteHost.Runtime (see unity/sync.mjs).",

@@ -1,6 +1,6 @@
 {
   "name": "@sqlite-host/runtime-types",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "Vendored generated script envelope types for SqliteHost (protocol v1) plus parsing, canonical serialization, and binding value helpers",
