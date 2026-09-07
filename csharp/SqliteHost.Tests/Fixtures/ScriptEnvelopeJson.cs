@@ -135,7 +135,7 @@ namespace SqliteHost.Tests.Fixtures
                 case "text":
                     return SqliteHostBindingValue.Text(element.GetProperty("value").GetString());
                 case "blob":
-                    return SqliteHostBindingValue.Blob(Convert.FromBase64String(element.GetProperty("value").GetString()));
+                    return SqliteHostBindingValue.Blob(DecodeCanonicalBase64(element.GetProperty("value").GetString()));
                 case "float32":
                     // float32/float64 are JSON numbers only (string form is
                     // rejected); float32 rounds to nearest single.
@@ -145,6 +145,45 @@ namespace SqliteHost.Tests.Fixtures
                 default:
                     throw new InvalidDataException("Unknown binding value type '" + type + "'.");
             }
+        }
+
+        /// <summary>
+        /// Decode a <c>blob</c> value, refusing every non-canonical
+        /// spelling of the same bytes (docs/script-envelope.md).
+        ///
+        /// <para><see cref="Convert.FromBase64String"/> alone is too
+        /// permissive on both counts the contract pins: it silently skips
+        /// embedded ASCII whitespace, and it discards the trailing padding
+        /// bits instead of requiring them to be zero — so <c>"QR=="</c>
+        /// decoded to the same 0x41 as <c>"QQ=="</c> even though it is not
+        /// the encoding of it. Java and TypeScript both refuse those with a
+        /// shape regex; re-encoding and demanding the exact input back
+        /// accepts the identical set, and is the rule
+        /// <c>ScriptEnvelopeVerifier.TryDecodeBase64</c> already applies to
+        /// the delivery signature for the same reason: an envelope is
+        /// signed bytes, and several spellings of one blob force a reader
+        /// to pick one to re-emit.</para>
+        /// </summary>
+        private static byte[] DecodeCanonicalBase64(string value)
+        {
+            byte[] decoded;
+            try
+            {
+                decoded = Convert.FromBase64String(value);
+            }
+            catch (FormatException ex)
+            {
+                throw new InvalidDataException(
+                    "blob value \"" + value + "\" is not canonical base64"
+                    + " (standard alphabet, padded, no whitespace, padding bits zero).", ex);
+            }
+            if (Convert.ToBase64String(decoded) != value)
+            {
+                throw new InvalidDataException(
+                    "blob value \"" + value + "\" is not canonical base64"
+                    + " (standard alphabet, padded, no whitespace, padding bits zero).");
+            }
+            return decoded;
         }
 
         private static int ParseInt32(JsonElement value)
@@ -163,9 +202,26 @@ namespace SqliteHost.Tests.Fixtures
                 : value.GetInt64();
         }
 
+        /// <summary>
+        /// An optional string field, absent ONLY by being missing from the
+        /// object. An explicit JSON <c>null</c> is a type error
+        /// (docs/script-envelope.md), and it is the one shape
+        /// <see cref="JsonElement.GetString"/> does not catch by itself:
+        /// every other wrong kind throws, but a <c>JsonValueKind.Null</c>
+        /// hands back a C# <c>null</c> that is indistinguishable from the
+        /// absent field. So <c>{"scriptId": null}</c> read as "no scriptId"
+        /// here while the Java and TypeScript readers refused the payload —
+        /// the same envelope publishable through one SDK and not another,
+        /// which is exactly what the rule exists to prevent.
+        /// </summary>
         private static string GetString(JsonElement element, string property)
         {
-            return element.TryGetProperty(property, out JsonElement value) ? value.GetString() : null;
+            if (!element.TryGetProperty(property, out JsonElement value))
+            {
+                return null;
+            }
+            RejectNull(value, property);
+            return value.GetString();
         }
 
         private static List<string> GetStringList(JsonElement element, string property)
@@ -174,12 +230,26 @@ namespace SqliteHost.Tests.Fixtures
             {
                 return null;
             }
+            RejectNull(value, property);
             var list = new List<string>();
             foreach (JsonElement entry in value.EnumerateArray())
             {
+                // Same rule one level down: a null entry is not a string,
+                // and `GetString` would silently make it one.
+                RejectNull(entry, property + " entry");
                 list.Add(entry.GetString());
             }
             return list;
+        }
+
+        private static void RejectNull(JsonElement value, string what)
+        {
+            if (value.ValueKind == JsonValueKind.Null)
+            {
+                throw new InvalidDataException(
+                    what + " is null; an explicit JSON null is not an absent field"
+                    + " (docs/script-envelope.md).");
+            }
         }
     }
 }

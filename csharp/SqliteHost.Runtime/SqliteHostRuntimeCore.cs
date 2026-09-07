@@ -498,7 +498,10 @@ namespace SqliteHost
         /// the one pinned character set <see cref="SqlText"/> holds — so a
         /// step id of two spaces cannot run to Completed and then report an
         /// invisible StepId. In every build: the envelope's own rule, not an
-        /// optional strict check.
+        /// optional strict check. Binding NAMES are tested the same way,
+        /// which is what the Java and TypeScript readers do — a blank key is
+        /// a name no SQL parameter can carry, so it is envelope shape rather
+        /// than a binding the SQL forgot to mention.
         /// </summary>
         private SqliteHostRunResult Precheck(SqliteHostScript script, RunState state)
         {
@@ -595,6 +598,25 @@ namespace SqliteHost
                     {
                         return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
                             "A statement in step '" + step.Id + "' is null or has blank sql.", step.Id, null);
+                    }
+                    if (statement.Bindings != null)
+                    {
+                        foreach (string bindingName in statement.Bindings.Keys)
+                        {
+                            // No SQL parameter can carry a blank name — SQLite's
+                            // IdChar excludes whitespace — so a blank key is a
+                            // shape error in the envelope, not a binding the SQL
+                            // forgot to reference. Reporting it as unused-binding
+                            // was wrong twice: it named a fault the author cannot
+                            // act on, and unused-binding is an optional strict
+                            // check, so SQLITEHOST_SLIM saw nothing at all.
+                            if (SqlText.IsBlank(bindingName))
+                            {
+                                return Failure(state, SqliteHostRunStatus.FailedValidation, "invalid-script",
+                                    "A statement in step '" + step.Id + "' has a blank binding name.",
+                                    step.Id, null);
+                            }
+                        }
                     }
                     statementCount++;
                 }

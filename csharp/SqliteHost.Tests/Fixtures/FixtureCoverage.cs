@@ -78,6 +78,7 @@ namespace SqliteHost.Tests.Fixtures
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 { "api-level-too-high.json", "unsupported-api-level" },
+                { "blank-binding-name.json", "invalid-script" },
                 { "blank-required-feature.json", "missing-feature" },
                 { "blank-statement-sql.json", "invalid-script" },
                 { "blank-step-id.json", "invalid-script" },
@@ -103,7 +104,9 @@ namespace SqliteHost.Tests.Fixtures
         internal static readonly IReadOnlyDictionary<string, string> ReaderRefusals =
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
+                { "non-canonical-base64.json", "canonical base64" },
                 { "non-integral-int.json", "invalid format" },
+                { "null-optional-field.json", "is null; an explicit JSON null is not an absent field" },
             };
         // <<< invalid-reader-refusals
 
@@ -125,9 +128,13 @@ namespace SqliteHost.Tests.Fixtures
         /// mechanism; repeating them here would duplicate coverage and make
         /// this table engine-dependent.</para>
         ///
-        /// <para><b>gap</b> — the case is envelope-class in
-        /// expectations.json and the C# side does NOT refuse it. Three of
-        /// them, all real. They are listed rather than hidden.</para>
+        /// <para>There is no third class. This table carried three
+        /// <b>gap</b> entries when it was written — envelope-class in
+        /// expectations.json and accepted by C# anyway (blank binding name,
+        /// non-canonical base64, an explicit null for an optional field) —
+        /// and all three are now refused, the first by the precheck and the
+        /// other two by the reader. A future one is listed here with a
+        /// <c>gap:</c> reason rather than hidden.</para>
         /// </summary>
         // >>> invalid-not-envelope (parsed by scripts/check-fixture-corpus.mjs)
         internal static readonly IReadOnlyDictionary<string, string> NotEnvelopeFaults =
@@ -136,7 +143,6 @@ namespace SqliteHost.Tests.Fixtures
                 { "binding-type-mismatch-call-id.json", "lint-only: binding-type-mismatch is an authoring rule; SQLite is untyped and stores what it is given" },
                 { "binding-type-mismatch-float.json", "post-envelope: refused at drain as input-type-mismatch (RuntimeStorageClassTests owns that)" },
                 { "binding-type-mismatch.json", "post-envelope: refused at drain as input-type-mismatch (RuntimeStorageClassTests owns that)" },
-                { "blank-binding-name.json", "gap: invalid-envelope in expectations.json, but the precheck does not walk binding names; the blank one surfaces later as unused-binding" },
                 { "duplicate-call-id-backtick.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
                 { "duplicate-call-id-cross-method.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
                 { "duplicate-call-id.json", "post-envelope: the protocol table's primary key rejects it as a sql-error" },
@@ -156,11 +162,9 @@ namespace SqliteHost.Tests.Fixtures
                 { "list-child-without-parent.json", "lint-only: list-child-without-parent is an authoring rule; the orphan row is ordinary SQL" },
                 { "missing-binding.json", "post-envelope: refused at bind as missing-binding (the conformance suite owns that)" },
                 { "multiple-statements.json", "lint-only: multiple-statements is an authoring rule; the adapter contract already forbids the second statement running" },
-                { "non-canonical-base64.json", "gap: invalid-envelope in expectations.json, but Convert.FromBase64String accepts non-zero discarded bits, so the reader takes it" },
                 { "nonportable-function.json", "lint-only: nonportable-function is an authoring rule; whether the build has the function is the engine's" },
                 { "nonportable-load-extension.json", "lint-only: nonportable-function is an authoring rule; whether load_extension exists is a compile-time flag of the engine" },
                 { "nonportable-soundex.json", "lint-only: nonportable-function is an authoring rule; whether the build has soundex is a compile-time flag of the engine" },
-                { "null-optional-field.json", "gap: invalid-envelope in expectations.json, but the reader treats a JSON null for an optional string as absent" },
                 { "positional-parameter.json", "post-envelope: the unbound positional parameter makes the bind fail" },
                 { "protocol-table-write-single-quoted-delete.json", "lint-only: protocol-table-write is an authoring rule; the statement is ordinary SQL to the engine" },
                 { "protocol-table-write-single-quoted-insert.json", "lint-only: protocol-table-write is an authoring rule; the statement is ordinary SQL to the engine" },
