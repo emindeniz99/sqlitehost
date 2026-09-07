@@ -89,14 +89,15 @@ provider) and SqliteHost.Adapters.Native (DllImportResolver). The
 System.Data.SQLite adapter has its own interop + bundled native and never
 sees either mechanism; the sqlite-net adapter technically shares the
 SQLitePCLRaw provider but is skipped too so each matrix cell exercises the
-overridable adapters against exactly one known native build. Those 108
-tests (14 fixture scenarios + 34 conformance tests + 6 inline-function
-scenarios, x 2 excluded adapters) report as *skipped* with an explicit
-reason — hence 449 passed / 110 skipped per supported-floor cell, versus
-553 passed / 6 skipped in a normal `dotnet test` run (the normal-run skips
-are the override-only version-identity tests, two per overridable adapter,
-plus the two below-floor-direction `FloorGateTests` that only run on
-engines older than the sample floor).
+overridable adapters against exactly one known native build. Each excluded
+mirror carries 87 tests — 35 integration-fixture cases, 40 adapter
+conformance tests and 12 inline-function cases — and reports them as
+*skipped* with an explicit reason, bar the two `CleanSkip_*` inline cases
+that never open a connection. The per-leg totals are in the skip budget
+below. A normal `dotnet test` run is 775 tests: 769 pass and 6 skip, the
+6 being the override-only version-identity tests, two per overridable
+adapter, plus the two below-floor-direction `FloorGateTests` that only run
+on engines older than the sample floor.
 
 ### Negative canaries (banned features)
 
@@ -206,8 +207,8 @@ same gate. Those rows are now meaningfully green instead:
   adapter-level sections that measurably pass on 3.9.x. Rather than lose
   that coverage, run-matrix.sh passes a `dotnet test --filter` excluding
   exactly those four methods in below-floor cells (16 test cases across
-  the four adapter mirrors — which is why those cells report **752** total
-  instead of **768**).
+  the four adapter mirrors — which is why those cells report **759** total
+  instead of **775**).
 
 The script exits non-zero if **any** row fails, below-floor rows included.
 
@@ -220,7 +221,7 @@ count. An inverted skip predicate — `SkipUnderNativeOverride`,
 green. run-matrix.sh now fails a leg whose `Skipped` exceeds a ceiling or
 whose `Passed` falls below a floor, and prints what to recompute.
 
-Where the skips come from (measured 2026-09-07, suite Total **768**;
+Where the skips come from (measured when the suite held **768** tests;
 the counts are platform-independent because every skip below is a
 `Skip.If`, not a load failure):
 
@@ -244,16 +245,20 @@ the counts are platform-independent because every skip below is a
   knows about, needs the newest of them (`RIGHT JOIN`,
   `IS DISTINCT FROM`). Same table, same mechanism.
 
-**The counts above predate `example-021` and have not been re-measured**
-— it landed with the syntax version lint and no matrix run has happened
-since. The arithmetic is exact: one valid payload is 4 tests, one per
-adapter, so every leg gains 4 Total and 2 Skipped (System.Data.SQLite and
-sqlite-net, which skip whole under the override); a leg on an engine
-below 3.39 skips the other 2 as well instead of passing them. That also
-splits the first row, whose two engines no longer behave alike: `newest`
-gains 2 Passed, `3.28.0` gains 2 Skipped. Both stay far inside the
-ceilings below, which is why they are not being adjusted on paper —
-replace the table with real numbers on the next full matrix run.
+**The table above has not been re-measured since the suite grew to 775**
+— the syntax version lint landed after it and no matrix run has happened
+since. Four of the seven new tests are `example-021`, and their
+arithmetic is exact: one valid payload is 4 tests, one per adapter, so
+every leg gains 4 Total and 2 Skipped (System.Data.SQLite and sqlite-net,
+which skip whole under the override); a leg on an engine below 3.39 skips
+the other 2 as well instead of passing them. That also splits the first
+row, whose two engines no longer behave alike: `newest` gains 2 Passed,
+`3.28.0` gains 2 Skipped. The other three are the `blank-binding-name`,
+`non-canonical-base64` and `null-optional-field` fixtures, which moved out
+of `FixtureCoverage.NotEnvelopeFaults` once the precheck and the reader
+started refusing them; they run once each, on no adapter. Everything stays far inside the ceilings below,
+which is why the rows are not being adjusted on paper — replace the table
+with real numbers on the next full matrix run.
 - **173 more below the floor:** every runtime-driven test on the two
   overridable adapters, skipping itself through `SampleHostFloor` because
   the `sqlite-version-too-low` gate would refuse the run anyway. 68 of
