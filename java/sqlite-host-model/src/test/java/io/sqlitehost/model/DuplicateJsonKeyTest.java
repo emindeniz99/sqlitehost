@@ -1,10 +1,13 @@
 package io.sqlitehost.model;
 
+import io.sqlitehost.model.json.ManifestJsonReader;
 import io.sqlitehost.model.json.ScriptJsonReader;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Files;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -58,6 +61,23 @@ class DuplicateJsonKeyTest {
                         + "[{\"sql\":\"SELECT :a\",\"bindings\":{"
                         + "\"a\":{\"type\":\"int32\",\"value\":1},"
                         + "\"a\":{\"type\":\"int32\",\"value\":2}}}]}]}"));
+    }
+
+    @Test
+    void duplicateManifestKeyIsRejected() throws IOException {
+        // The manifest is generated output rather than a delivered
+        // payload, but it is the one artifact all three languages have
+        // to read identically, and it is committed, hand-editable and
+        // merge-conflict-prone. Last-wins would let a conflict resolved
+        // by keeping both lines produce a Java host whose tables the C#
+        // schema never creates.
+        String manifest = Files.readString(
+                Fixtures.fixturesDir().resolve("manifests/sample-host.manifest.json"));
+        String withDuplicate = manifest.replace(
+                "\"callTablePrefix\": \"call_\",",
+                "\"callTablePrefix\": \"call_\", \"callTablePrefix\": \"legacy_\",");
+        assertNotEquals(manifest, withDuplicate);
+        assertThrows(IOException.class, () -> ManifestJsonReader.read(withDuplicate));
     }
 
     @Test

@@ -50,6 +50,7 @@ export const $lib = createTypeSpecLibrary({
       severity: "error",
       messages: {
         default: paramMessage`${"kind"} "${"name"}" is a reserved word in ${"languages"}; the emitters interpolate it into generated source and no emitter escapes or prefixes it (Java has no escape at all for a keyword package segment), so the generated code would not compile. Pick another name.`,
+        property: paramMessage`Property "${"name"}" is a reserved word in ${"languages"}; the Java emitter writes the property name raw into a DTO record component and Java has no escape for a keyword there. Both keyword sets are checked, not only the one that breaks today, so an authored name has one answer in every language. Rename the property; if the SQL column has to keep that spelling, add @sqlName("${"name"}") to the renamed property.`,
       },
     },
     "invalid-sql-name": {
@@ -266,6 +267,12 @@ export const $lib = createTypeSpecLibrary({
       severity: "error",
       messages: {
         default: paramMessage`Inline function name "${"name"}" collides with a name SQLite already owns (${"kind"}); pick a different functionName or functionPrefix.`,
+      },
+    },
+    "reserved-sql-keyword": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" is a SQLite keyword; it registers cleanly and is then a syntax error in call position ("SELECT ${"name"}(...)" never reaches function resolution), so no script can call it in the spelling every author writes. Pick a different functionName or functionPrefix.`,
       },
     },
   },

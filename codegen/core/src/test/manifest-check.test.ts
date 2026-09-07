@@ -149,6 +149,29 @@ test("malformed JSON still fails as a JSON syntax error", () => {
   assert.throws(() => parseManifest("{ not json"), SyntaxError);
 });
 
+test("rejects a manifest object that repeats a key", () => {
+  // JSON.parse resolves a duplicate as last-wins, so a merge conflict
+  // resolved by keeping both `"callTablePrefix"` lines parsed clean and
+  // emitted whichever one came second — while a reader that keeps the
+  // first (or refuses) sees a different host. The manifest is the one
+  // artifact all three languages agree on; it cannot have two readings.
+  const withDuplicate = golden.replace(
+    '"callTablePrefix": "call_",',
+    '"callTablePrefix": "call_", "callTablePrefix": "legacy_",',
+  );
+  assert.notEqual(withDuplicate, golden);
+  assert.throws(() => parseManifest(withDuplicate), SyntaxError);
+});
+
+test("rejects a duplicate key spelled with an escape", () => {
+  const withDuplicate = golden.replace(
+    '"callTablePrefix": "call_",',
+    '"callTablePrefix": "call_", "\\u0063allTablePrefix": "legacy_",',
+  );
+  assert.notEqual(withDuplicate, golden);
+  assert.throws(() => parseManifest(withDuplicate), SyntaxError);
+});
+
 test("parseManifestUnchecked keeps the old unvalidated behaviour", () => {
   const m = base();
   delete m.methods[2].handlerName;

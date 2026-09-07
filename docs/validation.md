@@ -51,10 +51,12 @@ the same artifact base name, duplicate DTO/model simple names across
 namespaces, non-snake_case or case-colliding column names, a
 doneStatusValue equal to the reserved `pending` queue sentinel,
 missing/invalid api level, a method apiLevel exceeding the library
-apiLevel, invalid handler names, a handler name or namespace segment
-that is a C# or Java keyword, a `functionName` that is not snake_case or
-that collides with a name SQLite already owns, invalid or empty list
-item shapes, host interfaces declared outside any namespace.
+apiLevel, invalid handler names, a handler name, namespace segment or
+property name that is a C# or Java keyword (`@sqlName` is the escape
+hatch when the SQL column has to keep the keyword spelling), a
+`functionName` that is not snake_case, that is a SQLite
+keyword, or that collides with a name SQLite already owns, invalid or
+empty list item shapes, host interfaces declared outside any namespace.
 
 Manifests are checked too, on the way back in: `parseManifest`
 (`codegen/core/src/manifest.ts`) validates structure, types, ranges and
@@ -161,6 +163,18 @@ other direction — that raising `minSqliteVersion` actually silences
 `sqlite-version-too-low-for-syntax` in **both** validators. It declares
 3.39.0, the newest version any `SYNTAX_MIN_VERSION` entry names, so one
 host clears every detector.
+
+`typespec/examples/custom-naming-host-methods.tsp` is a fourth, and it
+is not for the payload corpus at all — it is for the DDL generators.
+There are three of them (`codegen/core/src/ddl.ts`, Java's
+`DdlGenerator`, C#'s `SchemaGenerator`), each with its own copy of the
+naming rules, and every host above takes the protocol defaults. Against
+a default-named host a copy that hardcodes `input_` or `call_id`
+produces byte-identical output to a correct one, so the goldens could
+not see the difference. This host overrides every prefix, infix, shared
+table, shared column, the done-status literal and the function prefix,
+and its DDL snapshot is read by all three (`run.mjs`,
+`DdlGeneratorGoldenTest`, `SchemaGeneratorManifestGoldenTests`).
 
 One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
 whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader

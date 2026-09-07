@@ -1008,6 +1008,63 @@ test("rejects a derived inline function name colliding with a SQLite built-in", 
   assertDiagnostic(result, "builtin-function-collision");
 });
 
+for (const keyword of ["select", "values", "window", "having"]) {
+  test(`rejects the SQL keyword "${keyword}" as an inline function name`, async () => {
+    // `SELECT select(1)` is a syntax error: the parser sees the keyword
+    // before it ever looks for a function.
+    const result = await compileSource(
+      shell(`
+        @hostLibrary({ apiLevel: 1 })
+        interface Methods {
+          @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "${keyword}" })
+          op GetValue(input: In): Out;
+        }
+        model In { key: string; }
+        model Out { value: int64; }
+      `),
+    );
+    assertDiagnostic(result, "reserved-sql-keyword");
+  });
+}
+
+test("accepts a function name that merely starts with a SQL keyword", async () => {
+  // The rule is whole-name equality: only a bare keyword is unparseable,
+  // and `selection` is an ordinary identifier.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "selection" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].inline?.functionName, "selection");
+});
+
+test("a SQL keyword stays legal as a column sqlName", async () => {
+  // Deliberately NOT covered by the keyword rule: the column is derived
+  // with a prefix (input_select) and a keyword column name is legal SQL
+  // in any case.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In {
+        @sqlName("select")
+        selected: string;
+      }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].column, "input_select");
+});
+
 test("rejects an empty functionPrefix", async () => {
   const result = await compileSource(
     shell(`
@@ -1256,6 +1313,98 @@ test("accepts a namespace segment that only resembles a keyword", async () => {
     model Out { value: int64; }
   `);
   assert.equal(result.ir?.library.namespace, "Newer.Thing");
+});
+
+test("rejects a property name that is a Java keyword", async () => {
+  // The Java emitter writes propertyName raw into a record component, so
+  // `class` emits `public record DoItInput(String class) {`.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { \`class\`: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("rejects a property name that is a keyword in only one language", async () => {
+  // `strictfp` is a Java keyword and an ordinary C# identifier; `string`
+  // is the reverse. One rule covers both sets, so neither depends on
+  // which emitter happens to escape what.
+  for (const name of ["strictfp", "string"]) {
+    const result = await compileSource(
+      shell(`
+        @hostLibrary({ apiLevel: 1 })
+        interface Methods {
+          @hostMethod({ name: "doIt", handler: "DoIt" })
+          op DoIt(input: In): Out;
+        }
+        model In { ${name}: string; }
+        model Out { value: int64; }
+      `),
+    );
+    assertDiagnostic(result, "reserved-word-name");
+  }
+});
+
+test("rejects a list item model property name that is a keyword", async () => {
+  // Item models become records too, so the item shape needs the same rule.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { items: Item[]; }
+      model Item { \`default\`: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assertDiagnostic(result, "reserved-word-name");
+});
+
+test("accepts a property name that only resembles a keyword", async () => {
+  // Both languages are case-sensitive, so `Class` compiles in each.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In { Class: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].propertyName, "Class");
+});
+
+test("@sqlName rescues a column that has to keep a keyword spelling", async () => {
+  // The escape hatch the diagnostic names: rename the property, keep the
+  // SQL column. The column is prefixed (input_class), so no keyword ever
+  // reaches the DDL bare.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "doIt", handler: "DoIt" })
+        op DoIt(input: In): Out;
+      }
+      model In {
+        @sqlName("class")
+        className: string;
+      }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].sqlName, "class");
+  assert.equal(result.ir?.methods[0].input.fields[0].column, "input_class");
 });
 
 // ---------------------------------------------------------------------------

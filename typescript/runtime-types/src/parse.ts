@@ -347,8 +347,13 @@ function roundFloat32Bindings(script: Script): void {
  * object is a key and nothing else. Names are compared decoded, so
  * `"sql"` and `"\u0073ql"` are the same key — which is exactly how
  * `JSON.parse` would have collapsed them.
+ *
+ * Exported because the manifest reader in `@sqlite-host/codegen-core`
+ * applies the identical rule for the identical reason, and a second copy
+ * of a scanner is a second chance to get the string-escape handling
+ * wrong.
  */
-function assertNoDuplicateKeys(json: string): void {
+export function assertNoDuplicateKeys(json: string): void {
   // One entry per open container: a Set of seen keys for an object,
   // null for an array (arrays have no keys to collide).
   const stack: Array<Set<string> | null> = [];

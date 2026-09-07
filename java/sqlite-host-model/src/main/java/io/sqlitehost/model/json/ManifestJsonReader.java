@@ -1,5 +1,6 @@
 package io.sqlitehost.model.json;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sqlitehost.model.manifest.InlineArg;
@@ -30,7 +31,19 @@ import java.util.List;
  */
 public final class ManifestJsonReader {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Duplicate object keys are rejected, not resolved, for the same
+     * reason {@link ScriptJsonReader} rejects them: last-wins is a
+     * convention rather than a rule of JSON, so a document carrying a
+     * repeated key is one two conforming readers may read differently.
+     * A manifest is the single artifact C#, Java and TypeScript have to
+     * agree on byte for byte, and it is committed, hand-editable and
+     * merge-conflict-prone -- a conflict resolved by keeping both
+     * {@code "callTablePrefix"} lines would otherwise build a Java host
+     * against tables the C# schema never creates.
+     */
+    private static final ObjectMapper MAPPER =
+            new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
     private ManifestJsonReader() {
     }

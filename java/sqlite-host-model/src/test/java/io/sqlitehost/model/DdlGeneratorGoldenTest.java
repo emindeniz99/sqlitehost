@@ -4,6 +4,8 @@ import io.sqlitehost.model.ddl.DdlGenerator;
 import io.sqlitehost.model.json.ManifestJsonReader;
 import io.sqlitehost.model.manifest.Manifest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,14 +22,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class DdlGeneratorGoldenTest {
 
-    @Test
-    void schemaScriptIsByteIdenticalToCommittedSnapshot() throws IOException {
+    /**
+     * Every committed host, not just the sample one. {@code
+     * custom-naming-host} is the one that can fail: it overrides every
+     * prefix, infix, shared table, column and the done literal, so a
+     * generator that hardcoded a protocol default instead of reading the
+     * manifest emits the right bytes for the other three and the wrong
+     * bytes for this one.
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {
+            "sample-host",
+            "high-api-host",
+            "syntax-floor-host",
+            "custom-naming-host"
+    })
+    void schemaScriptIsByteIdenticalToCommittedSnapshot(String baseName) throws IOException {
         Path fixtures = Fixtures.fixturesDir();
         Manifest manifest = ManifestJsonReader.read(
-                Files.readString(fixtures.resolve("manifests/sample-host.manifest.json")));
+                Files.readString(fixtures.resolve("manifests/" + baseName + ".manifest.json")));
         String generated = DdlGenerator.generateSchemaScript(manifest);
 
-        Path snapshot = fixtures.resolve("schemas/sample-host.ddl.sql");
+        Path snapshot = fixtures.resolve("schemas/" + baseName + ".ddl.sql");
         String expected = new String(Files.readAllBytes(snapshot), StandardCharsets.UTF_8);
         assertEquals(expected, generated, "generated DDL must match the committed snapshot");
         assertArrayEquals(Files.readAllBytes(snapshot),
