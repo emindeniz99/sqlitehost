@@ -167,11 +167,16 @@ algorithm and the verifier requires it to equal the envelope's `alg`
 | `rsa-sha256` | RSASSA-**PKCS#1 v1.5** over SHA-256 of `signedBytes`, per RFC 8017 §8.2 | production |
 | `hmac-sha256` | HMAC-SHA-256 over `signedBytes`, compared in constant time | dev/internal only |
 
-`DeliveryKey.Rsa(...)` rejects a modulus whose **significant** length is
-under 256 bytes with `ArgumentException`, so 2048 bits is a hard floor
-rather than a recommendation: a short modulus is the misconfiguration
-that fails *open*, since verification keeps succeeding while the private
-key is within reach of factoring.
+`DeliveryKey.Rsa(...)` throws `ArgumentException` at construction on four
+shapes, so a misconfigured key is a startup failure rather than a
+production mystery:
+
+| Rejected | Why |
+|---|---|
+| a modulus under 256 **significant** bytes | 2048 bits is a hard floor, not a recommendation. A short modulus fails *open*: verification keeps succeeding while the private key is within reach of factoring |
+| an even modulus | every RSA modulus is a product of two odd primes, so an even one is not a modulus. This one fails *closed* — `Verify` would return `bad-signature` for every envelope forever — which is the silent degrade the constructor exists to prevent |
+| an exponent that is not odd and greater than 1 | `e = 1` makes RSA the identity, so the padded digest *is* the signature and anyone forges one without the private key; an even `e` has no inverse mod φ(n) and is not an exponent at all |
+| an exponent wider than 8 significant bytes | 65537 needs three, and nothing a generator emits needs a machine word. A wide one is odd and greater than 1, so the check above waves it through; it is a mis-decoded config that would fail closed at run time |
 
 Significant, not encoded: leading `0x00` bytes are legal padding in a
 big-endian integer and real producers emit them (Java's
