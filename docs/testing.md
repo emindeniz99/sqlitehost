@@ -103,8 +103,10 @@ and runs the full C# suite against each binary. It needs gcc, curl and
 unzip plus an amalgamation cache; the four pinned versions are SHA-256
 pinned, because the script compiles and executes source it downloaded.
 `engine-matrix.yml` runs it nightly and on any pull request touching
-`csharp/` or the harness — one leg per version, so a failure names the
-engine. Pass a version to run one leg locally:
+`csharp/`, `fixtures/`, the harness or `docs/compatibility.md` — one leg
+per version, so a failure names the engine. `fixtures/` is on that list
+because the suite reads its payloads off disk, so a fixture-only pull
+request changes what these legs execute. Pass a version to run one leg locally:
 `bash tests/compatibility-sqlite/run-matrix.sh 3.19.3`. See
 `docs/compatibility.md` for the measured results.
 
@@ -204,7 +206,7 @@ matrix, each at the cadence its cost justifies:
 |---|---|---|
 | `playground-e2e.yml` | per-PR | the 13 Playwright tests, after installing exactly one Chromium |
 | `packaging.yml` | per-PR on the paths it guards, plus weekly | maven `central` profile, `dotnet pack`, `pnpm pack` shape checks |
-| `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` | the real-SQLite matrix, one leg per engine version |
+| `engine-matrix.yml` | nightly, plus per-PR on `csharp/**` and `fixtures/**` | the real-SQLite matrix, one leg per engine version |
 | `il2cpp-size-bench.yml` | monthly + on demand (**no per-PR trigger**) | the Unity IL2CPP app-size matrix on Android — a measurement, not a numeric gate. The per-PR 3-row subset was removed: ~22 minutes of Android builds that compared no number to anything, on the three least interesting rows. An IL2CPP baseline would need runner-to-runner variance nobody has measured; the numeric gate stays on the NativeAOT half |
 | `ios-size-bench.yml` | monthly + on demand | the same rows on iOS, in two stages (Unity emits an Xcode project, a Mac compiles it) — a measurement; first full run 33255105207, 48/48 green |
 
