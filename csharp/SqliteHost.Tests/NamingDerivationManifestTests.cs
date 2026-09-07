@@ -43,6 +43,12 @@ namespace SqliteHost.Tests
         [Theory]
         [InlineData("sample-host.manifest.json")]
         [InlineData("high-api-host.manifest.json")]
+        [InlineData("syntax-floor-host.manifest.json")]
+        // The only row that can fail on a hardcoded default: every prefix,
+        // infix and column name in this host differs from the protocol
+        // one, so a derivation that ignores the naming block still agrees
+        // with the three rows above and disagrees with this one.
+        [InlineData("custom-naming-host.manifest.json")]
         public void ResolvedNamesEqualWhatTheRuntimeDerives(string fileName)
         {
             using JsonDocument document = JsonDocument.Parse(

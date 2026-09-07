@@ -133,6 +133,70 @@ check("the syntax-floor host actually declares a raised floor", () => {
   );
 });
 
+// 2d. The fourth, conformance-only host: every configurable name
+//     overridden. Each DDL generator carries its own copy of the naming
+//     rules, and against a default-named host a copy that hardcoded
+//     "input_" or read the queue table from the wrong block emits exactly
+//     the same bytes as a correct one. This is the input that tells them
+//     apart, and the Java and C# DDL golden tests read the same pair of
+//     files. Pinned like the other extra hosts, minus the language
+//     emitters.
+const customNamingManifestBytes = readFileSync(
+  join(root, "fixtures/manifests/custom-naming-host.manifest.json"),
+  "utf8",
+);
+const customNamingDdlBytes = readFileSync(
+  join(root, "fixtures/schemas/custom-naming-host.ddl.sql"),
+  "utf8",
+);
+const customNamingCompiled = await frontend.compileHostLibrary(
+  join(root, "typespec/examples/custom-naming-host-methods.tsp"),
+);
+const customNamingErrors = customNamingCompiled.diagnostics.filter(
+  (d) => d.severity === "error",
+);
+assert.equal(
+  customNamingErrors.length,
+  0,
+  "custom-naming .tsp compiled with errors: " + JSON.stringify(customNamingErrors, null, 2),
+);
+check("frontend: custom-naming-host-methods.tsp -> IR equals canonical manifest IR", () => {
+  assert.deepEqual(customNamingCompiled.ir, core.parseManifest(customNamingManifestBytes));
+});
+check("manifest emitter: byte-identical custom-naming manifest", () => {
+  assert.equal(manifestEmitter.emitManifest(customNamingCompiled.ir), customNamingManifestBytes);
+});
+check("manifest emitter: byte-identical custom-naming DDL snapshot", () => {
+  assert.equal(manifestEmitter.emitDdl(customNamingCompiled.ir), customNamingDdlBytes);
+});
+check("core: custom-naming DDL from IR equals snapshot", () => {
+  assert.equal(
+    core.generateSchemaScript(core.parseManifest(customNamingManifestBytes)),
+    customNamingDdlBytes,
+  );
+});
+check("the custom-naming host actually overrides every configurable name", () => {
+  // The whole reason the host exists. A value that drifts back to its
+  // default silently stops distinguishing a correct generator from one
+  // that hardcodes that default — the failure a golden cannot see,
+  // because both sides then produce the same bytes.
+  const sample = core.parseManifest(manifestBytes);
+  const custom = customNamingCompiled.ir;
+  for (const [block, key] of [
+    ...Object.keys(sample.naming).map((k) => ["naming", k]),
+    ...Object.keys(sample.columns).map((k) => ["columns", k]),
+  ]) {
+    assert.notEqual(
+      custom[block][key],
+      sample[block][key],
+      `${block}.${key} is still the default ${JSON.stringify(sample[block][key])}`,
+    );
+  }
+  for (const table of ["queueTable", "inputsTable", "varsTable", "controlTable"]) {
+    assert.notEqual(custom[table].name, sample[table].name, `${table} is still the default`);
+  }
+});
+
 // 3. C# emitter vs vendored sources.
 const csharpGoldens = {
   "HostMethodDtos.g.cs": "csharp/SqliteHost.Generated.Sample/HostMethodDtos.g.cs",

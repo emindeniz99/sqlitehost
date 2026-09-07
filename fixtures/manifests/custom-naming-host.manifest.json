@@ -1,0 +1,217 @@
+{
+  "manifestVersion": 1,
+  "engine": "sqlite-host-v1",
+  "library": {
+    "namespace": "Example.CustomNaming",
+    "interfaceName": "CustomNamingHostMethods",
+    "apiLevel": 1,
+    "minSqliteVersionNumber": 3019003,
+    "features": [
+      "typedNamedBindings",
+      "splitResultTables",
+      "scriptInputs",
+      "scriptVars",
+      "scriptControl",
+      "inlineFunctions"
+    ]
+  },
+  "naming": {
+    "callTablePrefix": "req_",
+    "resultTablePrefix": "resp_",
+    "inputColumnPrefix": "arg_",
+    "resultColumnPrefix": "ret_",
+    "inputListTableInfix": "__arg_",
+    "resultListTableInfix": "__ret_",
+    "functionPrefix": "hostfn_"
+  },
+  "columns": {
+    "callId": "correlation_id",
+    "itemIndex": "ordinal",
+    "status": "state",
+    "doneValue": "settled",
+    "queueId": "seq",
+    "method": "op_name",
+    "name": "var_name",
+    "valueType": "kind",
+    "intValue": "i_val",
+    "realValue": "r_val",
+    "textValue": "t_val",
+    "blobValue": "b_val",
+    "action": "verb",
+    "message": "detail"
+  },
+  "queueTable": {
+    "name": "host_queue",
+    "columns": [
+      "seq",
+      "correlation_id",
+      "op_name",
+      "state"
+    ]
+  },
+  "inputsTable": {
+    "name": "host_inputs",
+    "columns": [
+      "var_name",
+      "kind",
+      "i_val",
+      "r_val",
+      "t_val",
+      "b_val"
+    ]
+  },
+  "varsTable": {
+    "name": "host_scratch",
+    "columns": [
+      "var_name",
+      "kind",
+      "i_val",
+      "r_val",
+      "t_val",
+      "b_val"
+    ]
+  },
+  "controlTable": {
+    "name": "host_control",
+    "columns": [
+      "verb",
+      "detail"
+    ]
+  },
+  "scriptEnvelope": {
+    "engine": "sqlite-host-v1",
+    "bindingTypes": [
+      "null",
+      "int32",
+      "int64",
+      "bool",
+      "text",
+      "blob",
+      "float32",
+      "float64"
+    ]
+  },
+  "methods": [
+    {
+      "operationName": "Lookup",
+      "methodName": "lookup",
+      "handlerName": "Lookup",
+      "apiLevel": 1,
+      "mutates": false,
+      "callTable": "req_lookup",
+      "resultTable": "resp_lookup",
+      "queueTrigger": "trg_req_lookup_queue",
+      "input": {
+        "modelName": "LookupInput",
+        "fields": [
+          {
+            "propertyName": "key",
+            "sqlName": "lookup_key",
+            "column": "arg_lookup_key",
+            "scalarType": "string",
+            "optional": false
+          }
+        ],
+        "listFields": []
+      },
+      "result": {
+        "modelName": "LookupResult",
+        "fields": [
+          {
+            "propertyName": "value",
+            "sqlName": "payload",
+            "column": "ret_payload",
+            "scalarType": "int64",
+            "optional": false
+          }
+        ],
+        "listFields": []
+      },
+      "inline": {
+        "functionName": "hostfn_lookup",
+        "minArgs": 1,
+        "maxArgs": 1,
+        "args": [
+          {
+            "propertyName": "key",
+            "sqlName": "lookup_key",
+            "scalarType": "string",
+            "optional": false
+          }
+        ],
+        "returns": {
+          "propertyName": "value",
+          "sqlName": "payload",
+          "scalarType": "int64"
+        }
+      }
+    },
+    {
+      "operationName": "BulkLookup",
+      "methodName": "bulkLookup",
+      "handlerName": "BulkLookup",
+      "apiLevel": 1,
+      "mutates": true,
+      "callTable": "req_bulk_lookup",
+      "resultTable": "resp_bulk_lookup",
+      "queueTrigger": "trg_req_bulk_lookup_queue",
+      "input": {
+        "modelName": "BulkLookupInput",
+        "fields": [],
+        "listFields": [
+          {
+            "propertyName": "keys",
+            "sqlName": "wanted_keys",
+            "childTable": "req_bulk_lookup__arg_wanted_keys",
+            "itemModelName": "LookupKeyItem",
+            "itemFields": [
+              {
+                "propertyName": "key",
+                "sqlName": "lookup_key",
+                "column": "arg_lookup_key",
+                "scalarType": "string",
+                "optional": false
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "modelName": "BulkLookupResult",
+        "fields": [],
+        "listFields": [
+          {
+            "propertyName": "rows",
+            "sqlName": "found_rows",
+            "childTable": "resp_bulk_lookup__ret_found_rows",
+            "itemModelName": "LookupRowItem",
+            "itemFields": [
+              {
+                "propertyName": "key",
+                "sqlName": "lookup_key",
+                "column": "ret_lookup_key",
+                "scalarType": "string",
+                "optional": false
+              },
+              {
+                "propertyName": "value",
+                "sqlName": "payload",
+                "column": "ret_payload",
+                "scalarType": "int64",
+                "optional": false
+              },
+              {
+                "propertyName": "found",
+                "sqlName": "was_found",
+                "column": "ret_was_found",
+                "scalarType": "boolean",
+                "optional": false
+              }
+            ]
+          }
+        ]
+      },
+      "inline": null
+    }
+  ]
+}

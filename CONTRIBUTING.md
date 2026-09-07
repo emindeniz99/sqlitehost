@@ -109,6 +109,9 @@ builds, not a build output, and emission is deterministic.
   node codegen/manifest-emitter/dist/cli.js \
       typespec/examples/syntax-floor-host-methods.tsp generated \
       --base-name syntax-floor-host
+  node codegen/manifest-emitter/dist/cli.js \
+      typespec/examples/custom-naming-host-methods.tsp generated \
+      --base-name custom-naming-host
   node codegen/csharp-emitter/dist/cli.js     generated/sample-host.manifest.json generated/csharp
   node codegen/java-emitter/dist/cli.js       generated/sample-host.manifest.json generated/java
   node codegen/typescript-emitter/dist/cli.js generated/sample-host.manifest.json generated/ts \

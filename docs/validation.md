@@ -164,6 +164,18 @@ other direction — that raising `minSqliteVersion` actually silences
 3.39.0, the newest version any `SYNTAX_MIN_VERSION` entry names, so one
 host clears every detector.
 
+`typespec/examples/custom-naming-host-methods.tsp` is a fourth, and it
+is not for the payload corpus at all — it is for the DDL generators.
+There are three of them (`codegen/core/src/ddl.ts`, Java's
+`DdlGenerator`, C#'s `SchemaGenerator`), each with its own copy of the
+naming rules, and every host above takes the protocol defaults. Against
+a default-named host a copy that hardcodes `input_` or `call_id`
+produces byte-identical output to a correct one, so the goldens could
+not see the difference. This host overrides every prefix, infix, shared
+table, shared column, the done-status literal and the function prefix,
+and its DDL snapshot is read by all three (`run.mjs`,
+`DdlGeneratorGoldenTest`, `SchemaGeneratorManifestGoldenTests`).
+
 One rule is **Java-only, and cannot be otherwise**: an `int32`/`int64`
 whose JSON number is written non-integrally (`1.0`, `1e3`). Java's reader
 sees the token and rejects it; TypeScript's lint runs on a value that
