@@ -62,7 +62,7 @@ does not hit it.
 
 **System.Data.SQLite has no arm64 macOS native.** `System.Data.SQLite.Core`
 ships `SQLite.Interop.dll` for `win-x86`, `win-x64`, `linux-x64` and
-`osx-x64` only, so on Apple Silicon 84 of the 86 `SystemDataSqlite*`
+`osx-x64` only, so on Apple Silicon 85 of the 87 `SystemDataSqlite*`
 tests die with `DllNotFoundException` before the first assertion (the two
 survivors are the `CleanSkip_*` inline-function cases, which never open a
 connection). That adapter is covered by the Linux and Windows CI jobs.
@@ -72,7 +72,7 @@ Locally, skip it:
 dotnet test --filter "FullyQualifiedName!~SystemDataSqlite"
 ```
 
-That leaves 685 tests: 679 pass, 6 skip.
+That leaves 688 tests: 682 pass, 6 skip.
 
 **No .NET 8 runtime installed?** The test assembly targets `net8.0` and
 will not start on a machine that only has newer runtimes. Roll it
