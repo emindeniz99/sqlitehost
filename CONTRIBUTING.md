@@ -72,7 +72,7 @@ Locally, skip it:
 dotnet test --filter "FullyQualifiedName!~SystemDataSqlite"
 ```
 
-That leaves 688 tests: 682 pass, 6 skip.
+That leaves 694 tests: 688 pass, 6 skip.
 
 **No .NET 8 runtime installed?** The test assembly targets `net8.0` and
 will not start on a machine that only has newer runtimes. Roll it
