@@ -41,8 +41,8 @@ One finding is printed per line. Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | script is publishable (no errors; warnings don't block) |
-| 1 | script has validation errors |
-| 2 | usage error, or the manifest/script could not be read |
+| 1 | script has validation errors — including a script the strict reader refuses, which prints an `invalid-envelope` finding rather than dying as a tooling failure |
+| 2 | no verdict was reached: wrong argument count, either file unreadable, a manifest that will not parse, or a workspace layer 3 could not set up |
 
 **The CLI runs all four validation layers**, prepare-only SQLite
 (`sql-prepare-error`, `docs/validation.md` layer 3) included. That is why
