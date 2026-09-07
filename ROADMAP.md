@@ -80,6 +80,67 @@ and its CI cannot hold. Delete entries when shipped.
   sqlite-net wrapper pattern also stays available as
   `csharp/SqliteHost.Tests/Adapter/SqliteNetAdapter.cs`.
 
+## Planned test infrastructure (after the 0.1.0 bootstrap)
+
+Two workstreams the gap-hunt rounds argued for. Neither blocks the first
+release; both belong before 1.0. Order: differential fuzzing first, because
+it finds the class of bug the hunts kept finding by hand; the runtime
+benchmark second, because its result feeds a design decision.
+
+- **Property-based and differential fuzzing.** Rounds 1 to 3 found
+  parity bugs between the Java and TypeScript validators and the C#
+  runtime by reading code: single-quoted names, the BOM, canonical
+  base64, null versus absent, float text. A seeded generator finds that
+  class on purpose. The repository already has the shape the harness
+  needs: `fixtures/payloads` with `expectations.json`, three consumers
+  (Java, TypeScript, C#) and `scripts/check-fixture-corpus.mjs`. First
+  slice: a fast-check generator in TypeScript writes a seeded temporary
+  corpus of scripts and payloads, runs the TypeScript validator for the
+  expected codes, and hands the corpus to the existing Java and C#
+  runners; any disagreement is saved as a minimal fixture and becomes a
+  committed regression case after the fix. Second slice: random SQL
+  through both tokenizers, comparing token streams and analyzer verdicts
+  (the three CRITICAL bypasses of round 3 were tokenizer disagreements).
+  Third slice: generated values, storage classes and SQL shapes across
+  the four adapters, comparing logical values and contract categories,
+  never provider error text. Fourth slice: small generated scripts
+  against the runtime's queue and lifecycle invariants (each call runs
+  once, drain order, a failed statement blocks the step's drain, no
+  state across `Run()` calls). Libraries: fast-check (TypeScript), jqwik
+  (Java), FsCheck or CsCheck (C#), all test-only. PR CI runs a bounded
+  fixed-seed pass; a nightly workflow runs a large campaign and keeps
+  counterexamples as artifacts. Every failing seed is printed with the
+  shrunk case. libFuzzer on the native adapter is out: the adapter is a
+  thin P/Invoke layer over sqlite3, and fuzzing SQLite is not this
+  project's job. Keep every existing deterministic test; generated tests
+  add to them.
+- **Runtime latency and allocation benchmark.** Every `Run()` opens a
+  fresh `:memory:` workspace and creates the generated schema, so a
+  50-method host executes a few hundred DDL statements before the first
+  script statement. Measuring that fixed cost decides whether a cloned
+  template workspace or a warm-workspace option is worth an API change,
+  which is why this belongs before 1.0. Level 1: a BenchmarkDotNet
+  project over the generated sample host and the four adapters,
+  covering the smallest valid run, 1/10/100 statements, 1/10/50 queued
+  calls, the same calls as inline scalar functions, representative
+  bindings (int64, text, blob, optional), and one realistic mixed
+  script; report p50, p95, mean and allocated bytes per operation;
+  separate workspace open, `ValidateEnvironment()`, schema creation via
+  `GenerateSchemaScript()` plus the adapter's `Execute`, and disposal
+  using public operations only. Results go into a committed report in
+  `docs/reports/` like the size reports, with no latency gate in PR CI.
+  Level 2: the IL2CPP size bench already builds and executes the bench
+  APK on the Android emulator, so a timing loop rides the same rows and
+  prints JSON, labelled emulator-representative (x86_64 host, not a
+  phone). On iOS the macOS runner has the iOS Simulator: an
+  `iphonesimulator` IL2CPP build runs under `xcrun simctl`, executing
+  the arm64 IL2CPP code on the runner's Apple Silicon CPU, so timing is
+  automated there too and labelled simulator, not device. The size
+  bench keeps its device build, because a simulator slice has different
+  bytes. Desktop .NET numbers are never labelled as IL2CPP numbers.
+  Measure first; optimizations are a separate follow-up ranked by the
+  measured cost centers.
+
 ## Scripting-language proposals (designed, awaiting owner decision)
 
 What a "Lua-length" script needs vs. what SQL-as-the-language covers.
