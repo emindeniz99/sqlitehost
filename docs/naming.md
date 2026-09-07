@@ -50,6 +50,14 @@ a built-in is not just confusing — the script lint exempts declared
 inline functions from the portability and version rules, so the name
 would switch those rules off for itself.
 
+A SQLite **keyword** (`SQL_KEYWORDS` in `codegen/core/src/ir.ts`, the
+147 names on <https://www.sqlite.org/lang_keywords.html>) is rejected
+too. It registers cleanly and is then unreachable: `SELECT select(1)` is
+a syntax error, because the parser matches the keyword before it looks
+for a function. Table and column names are deliberately outside this
+rule — a keyword is legal there, and every derived table and column
+carries a non-empty prefix in any case.
+
 Override via `@hostLibrary({ queueTable: "...", ... })`. Names must be
 ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`, same reason as the prefixes
 above), mutually distinct, and must not collide with any derived

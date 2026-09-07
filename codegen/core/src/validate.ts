@@ -50,6 +50,7 @@ import {
   NONPORTABLE_FUNCTIONS,
   PENDING_STATUS,
   queueTableColumns,
+  SQL_KEYWORDS,
   SQLITE_BUILTIN_FUNCTIONS,
   SYSTEM_TABLES,
 } from "./ir.js";
@@ -110,6 +111,9 @@ const RESERVED_SQLITE_NAMES: ReadonlyMap<string, string> = new Map([
   ),
   ...SYSTEM_TABLES.map((n) => [n, "a SQLite system table"] as const),
 ]);
+
+/** SQLite's keywords, for the inline-function-name rule (SQL_KEYWORDS). */
+const SQL_KEYWORD_SET: ReadonlySet<string> = new Set(SQL_KEYWORDS);
 
 /** Family prefixes whose whole namespace SQLite owns (json_, jsonb_). */
 const RESERVED_SQLITE_PREFIXES: readonly string[] = Object.keys(
@@ -521,6 +525,14 @@ export function validateHostLibraryInterface(
     const reserved = reservedSqliteName(lower);
     if (reserved !== undefined) {
       error(ctx, "builtin-function-collision", { name, kind: reserved }, target);
+    }
+    // A keyword is worse than a collision: `SELECT select(1)` never
+    // reaches function resolution, so the registered function is
+    // unreachable in the only spelling authors write. Checked on the
+    // claimed name rather than on functionName alone, so a functionPrefix
+    // that lands on a keyword is caught the same way.
+    if (SQL_KEYWORD_SET.has(lower)) {
+      error(ctx, "reserved-sql-keyword", { name }, target);
     }
   }
 

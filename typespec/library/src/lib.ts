@@ -269,6 +269,12 @@ export const $lib = createTypeSpecLibrary({
         default: paramMessage`Inline function name "${"name"}" collides with a name SQLite already owns (${"kind"}); pick a different functionName or functionPrefix.`,
       },
     },
+    "reserved-sql-keyword": {
+      severity: "error",
+      messages: {
+        default: paramMessage`Inline function name "${"name"}" is a SQLite keyword; it registers cleanly and is then a syntax error in call position ("SELECT ${"name"}(...)" never reaches function resolution), so no script can call it in the spelling every author writes. Pick a different functionName or functionPrefix.`,
+      },
+    },
   },
 });
 

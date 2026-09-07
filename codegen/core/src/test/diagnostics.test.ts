@@ -1008,6 +1008,63 @@ test("rejects a derived inline function name colliding with a SQLite built-in", 
   assertDiagnostic(result, "builtin-function-collision");
 });
 
+for (const keyword of ["select", "values", "window", "having"]) {
+  test(`rejects the SQL keyword "${keyword}" as an inline function name`, async () => {
+    // `SELECT select(1)` is a syntax error: the parser sees the keyword
+    // before it ever looks for a function.
+    const result = await compileSource(
+      shell(`
+        @hostLibrary({ apiLevel: 1 })
+        interface Methods {
+          @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "${keyword}" })
+          op GetValue(input: In): Out;
+        }
+        model In { key: string; }
+        model Out { value: int64; }
+      `),
+    );
+    assertDiagnostic(result, "reserved-sql-keyword");
+  });
+}
+
+test("accepts a function name that merely starts with a SQL keyword", async () => {
+  // The rule is whole-name equality: only a bare keyword is unparseable,
+  // and `selection` is an ordinary identifier.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue", mutates: false, functionName: "selection" })
+        op GetValue(input: In): Out;
+      }
+      model In { key: string; }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].inline?.functionName, "selection");
+});
+
+test("a SQL keyword stays legal as a column sqlName", async () => {
+  // Deliberately NOT covered by the keyword rule: the column is derived
+  // with a prefix (input_select) and a keyword column name is legal SQL
+  // in any case.
+  const result = await compileSource(
+    shell(`
+      @hostLibrary({ apiLevel: 1 })
+      interface Methods {
+        @hostMethod({ name: "getValue", handler: "GetValue" })
+        op GetValue(input: In): Out;
+      }
+      model In {
+        @sqlName("select")
+        selected: string;
+      }
+      model Out { value: int64; }
+    `),
+  );
+  assert.equal(result.ir?.methods[0].input.fields[0].column, "input_select");
+});
+
 test("rejects an empty functionPrefix", async () => {
   const result = await compileSource(
     shell(`

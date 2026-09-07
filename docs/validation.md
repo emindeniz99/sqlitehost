@@ -54,9 +54,9 @@ missing/invalid api level, a method apiLevel exceeding the library
 apiLevel, invalid handler names, a handler name, namespace segment or
 property name that is a C# or Java keyword (`@sqlName` is the escape
 hatch when the SQL column has to keep the keyword spelling), a
-`functionName` that is not snake_case or
-that collides with a name SQLite already owns, invalid or empty list
-item shapes, host interfaces declared outside any namespace.
+`functionName` that is not snake_case, that is a SQLite
+keyword, or that collides with a name SQLite already owns, invalid or
+empty list item shapes, host interfaces declared outside any namespace.
 
 Manifests are checked too, on the way back in: `parseManifest`
 (`codegen/core/src/manifest.ts`) validates structure, types, ranges and
