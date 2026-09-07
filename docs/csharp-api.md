@@ -42,8 +42,11 @@ public sealed class SqliteHostBindingValue
 // Text and Blob throw ArgumentNullException on a null argument — bind
 // SqliteHostBindingValue.Null() for a SQL NULL, never a null reference.
 // Float32 and Float64 throw ArgumentException on NaN or an infinity:
-// SQLite stores them as REAL and they survive no round trip worth
-// pinning, so the runtime refuses them at the boundary.
+// the check guards the JSON envelope, which has no spelling for either
+// (docs/script-envelope.md). It is a rule about what a script may BIND,
+// not about REAL columns: a non-finite REAL read back out of a column is
+// returned as read, in every profile (docs/adapter-contract.md,
+// csharp/SqliteHost.Tests/NonFiniteRealTests.cs).
 
 public sealed class SqliteHostBinding
 {
