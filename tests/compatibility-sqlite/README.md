@@ -221,53 +221,65 @@ count. An inverted skip predicate — `SkipUnderNativeOverride`,
 green. run-matrix.sh now fails a leg whose `Skipped` exceeds a ceiling or
 whose `Passed` falls below a floor, and prints what to recompute.
 
-Where the skips come from (measured when the suite held **768** tests;
-the counts are platform-independent because every skip below is a
-`Skip.If`, not a load failure):
+Where the skips come from (measured 2026-09-07 from CI run
+[`34071163849`](https://github.com/emindeniz99/sqlitehost/actions/runs/34071163849)
+on commit `b3eb429` — the current `main` tip, already past PR #43
+(`4a96b78`) and PR #44 (`b3eb429`) — via `gh run view 34071163849 --repo
+emindeniz99/sqlitehost --job <job-id> --log` for each of the five leg job
+IDs from `gh run view 34071163849 --repo emindeniz99/sqlitehost`. The
+suite holds 775 tests at or above the floor, 759 below it once the
+four-method filter applies; counts are platform-independent because every
+skip below is a `Skip.If`, not a load failure):
 
 | leg | Passed | Skipped | = System.Data.SQLite | + sqlite-net | + engine-specific |
 |---|---|---|---|---|---|
-| 3.28.0 / newest (≥ 3.24) | 598 | 170 | 84 | 84 | 2 |
-| 3.19.3 (floor, < 3.24) | 596 | 172 | 84 | 84 | 4 |
-| 3.9.0 / 3.9.2 (below floor, Total 752) | 419 | 333 | 80 | 80 | 173 |
+| latest / 3.53.4 (≥ 3.39, advisory) | 603 | 172 | 85 | 85 | 2 |
+| 3.28.0 (≥ 3.24, < 3.39) | 601 | 174 | 85 | 85 | 4 |
+| 3.19.3 (floor, < 3.24) | 599 | 176 | 85 | 85 | 6 |
+| 3.9.0 / 3.9.2 (below floor, Total 759) | 422 | 337 | 81 | 81 | 175 |
 
 - **System.Data.SQLite and sqlite-net skip whole.** Both bundle or load
   their own SQLite, so `SQLITEHOST_NATIVE_SQLITE` never reaches them and
-  a cell that ran them would be measuring the wrong engine. That is 168
-  of the 170 baseline skips: two adapter mirrors out of four.
+  a cell that ran them would be measuring the wrong engine. That is 170
+  of every at-or-above-floor leg's skips (85 apiece: two adapter mirrors
+  out of four); below the floor it is 162 (81 apiece), because the
+  four-method filter below removes 4 tests from each adapter's count
+  before either skip or pass is possible.
 - **2 more on every leg:** `FloorGateTests`' below-floor branch, on the
   two overridable adapters. Its at/above-floor branch runs instead.
 - **2 more below 3.24:** `example-011-insert-alias` needs the UPSERT-era
   `INSERT INTO t AS alias`, which 3.19.3 cannot parse
   (`FixtureCoverage.ValidEngineFloors`).
-- **2 more below 3.39:** `example-021-above-floor-syntax`, the payload
-  that exercises every construct `sqlite-version-too-low-for-syntax`
-  knows about, needs the newest of them (`RIGHT JOIN`,
-  `IS DISTINCT FROM`). Same table, same mechanism.
+- **2 more below 3.39, plus 2 already counted above:**
+  `example-021-above-floor-syntax`, the payload that exercises every
+  construct `sqlite-version-too-low-for-syntax` knows about, needs the
+  newest of them (`RIGHT JOIN`, `IS DISTINCT FROM`). It runs on all four
+  adapter mirrors (4 tests): the 2 on System.Data.SQLite and sqlite-net
+  are already inside the 170/162 above; the 2 on the overridable adapters
+  pass at/above 3.39 and skip below it — which is why `3.28.0` and
+  `3.19.3` carry 2 more engine-specific skips than `latest`, and why
+  `latest` alone gained 2 Passed instead.
 
-**The table above has not been re-measured since the suite grew to 775**
-— the syntax version lint landed after it and no matrix run has happened
-since. Four of the seven new tests are `example-021`, and their
-arithmetic is exact: one valid payload is 4 tests, one per adapter, so
-every leg gains 4 Total and 2 Skipped (System.Data.SQLite and sqlite-net,
-which skip whole under the override); a leg on an engine below 3.39 skips
-the other 2 as well instead of passing them. That also splits the first
-row, whose two engines no longer behave alike: `newest` gains 2 Passed,
-`3.28.0` gains 2 Skipped. The other three are the `blank-binding-name`,
-`non-canonical-base64` and `null-optional-field` fixtures, which moved out
-of `FixtureCoverage.NotEnvelopeFaults` once the precheck and the reader
-started refusing them; they run once each, on no adapter. Everything stays far inside the ceilings below,
-which is why the rows are not being adjusted on paper — replace the table
-with real numbers on the next full matrix run.
-- **173 more below the floor:** every runtime-driven test on the two
+- **175 more below the floor:** every runtime-driven test on the two
   overridable adapters, skipping itself through `SampleHostFloor` because
-  the `sqlite-version-too-low` gate would refuse the run anyway. 68 of
-  those are the fixture corpus (34 payload cases × 2 adapters).
+  the `sqlite-version-too-low` gate would refuse the run anyway — 173 of
+  those pre-date `example-021` (68 are the fixture corpus, 34 payload
+  cases × 2 adapters), plus the 2 the new fixture adds on the same two
+  adapters, which skip below the floor regardless of the 3.39 threshold.
+
+The other three of the seven new tests since the suite last stood at 768
+are the `blank-binding-name`, `non-canonical-base64` and
+`null-optional-field` fixtures, which moved out of
+`FixtureCoverage.NotEnvelopeFaults` once the precheck and the reader
+started refusing them; they run once each, on no adapter, so they add 3
+Passed to every leg regardless of floor or the 3.39 threshold — the whole
+reason `3.9.0`/`3.9.2` Passed also rose by 3 (419 → 422) even though
+they're below both gates. Everything stays far inside the ceilings below.
 
 The ceilings are those numbers plus room for ordinary test growth, and
 they sit far below what an inversion produces — an at-floor leg that
 started skipping everything runtime-driven would land near the
-below-floor 333, past a ceiling of 220:
+below-floor 337, past a ceiling of 220:
 
 | band | max Skipped | min Passed |
 |---|---|---|
