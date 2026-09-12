@@ -105,7 +105,7 @@ runs:
       shell: bash
       run: df -h /
 
-    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+    - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       with:
         version: 10.34.5
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -188,7 +188,7 @@ runs:
         echo "params=$params" >> "$GITHUB_OUTPUT"
         echo "row $ROW -> $params"
 
-    - uses: game-ci/unity-builder@adaf7cd8f42fd48fbbf2d4f5f67ca30d87f819f1 # v5.0.1
+    - uses: game-ci/unity-builder@eb1b9fba120c6e62c9fb7a7a81d6c107ce004c45 # v6.0.0
       env:
         UNITY_LICENSE: ${{ inputs.unity-license }}
         UNITY_EMAIL: ${{ inputs.unity-email }}
