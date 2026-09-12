@@ -22,11 +22,11 @@
     "@sqlite-host/emitter-manifest": "workspace:*",
     "@sqlite-host/emitter-typescript": "workspace:*",
     "@sqlite-host/typespec": "workspace:*",
-    "@typespec/compiler": "1.15.0"
+    "@typespec/compiler": "1.16.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1",
-    "@types/node": "^22.0.0",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.20.2",
     "esbuild": "^0.28.2",
     "typescript": "^5.5.0"
   }
