@@ -47,7 +47,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>17</maven.compiler.release>
-    <jackson.version>2.22.2</jackson.version>
+    <jackson.version>2.22.4</jackson.version>
     <junit.version>6.1.3</junit.version>
     <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
   </properties>
@@ -84,7 +84,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.6.0</version>
+          <version>3.6.1</version>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -156,7 +156,7 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.11.0</version>
+            <version>0.12.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
